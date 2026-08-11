@@ -123,4 +123,20 @@
     touch-action: manipulation;
     user-select: none;
   }
+
+  /* 押せる場所は指カーソル。ブラウザ既定でも Tailwind v4 の preflight でも
+   * <button> は矢印のままなので、ここで両アプリまとめて上書きする。
+   * ドラッグ領域（コントロール窓のタイトルバー）は button ではないので影響しない。 */
+  button:not(:disabled),
+  [role="button"]:not(:disabled),
+  a[href],
+  label[for],
+  summary {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
 }

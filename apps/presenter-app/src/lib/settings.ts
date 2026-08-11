@@ -7,6 +7,8 @@ export type PresenterSettings = {
   roomTitle: string | null;
   /** 直前に外したルームのコード。押し間違えても1タップで戻れるように残す。 */
   previousRoomCode: string | null;
+  /** スライドの上に参加用 QR を出すか。自動表示はせず、コントロール窓のトグルだけで動かす。 */
+  showJoinQr: boolean;
   displayMode: DisplayMode;
   /** 表示先モニターの名前。null ならプライマリ。 */
   monitorName: string | null;
@@ -17,6 +19,7 @@ export const DEFAULT_SETTINGS: PresenterSettings = {
   roomCode: null,
   roomTitle: null,
   previousRoomCode: null,
+  showJoinQr: false,
   displayMode: "flow",
   monitorName: null,
 };
@@ -48,6 +51,7 @@ export function loadSettings(): PresenterSettings {
       roomCode: parsed.roomCode,
       roomTitle: parsed.roomTitle,
       previousRoomCode: parsed.previousRoomCode,
+      showJoinQr: parsed.showJoinQr === true,
       displayMode: parsed.displayMode === "bubble" ? "bubble" : "flow",
       monitorName: parsed.monitorName,
     };

@@ -41,11 +41,13 @@
 
 ## 次にやるとよさそうなこと（未着手・優先度順）
 
-1. **git init してコミットする**（まだリポジトリになっていない）
+1. ~~git init してコミットする~~ → 済（`origin: git@github.com:chaki8923/layertalk.git`）
 2. `npm run build:presenter` で .app を作り、ターミナルなしで起動できるようにする
-3. 観客用 Web のデプロイ（Vercel 等）。いまは `localhost:3000` 固定なので、
-   `apps/presenter-app/src/windows/ControlWindow.tsx` の `AUDIENCE_BASE_URL` を変える必要がある
-4. ルーム参加用の QR コード表示（観客がコードを打たずに済む）
+3. 観客用 Web のデプロイ（Vercel 等）。URL は `apps/presenter-app/.env.local` の
+   `VITE_AUDIENCE_BASE_URL` で渡す（未設定なら `http://localhost:3000`）。
+   **これを設定するまで参加 QR は観客のスマホから開けない**ので、実質ここが QR の前提条件
+4. ~~ルーム参加用の QR コード表示~~ → 済。コントロール窓のルームカードに常時、
+   スライドの左下には「スライドに参加QRを表示」トグルで出す（`components/JoinQrCard.tsx`）
 5. モデレーション（NG ワード、コメントの個別非表示）
 6. コード署名・公証（配布するなら）
 

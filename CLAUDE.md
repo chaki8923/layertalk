@@ -13,8 +13,9 @@ scripts/realtime-smoke.mjs  Realtime 疎通テスト
 ```
 
 - Supabase project: `layertalk` / ref `xnqduwlagmfaxzsaaicj`（ap-northeast-1、Pro $10/月）
-- 認証なし。anon(publishable) キーのみ。`.env.local` はコミット済み（公開前提のキー）
-- **git リポジトリではない**（未 init）
+- 認証なし。anon(publishable) キーのみ（公開前提のキー）。`.env.local` は
+  `*.local` で **gitignore されている**ので、キーを増やしたら `.env.example` の方も直す
+- git リポジトリ。`origin` は `git@github.com:chaki8923/layertalk.git`、既定ブランチは `main`
 
 ## コマンド
 
@@ -82,6 +83,11 @@ tao の実装は `makeKeyAndOrderFront` ＋ **非推奨の** `activateIgnoringOt
 - **コメント／スタンプの全面オーバーレイはクリックスルー常時 ON。** 切り替え UI も
   ショートカットも持たない。操作できるのは右端の質問窓の範囲だけで、そこで
   展開／折りたたみを操作できる（スライド全面の操作を塞がないため）
+- **参加 QR は手動トグルだけ。** 自動表示はしない（スライドを勝手に隠さない）。
+  URL は `VITE_AUDIENCE_BASE_URL`（未設定なら localhost）で、LAN IP の自動検出はしない
+- **押せる場所は `cursor: pointer`。** `<button>` はブラウザ既定でも Tailwind v4 でも
+  矢印のままなので、`theme.css` の `@layer base` で両アプリまとめて指カーソルにしている
+  （個々のコンポーネントに `cursor-pointer` を撒かない）
 - **質問は「流す」と「右端に残す」の両方。** `is_question` でも演出は通常コメントと同じで、
   加えて右端パネルに最大5件を積む（`OverlayWindow` の `handleInsert`）。
   流れて消えたあとも質問だけは参照できるようにするため

@@ -22,6 +22,8 @@ import {
 import { STAMP_EMOJIS } from "@layertalk/shared";
 import { useCallback, useEffect, useState } from "react";
 
+import { JoinQrCard } from "../components/JoinQrCard";
+import { audienceUrl as buildAudienceUrl } from "../lib/audience";
 import {
   loadSettings,
   OVERLAY_DEFAULTS,
@@ -44,7 +46,6 @@ import {
   type MonitorInfo,
 } from "../lib/tauri";
 
-const AUDIENCE_BASE_URL = "http://localhost:3000";
 const PEEK_MS = 2600;
 
 export function ControlWindow() {
@@ -166,7 +167,17 @@ export function ControlWindow() {
     setError(null);
   };
 
-  const audienceUrl = settings.roomCode ? `${AUDIENCE_BASE_URL}/r/${settings.roomCode}` : null;
+  const audienceUrl = buildAudienceUrl(settings.roomCode);
+
+  /**
+   * スライドの上の QR を出し入れする。発表前は ON にしても何も見えないので、
+   * モニター選択と同じように peek で置き場所を実物で見せる。
+   */
+  const handleToggleJoinQr = () => {
+    const next = !settings.showJoinQr;
+    update({ showJoinQr: next });
+    if (next && !live) void peekOverlay(settings.monitorName, PEEK_MS);
+  };
 
   const handleCopy = async () => {
     if (!audienceUrl) return;
@@ -261,6 +272,49 @@ export function ControlWindow() {
               </button>
 
               <div className="text-text-faint truncate text-[11px]">{audienceUrl}</div>
+
+              {audienceUrl && (
+                <div className="border-border space-y-3 border-t pt-3">
+                  <div className="flex justify-center">
+                    <JoinQrCard url={audienceUrl} code={settings.roomCode} size={132} />
+                  </div>
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={settings.showJoinQr}
+                    onClick={handleToggleJoinQr}
+                    className={`lt-tap flex w-full items-center justify-between rounded-[14px] border px-3 py-2.5 text-left transition-colors ${
+                      settings.showJoinQr
+                        ? "border-brand/40 bg-brand/12"
+                        : "border-border hover:bg-surface-strong"
+                    }`}
+                  >
+                    <span className="text-[13px] font-semibold">スライドに参加QRを表示</span>
+                    <span
+                      aria-hidden
+                      className="relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors"
+                      style={{
+                        background: settings.showJoinQr
+                          ? "var(--lt-brand)"
+                          : "var(--lt-border-strong)",
+                      }}
+                    >
+                      <motion.span
+                        className="absolute top-[3px] h-4 w-4 rounded-full bg-white shadow-sm"
+                        animate={{ left: settings.showJoinQr ? 19 : 3 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 32, mass: 0.6 }}
+                      />
+                    </span>
+                  </button>
+
+                  <p className="text-text-faint text-[11px] leading-relaxed">
+                    {settings.showJoinQr
+                      ? "発表中はスライド左下に出ます。"
+                      : "オンにすると発表中もスライドの左下に QR を重ねます。"}
+                  </p>
+                </div>
+              )}
 
               <div className="border-border flex items-center justify-between border-t pt-3">
                 <StatusPill status={status} />

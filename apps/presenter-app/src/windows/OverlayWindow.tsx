@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { BubbleLayer } from "../components/BubbleLayer";
 import { FlowLayer, type CommentLayerHandle } from "../components/FlowLayer";
+import { JoinQrCard } from "../components/JoinQrCard";
 import { StampLayer, type StampLayerHandle } from "../components/StampLayer";
+import { audienceUrl } from "../lib/audience";
 import {
   loadSettings,
   OVERLAY_DEFAULTS,
@@ -148,6 +150,11 @@ export function OverlayWindow() {
 
   const monitorLabel = settings.monitorName ?? "主ディスプレイ";
 
+  // 右端は質問パネルの領域なので、QR は左下に逃がす。
+  // peek 中にも出して、発表前でも置き場所を確認できるようにする。
+  const joinUrl = audienceUrl(settings.roomCode);
+  const showQr = settings.showJoinQr && Boolean(joinUrl) && (live || peeking);
+
   return (
     <div className="overlay-root relative h-screen w-screen overflow-hidden bg-transparent">
       {settings.displayMode === "flow" ? (
@@ -171,6 +178,20 @@ export function OverlayWindow() {
         opacity={OVERLAY_DEFAULTS.opacity}
         durationSec={OVERLAY_DEFAULTS.stampDurationSec}
       />
+
+      <AnimatePresence>
+        {showQr && joinUrl && settings.roomCode && (
+          <motion.div
+            className="pointer-events-none absolute bottom-8 left-8"
+            initial={{ opacity: 0, y: 12, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.96 }}
+            transition={{ type: "spring", stiffness: 340, damping: 30 }}
+          >
+            <JoinQrCard url={joinUrl} code={settings.roomCode} size={220} />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* モニター確認用。どの物理画面が選ばれているか一目で分かるようにする。 */}
       <AnimatePresence>
