@@ -7,6 +7,7 @@ use tauri::{
     tray::TrayIconBuilder,
     AppHandle, Emitter, Manager, Monitor, PhysicalPosition, PhysicalSize, WebviewWindow,
 };
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 const OVERLAY: &str = "overlay";
 const CONTROL: &str = "control";
@@ -23,6 +24,29 @@ struct SessionState {
 
 // ---------------------------------------------------------------- macOS 固有
 
+/// kCGScreenSaverWindowLevel。スライドショーより上、かつカーソルより下。
+#[cfg(target_os = "macos")]
+const SCREEN_SAVER_LEVEL: isize = 1000;
+
+/// NSNormalWindowLevel。普通のアプリのウィンドウと同じ扱いに戻すとき使う。
+#[cfg(target_os = "macos")]
+const NORMAL_WINDOW_LEVEL: isize = 0;
+
+/// NSWindow を生ポインタで取り出す。取れなければ呼び出し側は何もしない。
+#[cfg(target_os = "macos")]
+fn ns_window_ptr(window: &WebviewWindow) -> Option<*mut objc2::runtime::AnyObject> {
+    let Ok(ptr) = window.ns_window() else {
+        eprintln!("[layertalk] ns_window() を取得できませんでした");
+        return None;
+    };
+
+    let ns_window = ptr as *mut objc2::runtime::AnyObject;
+    if ns_window.is_null() {
+        return None;
+    }
+    Some(ns_window)
+}
+
 /// オーバーレイ窓を「発表アプリのフルスクリーンより前」に持ち上げる。
 ///
 /// Tauri の `alwaysOnTop` は NSFloatingWindowLevel (3) を設定するだけで、
@@ -31,20 +55,11 @@ struct SessionState {
 #[cfg(target_os = "macos")]
 fn elevate_overlay_window(window: &WebviewWindow) {
     use objc2::msg_send;
-    use objc2::runtime::{AnyObject, Bool};
+    use objc2::runtime::Bool;
 
-    let Ok(ptr) = window.ns_window() else {
-        eprintln!("[layertalk] ns_window() を取得できませんでした");
+    let Some(ns_window) = ns_window_ptr(window) else {
         return;
     };
-
-    let ns_window = ptr as *mut AnyObject;
-    if ns_window.is_null() {
-        return;
-    }
-
-    /// kCGScreenSaverWindowLevel。スライドショーより上、かつカーソルより下。
-    const SCREEN_SAVER_LEVEL: isize = 1000;
 
     /// NSWindowCollectionBehavior のビットフラグ:
     ///   CanJoinAllSpaces    (1<<0) 全ての Space に出る
@@ -63,6 +78,79 @@ fn elevate_overlay_window(window: &WebviewWindow) {
 
 #[cfg(not(target_os = "macos"))]
 fn elevate_overlay_window(_window: &WebviewWindow) {}
+
+/// コントロール窓を「いま操作しているアプリより前」へ引き出す。
+///
+/// Tauri の `set_focus()` は当てにならない。tao の実装は
+/// `makeKeyAndOrderFront` + `activateIgnoringOtherApps:` だけで、後者は macOS 14 で
+/// 非推奨になり、Accessory ポリシーの（＝バックグラウンドの）アプリからの要求は
+/// 協調アクティベーションの判定で却下されることがある。実際 ⇧⌘L が空振りしていた。
+///
+/// 順序に意味がある:
+///   1. collectionBehavior — いま見ている Space にそのまま出す。これが無いと macOS が
+///      Space を切り替えてしまい、発表中にスライドショーから抜ける事故になる
+///   2. setLevel        — Keynote / PowerPoint のスライドショーより上へ
+///   3. orderFrontRegardless — アクティブ化が却下されても前面に出す
+///   4. activate + makeKeyAndOrderFront — キーボード入力を webview に渡す
+///
+/// レベルは呼び出しているあいだだけ上げる。フォーカスを失う / 閉じると
+/// `reset_control_window_level` で通常レベルへ戻す。
+#[cfg(target_os = "macos")]
+fn raise_control_window(window: &WebviewWindow) {
+    use objc2::runtime::{AnyObject, Bool};
+    use objc2::{class, msg_send, sel};
+
+    let Some(ns_window) = ns_window_ptr(window) else {
+        return;
+    };
+
+    /// CanJoinAllSpaces (1<<0) | FullScreenAuxiliary (1<<8)。
+    /// 操作する窓なので Stationary / IgnoresCycle はオーバーレイと違って立てない。
+    const CONTROL_COLLECTION_BEHAVIOR: usize = (1 << 0) | (1 << 8);
+
+    unsafe {
+        let _: () = msg_send![ns_window, setCollectionBehavior: CONTROL_COLLECTION_BEHAVIOR];
+        let _: () = msg_send![ns_window, setLevel: SCREEN_SAVER_LEVEL];
+        let _: () = msg_send![ns_window, orderFrontRegardless];
+
+        let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+        // 引数なしの `activate` は macOS 14 で追加された。それより古い OS では
+        // respondsToSelector: が false になるので非推奨の API に落とす。
+        let has_activate: Bool = msg_send![app, respondsToSelector: sel!(activate)];
+        if has_activate.as_bool() {
+            let _: () = msg_send![app, activate];
+        } else {
+            let _: () = msg_send![app, activateIgnoringOtherApps: Bool::YES];
+        }
+
+        let _: () = msg_send![ns_window, makeKeyAndOrderFront: std::ptr::null_mut::<AnyObject>()];
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn raise_control_window(_window: &WebviewWindow) {}
+
+/// コントロール窓を普通のウィンドウに戻す。作業中ずっと他アプリの上に
+/// 浮いたままにしないため、フォーカスを失った時点で降ろす。
+///
+/// 穴: アクティブ化が却下されて `orderFrontRegardless` だけで出た場合、キー窓に
+/// ならないので `Focused(false)` が来ず、レベルが上がったまま残る。
+/// その場合は ⌘W / 閉じるボタン（= hide）でリセットされる。
+#[cfg(target_os = "macos")]
+fn reset_control_window_level(window: &WebviewWindow) {
+    use objc2::msg_send;
+
+    let Some(ns_window) = ns_window_ptr(window) else {
+        return;
+    };
+
+    unsafe {
+        let _: () = msg_send![ns_window, setLevel: NORMAL_WINDOW_LEVEL];
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn reset_control_window_level(_window: &WebviewWindow) {}
 
 // -------------------------------------------------------------- モニター
 
@@ -213,9 +301,13 @@ fn set_live(app: &AppHandle, value: bool) {
 
 fn focus_control_window(app: &AppHandle) {
     if let Some(control) = app.get_webview_window(CONTROL) {
+        // show() が先。set_focus() は isVisible() が false だと黙って何もしない。
         let _ = control.show();
         let _ = control.unminimize();
         let _ = control.set_focus();
+        // macOS では set_focus() だけでは前面に出ないので自前で引き出す。理由は
+        // raise_control_window のコメントを参照。
+        raise_control_window(&control);
     }
 }
 
@@ -340,7 +432,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let show_control_item = MenuItem::with_id(
         app,
         "show_control",
-        "コントロールを表示",
+        "コントロールを表示  ⇧⌘L",
         true,
         None::<&str>,
     )?;
@@ -379,6 +471,17 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    if event.state == ShortcutState::Pressed
+                        && shortcut.matches(Modifiers::SUPER | Modifiers::SHIFT, Code::KeyL)
+                    {
+                        focus_control_window(app);
+                    }
+                })
+                .build(),
+        )
         .manage(SessionState::default())
         .invoke_handler(tauri::generate_handler![
             list_monitors,
@@ -397,6 +500,14 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
+            // LayerTalk が背面・非表示でも設定窓へ戻れる常設入口。
+            // 競合していてもアプリ自体は起動できるよう、登録エラーはログに留める。
+            let control_shortcut =
+                Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyL);
+            if let Err(err) = app.global_shortcut().register(control_shortcut) {
+                eprintln!("[layertalk] ⇧⌘L の登録に失敗しました: {err}");
+            }
+
             let handle = app.handle().clone();
 
             // オーバーレイは「プレゼンを開始」まで隠したままにする。
@@ -414,13 +525,19 @@ pub fn run() {
             }
 
             // コントロール窓は閉じても破棄せず隠すだけにする（macOS の作法）。
+            // ⇧⌘L で上げたウィンドウレベルは、隠すときとフォーカスを失うときに戻す。
             if let Some(control) = app.get_webview_window(CONTROL) {
                 let control_for_event = control.clone();
-                control.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                control.on_window_event(move |event| match event {
+                    tauri::WindowEvent::CloseRequested { api, .. } => {
                         api.prevent_close();
                         let _ = control_for_event.hide();
+                        reset_control_window_level(&control_for_event);
                     }
+                    tauri::WindowEvent::Focused(false) => {
+                        reset_control_window_level(&control_for_event);
+                    }
+                    _ => {}
                 });
             }
 

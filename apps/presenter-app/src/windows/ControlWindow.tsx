@@ -14,8 +14,10 @@ import {
   Monitor,
   MousePointerClick,
   Play,
+  Repeat,
   Sparkles,
   Square,
+  Undo2,
 } from "lucide-react";
 import { STAMP_EMOJIS } from "@layertalk/shared";
 import { useCallback, useEffect, useState } from "react";
@@ -51,6 +53,7 @@ export function ControlWindow() {
   const [error, setError] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState("");
   const [copied, setCopied] = useState(false);
+  const [confirmSwitch, setConfirmSwitch] = useState(false);
   const [live, setLive] = useState(false);
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
 
@@ -115,8 +118,12 @@ export function ControlWindow() {
     }
   };
 
-  const handleJoin = async () => {
-    const code = normalizeRoomCode(joinCode);
+  /**
+   * 入力欄の代わりにコードを渡せる。setJoinCode してから state を読む書き方は
+   * 更新が同期実行されないので成立しない。
+   */
+  const handleJoin = async (codeArg?: string) => {
+    const code = normalizeRoomCode(codeArg ?? joinCode);
     if (!ROOM_CODE_PATTERN.test(code)) {
       setError("ルームコードは6文字です");
       return;
@@ -137,6 +144,26 @@ export function ControlWindow() {
     } finally {
       setBusy(false);
     }
+  };
+
+  /**
+   * ルームの接続を外して、作成／参加のカードに戻す。
+   * ルーム自体は DB に残すので、コードを入れればいつでも再開できる。
+   */
+  const handleSwitchRoom = () => {
+    // 発表中に外すとコメントが流れなくなる。開始ボタンの側から live になった場合も塞ぐ。
+    if (live) {
+      setConfirmSwitch(false);
+      return;
+    }
+    update({
+      roomId: null,
+      roomCode: null,
+      roomTitle: null,
+      previousRoomCode: settings.roomCode,
+    });
+    setConfirmSwitch(false);
+    setError(null);
   };
 
   const audienceUrl = settings.roomCode ? `${AUDIENCE_BASE_URL}/r/${settings.roomCode}` : null;
@@ -241,6 +268,51 @@ export function ControlWindow() {
                   コメント {comments.length} 件
                 </span>
               </div>
+
+              {/* 切り替えは押し間違えると参加コードが変わるので、その場で一段確認する。
+                  ネイティブの confirm() は webview を止めてしまうので使わない。 */}
+              <div className="border-border border-t pt-3">
+                {confirmSwitch && !live ? (
+                  <div className="space-y-2">
+                    <p className="text-text-muted text-[12px] leading-relaxed">
+                      切り替えると参加コードが変わります。このルームはコードで再開できます。
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setConfirmSwitch(false)}
+                        className="lt-tap border-border hover:bg-surface-strong flex-1 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors"
+                      >
+                        やめる
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSwitchRoom}
+                        className="lt-tap flex-1 rounded-[14px] bg-[var(--lt-like)] px-3 py-2.5 text-[13px] font-semibold text-white transition-transform active:scale-[0.97]"
+                      >
+                        切り替える
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmSwitch(true)}
+                      disabled={live}
+                      className="lt-tap border-border hover:bg-surface-strong flex w-full items-center justify-center gap-2 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors disabled:opacity-40"
+                    >
+                      <Repeat size={15} />
+                      ルームを切り替える
+                    </button>
+                    {live && (
+                      <p className="text-text-faint mt-2 text-[11px] leading-relaxed">
+                        発表中は切り替えられません。先に「プレゼンを終了」してください。
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           ) : (
             <div className="border-border bg-bg-elev space-y-3 rounded-[20px] border p-4">
@@ -265,13 +337,27 @@ export function ControlWindow() {
                 />
                 <button
                   type="button"
-                  onClick={handleJoin}
+                  onClick={() => handleJoin()}
                   disabled={busy || joinCode.length < 6}
                   className="lt-tap border-border hover:bg-surface-strong shrink-0 rounded-[14px] border px-4 py-2.5 text-[13px] font-semibold disabled:opacity-40"
                 >
                   接続
                 </button>
               </div>
+
+              {settings.previousRoomCode && (
+                <button
+                  type="button"
+                  onClick={() => handleJoin(settings.previousRoomCode ?? undefined)}
+                  disabled={busy}
+                  className="lt-tap text-text-muted hover:text-text flex w-full items-center justify-center gap-1.5 text-[12px] font-medium transition-colors disabled:opacity-40"
+                >
+                  <Undo2 size={13} />
+                  直前のルーム
+                  <span className="lt-num tracking-[0.12em]">{settings.previousRoomCode}</span>
+                  に戻る
+                </button>
+              )}
             </div>
           )}
 

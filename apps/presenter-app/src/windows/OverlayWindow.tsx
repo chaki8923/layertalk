@@ -84,11 +84,12 @@ export function OverlayWindow() {
 
   const handleInsert = useCallback(
     (comment: Comment) => {
+      // 質問は右端のパネルにも積む。流れる演出は通常コメントと同じにする
+      // （質問だけ見た目を変えない）。
       if (comment.is_question) {
         void sendQuestionToPanel(comment);
-      } else {
-        showComment(comment.content);
       }
+      showComment(comment.content);
     },
     [showComment],
   );

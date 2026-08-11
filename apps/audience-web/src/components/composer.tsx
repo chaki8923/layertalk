@@ -74,11 +74,14 @@ export function Composer({ onSubmit, disabled }: Props) {
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
-              // スマホの改行キーは送信にしない。PC からの利用だけ ⌘/Ctrl+Enter を効かせる。
-              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                event.preventDefault();
-                submit();
-              }
+              if (event.key !== "Enter") return;
+              // Shift+Enter は改行のまま通す。
+              if (event.shiftKey) return;
+              // IME の変換確定の Enter を送信にしない。これを見ないと日本語入力で
+              // 変換途中の文字列がそのまま飛ぶ。
+              if (event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              submit();
             }}
             rows={1}
             placeholder={isQuestion ? "質問を入力" : "コメントを入力"}
@@ -109,6 +112,11 @@ export function Composer({ onSubmit, disabled }: Props) {
           <ArrowUp size={20} strokeWidth={2.5} />
         </motion.button>
       </div>
+
+      {/* 改行キーが送信に変わったので、黙って変えない。 */}
+      <p className="text-text-faint px-3 pt-0.5 text-[11px]">
+        Enter で送信・Shift+Enter で改行
+      </p>
     </form>
   );
 }

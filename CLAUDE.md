@@ -69,15 +69,34 @@ shadcn 側の `--background` などは `globals.css` で `--lt-*` に接続済�
 supabase-js は Node 22+ 推奨。ブラウザ実行には無関係だが、Node から使う場合は
 WebSocket の注入が要る（`scripts/realtime-smoke.mjs` は `ws` を渡している）。
 
+**8. Tauri の `set_focus()` は macOS では最前面化に使えない**
+tao の実装は `makeKeyAndOrderFront` ＋ **非推奨の** `activateIgnoringOtherApps:` だけ。
+この API は macOS 14 以降、Accessory ポリシー（＝バックグラウンド）のアプリからの要求を
+却下することがあり、⇧⌘L が空振りしていた。さらに `isVisible()` が false だと**黙って何もしない**
+ので `show()` を必ず先に呼ぶこと。`lib.rs` の `raise_control_window` で
+`setCollectionBehavior`（Space を切り替えさせない）→ `setLevel(1000)` →
+`orderFrontRegardless` → `NSApplication activate` を自前で叩いている。
+
 ## 設計上の決めごと
 
 - **コメント／スタンプの全面オーバーレイはクリックスルー常時 ON。** 切り替え UI も
-  ショートカットも持たない。質問だけは右端の独立ウィンドウに分け、その範囲内で
+  ショートカットも持たない。操作できるのは右端の質問窓の範囲だけで、そこで
   展開／折りたたみを操作できる（スライド全面の操作を塞がないため）
+- **質問は「流す」と「右端に残す」の両方。** `is_question` でも演出は通常コメントと同じで、
+  加えて右端パネルに最大5件を積む（`OverlayWindow` の `handleInsert`）。
+  流れて消えたあとも質問だけは参照できるようにするため
 - **「プレゼンを開始」を押すまでオーバーレイは `hide()`。** ライブ状態は Rust の `Mutex` が持ち、
   永続化しない（再起動したら必ず停止状態から始まる）
 - **開始より前の投稿は流さない。** リハーサルや前の発表で画面が埋まらないようにするため
+- **コントロール窓は「呼び出し中だけ」最前面。** ⇧⌘L / トレイで呼んだときだけレベルを
+  1000 に上げてスライドショーの上へ出し、フォーカスを失う・閉じると通常レベルへ戻す
+  （作業中ずっと他アプリの上に浮かせない）
 - **終了してもルームは維持する。** 同じコードですぐ再開できる
+- **ルームの切り替えはローカルの接続を外すだけ。** DB 側にルームを閉じる概念は作らない
+  （`rooms` に `ended_at` を持たず、UPDATE / DELETE の RLS ポリシーも作らない）。
+  切り替えると `roomId / roomCode / roomTitle` を null にして作成／参加カードに戻し、
+  外したコードは `previousRoomCode` に残して1タップで戻れるようにする。
+  **発表中は切り替えさせない**（コメントが流れなくなる事故を防ぐため）
 - **いいねは `toggle_comment_like` RPC 経由のみ。** anon に `comments` の UPDATE を開けると
   `content` まで書き換えられる。`comment_likes` は RLS ポリシーを一切作らず完全に閉じている
 - **スタンプは DB に保存しない。** Broadcast のみ。連打は 100ms 単位で集約してから送る

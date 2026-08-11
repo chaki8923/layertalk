@@ -5,6 +5,8 @@ export type PresenterSettings = {
   roomId: string | null;
   roomCode: string | null;
   roomTitle: string | null;
+  /** 直前に外したルームのコード。押し間違えても1タップで戻れるように残す。 */
+  previousRoomCode: string | null;
   displayMode: DisplayMode;
   /** 表示先モニターの名前。null ならプライマリ。 */
   monitorName: string | null;
@@ -14,6 +16,7 @@ export const DEFAULT_SETTINGS: PresenterSettings = {
   roomId: null,
   roomCode: null,
   roomTitle: null,
+  previousRoomCode: null,
   displayMode: "flow",
   monitorName: null,
 };
@@ -39,10 +42,12 @@ export function loadSettings(): PresenterSettings {
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<PresenterSettings>) };
     // 廃止した表示設定をlocalStorageから実行時へ持ち込まない。
+    // ここに書き忘れたフィールドは読み込みで捨てられる。
     return {
       roomId: parsed.roomId,
       roomCode: parsed.roomCode,
       roomTitle: parsed.roomTitle,
+      previousRoomCode: parsed.previousRoomCode,
       displayMode: parsed.displayMode === "bubble" ? "bubble" : "flow",
       monitorName: parsed.monitorName,
     };

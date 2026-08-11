@@ -19,6 +19,7 @@ tauri-build = { version = "2", features = [] }
 # macos-private-api: tauri.conf.json の app.macOSPrivateApi と対で必要。
 # これが無いと macOS で背景を本当に透過できない（Mac App Store 配布は不可になる）。
 tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
+tauri-plugin-global-shortcut = "2"
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
