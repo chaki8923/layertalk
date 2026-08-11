@@ -41,6 +41,24 @@
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "center": true
+      },
+      {
+        "label": "questions",
+        "title": "LayerTalk 質問",
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "shadow": false,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "closable": false,
+        "skipTaskbar": true,
+        "focus": false,
+        "acceptFirstMouse": true,
+        "visible": false,
+        "width": 430,
+        "height": 900
       }
     ],
     "security": {

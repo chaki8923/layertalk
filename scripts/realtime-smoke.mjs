@@ -48,7 +48,7 @@ if (!URL || !KEY) {
   process.exit(1);
 }
 
-const results = { pgInsert: false, pgUpdate: false, broadcast: false };
+const results = { pgInsert: false, questionFlag: false, pgUpdate: false, broadcast: false };
 
 const clientOptions = {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -63,8 +63,13 @@ const filter = `room_id=eq.${ROOM}`;
 const commentChannel = rx
   .channel(`comments:${ROOM}`)
   .on("postgres_changes", { event: "INSERT", schema: "public", table: "comments", filter }, (p) => {
-    console.log("  ← postgres_changes INSERT:", p.new.content);
+    console.log(
+      "  ← postgres_changes INSERT:",
+      p.new.content,
+      p.new.is_question ? "(質問)" : "(通常)",
+    );
     results.pgInsert = true;
+    results.questionFlag = p.new.is_question === true;
   })
   .on("postgres_changes", { event: "UPDATE", schema: "public", table: "comments", filter }, (p) => {
     console.log("  ← postgres_changes UPDATE: likes_count =", p.new.likes_count);
@@ -110,7 +115,7 @@ try {
   const id = crypto.randomUUID();
   const { error: insErr } = await tx
     .from("comments")
-    .insert({ id, room_id: ROOM, content: "Realtime スモークテスト" });
+    .insert({ id, room_id: ROOM, content: "Realtime スモークテスト", is_question: true });
   if (insErr) throw new Error("insert: " + insErr.message);
   await sleep(2500);
 
@@ -141,6 +146,7 @@ try {
 } finally {
   console.log("\n=== 結果 ===");
   console.log("postgres_changes INSERT:", results.pgInsert ? "✅" : "❌");
+  console.log("question flag payload:     ", results.questionFlag ? "✅" : "❌");
   console.log("postgres_changes UPDATE:", results.pgUpdate ? "✅" : "❌");
   console.log("broadcast (anon):       ", results.broadcast ? "✅" : "❌");
   await rx.removeAllChannels();

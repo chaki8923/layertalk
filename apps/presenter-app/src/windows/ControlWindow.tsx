@@ -10,6 +10,7 @@ import {
   Check,
   Copy,
   Loader2,
+  MessageSquareText,
   Monitor,
   MousePointerClick,
   Play,
@@ -21,7 +22,9 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   loadSettings,
+  OVERLAY_DEFAULTS,
   saveSettings,
+  sendTestComment,
   sendTestStamp,
   type PresenterSettings,
 } from "../lib/settings";
@@ -33,6 +36,7 @@ import {
   peekOverlay,
   refitOverlay,
   setOverlayMonitor,
+  startCurrentWindowDragging,
   startPresentation,
   stopPresentation,
   type MonitorInfo,
@@ -144,12 +148,20 @@ export function ControlWindow() {
     window.setTimeout(() => setCopied(false), 1600);
   };
 
+  const handleEmptyAreaMouseDown = (event: React.MouseEvent<HTMLElement>) => {
+    if (event.button === 0 && event.target === event.currentTarget) {
+      void startCurrentWindowDragging();
+    }
+  };
+
   return (
     <div className="bg-bg text-text flex h-screen flex-col overflow-hidden">
       {/* titleBarStyle: Overlay なので、信号機ボタンぶんの余白と
           ドラッグ領域を自前で用意する */}
       <div
-        data-tauri-drag-region
+        onMouseDown={(event) => {
+          if (event.button === 0) void startCurrentWindowDragging();
+        }}
         className="border-border flex h-11 shrink-0 items-center justify-center border-b"
       >
         <span className="text-text-muted pointer-events-none text-[13px] font-semibold">
@@ -157,7 +169,10 @@ export function ControlWindow() {
         </span>
       </div>
 
-      <div className="flex-1 space-y-5 overflow-y-auto p-4">
+      <div
+        className="flex-1 space-y-5 overflow-y-auto p-4"
+        onMouseDown={handleEmptyAreaMouseDown}
+      >
         {/* ------------------------------------------------------ 開始 / 終了 */}
         <section className="space-y-2">
           <motion.button
@@ -320,73 +335,36 @@ export function ControlWindow() {
             })}
           </div>
 
-          <Slider
-            label="文字サイズ"
-            value={settings.fontSize}
-            min={20}
-            max={56}
-            step={2}
-            suffix="px"
-            onChange={(fontSize) => update({ fontSize })}
-          />
-
-          <Slider
-            label="不透明度"
-            value={Math.round(settings.opacity * 100)}
-            min={40}
-            max={100}
-            step={5}
-            suffix="%"
-            onChange={(value) => update({ opacity: value / 100 })}
-          />
-
-          {settings.displayMode === "flow" && (
-            <Slider
-              label="流れる速さ"
-              value={settings.flowDurationSec}
-              min={5}
-              max={16}
-              step={1}
-              suffix="秒"
-              hint="画面を横切るのにかかる時間。小さいほど速い。"
-              onChange={(flowDurationSec) => update({ flowDurationSec })}
-            />
-          )}
-
-          <Toggle
-            label="コメントを表示"
-            checked={settings.commentsEnabled}
-            onChange={(commentsEnabled) => update({ commentsEnabled })}
-          />
+          <button
+            type="button"
+            onClick={() => {
+              const previewMs =
+                settings.displayMode === "bubble"
+                  ? OVERLAY_DEFAULTS.bubbleDurationSec * 1000 + 1200
+                  : OVERLAY_DEFAULTS.flowDurationSec * 1000 + 2200;
+              if (!live) void peekOverlay(settings.monitorName, previewMs);
+              void sendTestComment("コメントの表示テストです");
+            }}
+            className="lt-tap border-border hover:bg-surface-strong flex w-full items-center justify-center gap-2 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors"
+          >
+            <MessageSquareText size={15} />
+            コメントをテスト表示
+          </button>
         </section>
 
         {/* ---------------------------------------------------------- スタンプ */}
         <section className="space-y-3">
           <SectionLabel>スタンプ</SectionLabel>
 
-          <Toggle
-            label="スタンプを表示"
-            checked={settings.stampsEnabled}
-            onChange={(stampsEnabled) => update({ stampsEnabled })}
-          />
-
-          <Slider
-            label="上がる速さ"
-            value={settings.stampDurationSec}
-            min={4}
-            max={24}
-            step={1}
-            suffix="秒"
-            hint="画面下から上まで上がりきる時間。大きいほどゆっくり。"
-            onChange={(stampDurationSec) => update({ stampDurationSec })}
-          />
-
           <button
             type="button"
             onClick={() => {
               // 開始前はオーバーレイが隠れているので、確認のあいだだけ出す
               if (!live) {
-                void peekOverlay(settings.monitorName, settings.stampDurationSec * 1000 + 1500);
+                void peekOverlay(
+                  settings.monitorName,
+                  OVERLAY_DEFAULTS.stampDurationSec * 1000 + 1500,
+                );
               }
               void sendTestStamp({
                 emoji: STAMP_EMOJIS[Math.floor(Math.random() * STAMP_EMOJIS.length)],
@@ -413,8 +391,8 @@ export function ControlWindow() {
             <div>
               <p className="text-[13px] font-medium">クリックスルー 有効</p>
               <p className="text-text-faint mt-0.5 text-[11px] leading-relaxed">
-                オーバーレイはマウス操作を一切受け取りません。クリックもスクロールも
-                そのまま背面のスライドに届きます。
+                コメントとスタンプはマウス操作を受け取りません。右端の質問パネルだけを
+                展開・折りたたみできます。
               </p>
             </div>
           </div>
@@ -503,77 +481,5 @@ function StatusPill({ status }: { status: "connecting" | "connected" | "disconne
       />
       {text}
     </span>
-  );
-}
-
-type SliderProps = {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  suffix?: string;
-  hint?: string;
-  onChange: (value: number) => void;
-};
-
-function Slider({ label, value, min, max, step, suffix, hint, onChange }: SliderProps) {
-  return (
-    <div className="border-border bg-bg-elev space-y-2 rounded-[16px] border px-4 py-3">
-      <div className="flex items-center justify-between">
-        <span className="text-[13px] font-medium">{label}</span>
-        <span className="lt-num text-text-muted text-[12px]">
-          {value}
-          {suffix}
-        </span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="accent-brand h-1 w-full cursor-pointer appearance-none rounded-full bg-[var(--lt-border-strong)]"
-      />
-      {hint && <p className="text-text-faint text-[11px]">{hint}</p>}
-    </div>
-  );
-}
-
-type ToggleProps = {
-  label: string;
-  checked: boolean;
-  hint?: string;
-  icon?: React.ReactNode;
-  onChange: (checked: boolean) => void;
-};
-
-function Toggle({ label, checked, hint, icon, onChange }: ToggleProps) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      className="lt-tap border-border bg-bg-elev flex w-full items-center justify-between gap-3 rounded-[16px] border px-4 py-3 text-left"
-    >
-      <span className="min-w-0">
-        <span className="flex items-center gap-1.5 text-[13px] font-medium">
-          {icon}
-          {label}
-        </span>
-        {hint && <span className="text-text-faint mt-0.5 block text-[11px]">{hint}</span>}
-      </span>
-
-      <span
-        className="relative h-[26px] w-[44px] shrink-0 rounded-full transition-colors"
-        style={{ background: checked ? "var(--lt-brand)" : "var(--lt-border-strong)" }}
-      >
-        <motion.span
-          className="absolute top-[3px] h-5 w-5 rounded-full bg-white shadow-sm"
-          animate={{ left: checked ? 21 : 3 }}
-          transition={{ type: "spring", stiffness: 500, damping: 32, mass: 0.6 }}
-        />
-      </span>
-    </button>
   );
 }

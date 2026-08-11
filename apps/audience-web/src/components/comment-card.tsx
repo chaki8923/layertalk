@@ -37,6 +37,11 @@ export function CommentCard({ comment, liked, isMine, onToggleLike }: Props) {
           {comment.content}
         </p>
         <div className="mt-1.5 flex items-center gap-2">
+          {comment.is_question && (
+            <span className="bg-brand/14 text-brand rounded-chip px-1.5 py-0.5 text-[10px] font-bold tracking-[0.08em]">
+              質問
+            </span>
+          )}
           <time className="lt-num text-text-faint text-[12px]" dateTime={comment.created_at}>
             {formatTime(comment.created_at)}
           </time>

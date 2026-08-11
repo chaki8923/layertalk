@@ -1,23 +1,13 @@
 import { emit, listen } from "@tauri-apps/api/event";
-import type { DisplayMode } from "@layertalk/shared";
+import type { Comment, DisplayMode } from "@layertalk/shared";
 
 export type PresenterSettings = {
   roomId: string | null;
   roomCode: string | null;
   roomTitle: string | null;
   displayMode: DisplayMode;
-  /** オーバーレイのコメント文字サイズ (px) */
-  fontSize: number;
-  /** コメント全体の不透明度 0.4–1 */
-  opacity: number;
-  /** 横流しの基準秒数。文字数に応じて伸縮する。 */
-  flowDurationSec: number;
-  /** スタンプが下から上まで上がりきる秒数。大きいほどゆっくり。 */
-  stampDurationSec: number;
   /** 表示先モニターの名前。null ならプライマリ。 */
   monitorName: string | null;
-  commentsEnabled: boolean;
-  stampsEnabled: boolean;
 };
 
 export const DEFAULT_SETTINGS: PresenterSettings = {
@@ -25,25 +15,37 @@ export const DEFAULT_SETTINGS: PresenterSettings = {
   roomCode: null,
   roomTitle: null,
   displayMode: "flow",
+  monitorName: null,
+};
+
+/** シンプルな固定表示。コントロール窓からは変更しない。 */
+export const OVERLAY_DEFAULTS = {
   fontSize: 30,
   opacity: 1,
   flowDurationSec: 9,
+  bubbleDurationSec: 9,
   stampDurationSec: 9,
-  monitorName: null,
-  commentsEnabled: true,
-  stampsEnabled: true,
-};
+} as const;
 
 const STORAGE_KEY = "layertalk:presenter-settings";
 const EVENT = "settings-changed";
 const TEST_STAMP_EVENT = "test-stamp";
+const TEST_COMMENT_EVENT = "test-comment";
+const QUESTION_RECEIVED_EVENT = "question-received";
 
 export function loadSettings(): PresenterSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_SETTINGS;
-    // 保存済みに無いキーが後から増えても壊れないよう既定値に重ねる。
-    return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<PresenterSettings>) };
+    const parsed = { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<PresenterSettings>) };
+    // 廃止した表示設定をlocalStorageから実行時へ持ち込まない。
+    return {
+      roomId: parsed.roomId,
+      roomCode: parsed.roomCode,
+      roomTitle: parsed.roomTitle,
+      displayMode: parsed.displayMode === "bubble" ? "bubble" : "flow",
+      monitorName: parsed.monitorName,
+    };
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -71,3 +73,15 @@ export const sendTestStamp = (stamp: TestStamp) => emit(TEST_STAMP_EVENT, stamp)
 
 export const onTestStamp = (handler: (stamp: TestStamp) => void) =>
   listen<TestStamp>(TEST_STAMP_EVENT, (event) => handler(event.payload));
+
+/** コントロール窓から現在の表示スタイルへ確認用コメントを送る。 */
+export const sendTestComment = (text: string) => emit(TEST_COMMENT_EVENT, text);
+
+export const onTestComment = (handler: (text: string) => void) =>
+  listen<string>(TEST_COMMENT_EVENT, (event) => handler(event.payload));
+
+/** 既存のRealtime購読で受けた質問を、独立した右端パネル窓へ渡す。 */
+export const sendQuestionToPanel = (comment: Comment) => emit(QUESTION_RECEIVED_EVENT, comment);
+
+export const onQuestionReceived = (handler: (comment: Comment) => void) =>
+  listen<Comment>(QUESTION_RECEIVED_EVENT, (event) => handler(event.payload));

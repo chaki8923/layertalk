@@ -104,12 +104,12 @@ export function RoomClient({ code }: { code: string }) {
   }, [roomId, clientId]);
 
   const handleSubmit = useCallback(
-    (text: string) => {
+    (text: string, isQuestion: boolean) => {
       if (!roomId) return;
 
       let optimistic;
       try {
-        optimistic = buildComment(roomId, text);
+        optimistic = buildComment(roomId, text, isQuestion);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "送信できませんでした");
         return;

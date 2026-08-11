@@ -3,9 +3,12 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 /** 起動しているのがどちらの窓か。tauri.conf.json の label と一致させる。 */
-export type WindowLabel = "overlay" | "control";
+export type WindowLabel = "overlay" | "control" | "questions";
 
 export const currentWindowLabel = (): WindowLabel => getCurrentWindow().label as WindowLabel;
+
+/** コントロール窓の独自タイトルバー／余白からネイティブドラッグを開始する。 */
+export const startCurrentWindowDragging = () => getCurrentWindow().startDragging();
 
 export type MonitorInfo = {
   name: string;
@@ -36,6 +39,10 @@ export const peekOverlay = (monitor: string | null, ms: number) =>
 
 /** ディスプレイ構成が変わったときにオーバーレイを貼り直す */
 export const refitOverlay = (monitor: string | null) => invoke<void>("refit_overlay", { monitor });
+
+/** 質問窓を右端のパネル幅／タブ幅へ切り替える。 */
+export const setQuestionPanelExpanded = (monitor: string | null, expanded: boolean) =>
+  invoke<void>("set_question_panel_expanded", { monitor, expanded });
 
 export const showControlWindow = () => invoke<void>("show_control");
 

@@ -7,8 +7,11 @@ import { FlowLayer, type CommentLayerHandle } from "../components/FlowLayer";
 import { StampLayer, type StampLayerHandle } from "../components/StampLayer";
 import {
   loadSettings,
+  OVERLAY_DEFAULTS,
   onSettingsChanged,
+  onTestComment,
   onTestStamp,
+  sendQuestionToPanel,
   type PresenterSettings,
 } from "../lib/settings";
 import { clientId, supabase } from "../lib/supabase";
@@ -81,9 +84,13 @@ export function OverlayWindow() {
 
   const handleInsert = useCallback(
     (comment: Comment) => {
-      if (settings.commentsEnabled) showComment(comment.content);
+      if (comment.is_question) {
+        void sendQuestionToPanel(comment);
+      } else {
+        showComment(comment.content);
+      }
     },
-    [settings.commentsEnabled, showComment],
+    [showComment],
   );
 
   // 発表中だけ購読する。client に null を渡すとフックは何もしない。
@@ -100,7 +107,7 @@ export function OverlayWindow() {
     roomId: settings.roomId,
     clientId,
     onStamp: (payload) => {
-      if (settings.stampsEnabled) stampRef.current?.burst(payload.emoji, payload.count);
+      stampRef.current?.burst(payload.emoji, payload.count);
     },
   });
 
@@ -128,6 +135,16 @@ export function OverlayWindow() {
     };
   }, []);
 
+  // Supabase を介さず、現在選択中のコメント表示スタイルを確認する。
+  useEffect(() => {
+    const unlisten = onTestComment((text) => {
+      showComment(text);
+    });
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  }, [showComment]);
+
   const monitorLabel = settings.monitorName ?? "主ディスプレイ";
 
   return (
@@ -135,18 +152,23 @@ export function OverlayWindow() {
       {settings.displayMode === "flow" ? (
         <FlowLayer
           ref={flowRef}
-          fontSize={settings.fontSize}
-          opacity={settings.opacity}
-          baseDurationSec={settings.flowDurationSec}
+          fontSize={OVERLAY_DEFAULTS.fontSize}
+          opacity={OVERLAY_DEFAULTS.opacity}
+          baseDurationSec={OVERLAY_DEFAULTS.flowDurationSec}
         />
       ) : (
-        <BubbleLayer ref={bubbleRef} fontSize={settings.fontSize} opacity={settings.opacity} />
+        <BubbleLayer
+          ref={bubbleRef}
+          fontSize={OVERLAY_DEFAULTS.fontSize}
+          opacity={OVERLAY_DEFAULTS.opacity}
+          durationSec={OVERLAY_DEFAULTS.bubbleDurationSec}
+        />
       )}
 
       <StampLayer
         ref={stampRef}
-        opacity={settings.opacity}
-        durationSec={settings.stampDurationSec}
+        opacity={OVERLAY_DEFAULTS.opacity}
+        durationSec={OVERLAY_DEFAULTS.stampDurationSec}
       />
 
       {/* モニター確認用。どの物理画面が選ばれているか一目で分かるようにする。 */}

@@ -4,7 +4,8 @@
   "description": "オーバーレイ窓とコントロール窓が使う権限",
   "windows": [
     "overlay",
-    "control"
+    "control",
+    "questions"
   ],
   "permissions": [
     "core:default",
@@ -16,6 +17,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-inner-size",
     "core:window:allow-scale-factor",
+    "core:window:allow-start-dragging",
     "core:event:default",
     "opener:default"
   ]

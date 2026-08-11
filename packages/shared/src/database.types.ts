@@ -40,6 +40,7 @@ export type Database = {
           content: string;
           created_at: string;
           id: string;
+          is_question: boolean;
           likes_count: number;
           room_id: string;
         };
@@ -47,6 +48,7 @@ export type Database = {
           content: string;
           created_at?: string;
           id?: string;
+          is_question?: boolean;
           likes_count?: number;
           room_id: string;
         };
@@ -54,6 +56,7 @@ export type Database = {
           content?: string;
           created_at?: string;
           id?: string;
+          is_question?: boolean;
           likes_count?: number;
           room_id?: string;
         };

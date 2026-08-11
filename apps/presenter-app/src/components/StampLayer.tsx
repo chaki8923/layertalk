@@ -1,6 +1,8 @@
 import { animate } from "motion";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 
+import { RISE_EASE } from "../lib/overlay-motion";
+
 export type StampLayerHandle = {
   /** 絵文字を count 個ぶん舞い上げる */
   burst: (emoji: string, count: number) => void;
@@ -20,11 +22,9 @@ const MAX_PARTICLES = 200;
  * という動きになり、総時間をいくら伸ばしても体感速度は変わらない。
  *
  * この曲線は開始時の傾きを 1.0（＝等速）に合わせ、終盤だけ緩やかに減速する。
- * つまり「平均速度 = 上昇距離 ÷ duration」がそのまま体感になるので、
- * コントロール窓のスライダーの数値が素直に効く。
+ * つまり「平均速度 = 上昇距離 ÷ duration」がそのまま体感になり、
+ * 固定した表示時間どおりの速さに見える。
  */
-const RISE_EASE: [number, number, number, number] = [0.33, 0.33, 0.7, 0.92];
-
 const random = (min: number, max: number) => min + Math.random() * (max - min);
 
 type Props = {

@@ -10,6 +10,9 @@ use tauri::{
 
 const OVERLAY: &str = "overlay";
 const CONTROL: &str = "control";
+const QUESTIONS: &str = "questions";
+const QUESTION_PANEL_WIDTH: f64 = 430.0;
+const QUESTION_TAB_WIDTH: f64 = 56.0;
 
 /// 発表中かどうか。ウィンドウの表示・非表示は Rust の責務なので、
 /// ここを唯一の真実にする。永続化しない = 再起動したら必ず停止状態から始まる。
@@ -137,6 +140,49 @@ fn fit_overlay_to_monitor(window: &WebviewWindow, target: Option<&str>) {
     }
 }
 
+/// 質問窓を指定モニターの右端へ合わせる。
+/// 幅はCSSピクセルで指定し、Retinaでも同じ見た目になるよう物理ピクセルへ変換する。
+fn fit_question_panel_to_monitor(window: &WebviewWindow, target: Option<&str>, logical_width: f64) {
+    let monitors = window.available_monitors().unwrap_or_default();
+
+    let chosen = target
+        .and_then(|name| {
+            monitors
+                .iter()
+                .enumerate()
+                .find(|(index, monitor)| monitor_label(monitor, *index) == name)
+                .map(|(_, monitor)| monitor.clone())
+        })
+        .or_else(|| window.primary_monitor().ok().flatten());
+
+    match chosen {
+        Some(monitor) => {
+            let position = *monitor.position();
+            let size = *monitor.size();
+            let physical_width = (logical_width * monitor.scale_factor()).round() as u32;
+            let x = position.x + size.width as i32 - physical_width as i32;
+            let _ = window.set_size(PhysicalSize::new(physical_width, size.height));
+            let _ = window.set_position(PhysicalPosition::new(x, position.y));
+        }
+        None => eprintln!("[layertalk] 質問パネルを表示できるモニターが見つかりません"),
+    }
+}
+
+/// 現在の質問窓幅を保ったまま、モニター右端へ貼り直す。
+fn refit_question_panel(window: &WebviewWindow, target: Option<&str>) {
+    let logical_width = window
+        .outer_size()
+        .ok()
+        .and_then(|size| {
+            window
+                .scale_factor()
+                .ok()
+                .map(|scale| size.width as f64 / scale)
+        })
+        .unwrap_or(QUESTION_PANEL_WIDTH);
+    fit_question_panel_to_monitor(window, target, logical_width);
+}
+
 /// オーバーレイはクリックスルー固定。切り替える手段は用意しない。
 /// 発表中に「気づかないまま背面が操作できなくなっている」事故が起きないようにするため。
 fn apply_overlay_behaviour(window: &WebviewWindow, target: Option<&str>) {
@@ -188,6 +234,9 @@ fn set_overlay_monitor(app: AppHandle, monitor: Option<String>) {
     if let Some(overlay) = app.get_webview_window(OVERLAY) {
         apply_overlay_behaviour(&overlay, monitor.as_deref());
     }
+    if let Some(questions) = app.get_webview_window(QUESTIONS) {
+        refit_question_panel(&questions, monitor.as_deref());
+    }
 }
 
 /// 発表を開始する。指定モニターに配置してからオーバーレイを見せる。
@@ -206,6 +255,9 @@ fn stop_presentation(app: AppHandle) {
     set_live(&app, false);
     if let Some(overlay) = app.get_webview_window(OVERLAY) {
         let _ = overlay.hide();
+    }
+    if let Some(questions) = app.get_webview_window(QUESTIONS) {
+        let _ = questions.hide();
     }
 }
 
@@ -253,6 +305,28 @@ fn refit_overlay(app: AppHandle, monitor: Option<String>) {
     if let Some(overlay) = app.get_webview_window(OVERLAY) {
         apply_overlay_behaviour(&overlay, monitor.as_deref());
     }
+    if let Some(questions) = app.get_webview_window(QUESTIONS) {
+        refit_question_panel(&questions, monitor.as_deref());
+    }
+}
+
+/// 質問パネルを展開幅またはタブ幅に変更し、選択モニターの右端へ揃える。
+#[tauri::command]
+fn set_question_panel_expanded(app: AppHandle, monitor: Option<String>, expanded: bool) {
+    if !is_live(&app) {
+        return;
+    }
+
+    if let Some(questions) = app.get_webview_window(QUESTIONS) {
+        elevate_overlay_window(&questions);
+        let width = if expanded {
+            QUESTION_PANEL_WIDTH
+        } else {
+            QUESTION_TAB_WIDTH
+        };
+        fit_question_panel_to_monitor(&questions, monitor.as_deref(), width);
+        let _ = questions.show();
+    }
 }
 
 #[tauri::command]
@@ -263,13 +337,21 @@ fn show_control(app: AppHandle) {
 // -------------------------------------------------------------------- tray
 
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
-    let show_control_item =
-        MenuItem::with_id(app, "show_control", "コントロールを表示", true, None::<&str>)?;
+    let show_control_item = MenuItem::with_id(
+        app,
+        "show_control",
+        "コントロールを表示",
+        true,
+        None::<&str>,
+    )?;
     let stop_item = MenuItem::with_id(app, "stop", "プレゼンを終了", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let quit_item = MenuItem::with_id(app, "quit", "LayerTalk を終了", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&show_control_item, &stop_item, &separator, &quit_item])?;
+    let menu = Menu::with_items(
+        app,
+        &[&show_control_item, &stop_item, &separator, &quit_item],
+    )?;
 
     let mut builder = TrayIconBuilder::with_id("layertalk-tray")
         .menu(&menu)
@@ -306,6 +388,7 @@ pub fn run() {
             get_presentation_state,
             peek_overlay,
             refit_overlay,
+            set_question_panel_expanded,
             show_control,
         ])
         .setup(|app| {
@@ -321,6 +404,13 @@ pub fn run() {
             // ネイティブの設定だけ済ませておく。
             if let Some(overlay) = app.get_webview_window(OVERLAY) {
                 apply_overlay_behaviour(&overlay, None);
+            }
+
+            // 質問窓は操作可能な別ウィンドウ。メインオーバーレイの
+            // クリックスルーを保ったまま、右端の範囲だけクリックを受け取る。
+            if let Some(questions) = app.get_webview_window(QUESTIONS) {
+                elevate_overlay_window(&questions);
+                fit_question_panel_to_monitor(&questions, None, QUESTION_PANEL_WIDTH);
             }
 
             // コントロール窓は閉じても破棄せず隠すだけにする（macOS の作法）。
