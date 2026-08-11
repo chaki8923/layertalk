@@ -1,0 +1,149 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@layertalk/shared/theme.css";
+
+/* テーマ切替は .dark クラスではなく OS 設定に従う。
+ * トークン側（theme.css）が prefers-color-scheme で入れ替わるので、
+ * dark: ユーティリティもそれに合わせる。 */
+@custom-variant dark (@media (prefers-color-scheme: dark));
+
+/* shadcn/ui のセマンティック変数を LayerTalk のトークンに接続する。
+ * これで shadcn のコンポーネントをそのまま使いつつ、色の正は
+ * docs/design-system.md ＋ theme.css の1箇所に保てる。 */
+:root {
+  --background: var(--lt-bg);
+  --foreground: var(--lt-text);
+
+  --card: var(--lt-bg-elev);
+  --card-foreground: var(--lt-text);
+  --popover: var(--lt-bg-elev);
+  --popover-foreground: var(--lt-text);
+
+  --primary: var(--lt-brand);
+  --primary-foreground: #ffffff;
+  --secondary: var(--lt-surface-strong);
+  --secondary-foreground: var(--lt-text);
+
+  --muted: var(--lt-surface);
+  --muted-foreground: var(--lt-text-muted);
+
+  /* shadcn の accent は「ホバー時の背景」であって、ブランド色ではない。
+   * ブランド色は --lt-brand / bg-brand を使うこと。 */
+  --accent: var(--lt-surface-strong);
+  --accent-foreground: var(--lt-text);
+
+  --destructive: var(--lt-like);
+  --border: var(--lt-border);
+  --input: var(--lt-border);
+  --ring: var(--lt-brand);
+
+  --radius: 14px;
+
+  --sidebar: var(--lt-bg-elev);
+  --sidebar-foreground: var(--lt-text);
+  --sidebar-primary: var(--lt-brand);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--lt-surface-strong);
+  --sidebar-accent-foreground: var(--lt-text);
+  --sidebar-border: var(--lt-border);
+  --sidebar-ring: var(--lt-brand);
+
+  --chart-1: var(--lt-brand);
+  --chart-2: var(--lt-brand-2);
+  --chart-3: var(--lt-online);
+  --chart-4: var(--lt-like);
+  --chart-5: var(--lt-text-muted);
+}
+
+/* shadcn のコンポーネントが参照するユーティリティを生やす。
+ * （この対応表は shadcn init が書いたもの。フォントだけ差し替えている） */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* 日本語 Web フォントは数MBあり、会場の混雑した Wi-Fi で初期表示が壊れる。
+   * システムフォントに統一する（docs/design-system.md §5）。 */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Helvetica Neue", Arial,
+    sans-serif;
+  --font-heading: var(--font-sans);
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply font-sans;
+    /* iOS で縦のバウンススクロールと固定要素を競合させない */
+    overscroll-behavior-y: none;
+  }
+
+  body {
+    @apply bg-bg text-text;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* 会場のスクリーンに投影される可能性があるので、フォーカスリングは
+     見えるが派手すぎない太さにする */
+  :focus-visible {
+    outline: 2px solid var(--lt-brand);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  /* iOS のホームインジケータ／ノッチを避ける下端の余白 */
+  .pb-safe {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  .pt-safe {
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+  }
+
+  .bg-gradient-brand {
+    background-image: var(--lt-gradient-brand);
+  }
+}

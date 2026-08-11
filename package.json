@@ -1,0 +1,25 @@
+{
+  "name": "layertalk",
+  "private": true,
+  "version": "0.1.0",
+  "description": "プレゼン画面に観客のコメントとスタンプを重ねて表示するリアルタイム・オーバーレイ",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w @layertalk/audience-web",
+    "dev:presenter": "npm run tauri:dev -w @layertalk/presenter-app",
+    "build:web": "npm run build -w @layertalk/audience-web",
+    "build:presenter": "npm run tauri:build -w @layertalk/presenter-app",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "smoke:realtime": "node scripts/realtime-smoke.mjs"
+  },
+  "engines": {
+    "node": ">=20.9"
+  },
+  "devDependencies": {
+    "ws": "^8.18.3"
+  }
+}

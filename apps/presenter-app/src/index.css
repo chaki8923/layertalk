@@ -1,0 +1,26 @@
+@import "tailwindcss";
+@import "@layertalk/shared/theme.css";
+
+/* オーバーレイ窓は背景を完全に透明にする。
+ * Tailwind の preflight も Vite テンプレの既定色も、どこかに色が残ると
+ * スライドの上に灰色の板が乗る。ここで明示的に潰しておく。 */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* オーバーレイ側では文字を選択させない（クリックスルー解除時の誤操作防止） */
+.overlay-root {
+  user-select: none;
+  cursor: default;
+}

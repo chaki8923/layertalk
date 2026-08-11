@@ -1,0 +1,126 @@
+/* LayerTalk デザイントークン — 詳細は docs/design-system.md
+ *
+ * 両アプリの globals.css / index.css から `@import "@layertalk/shared/theme.css";` する。
+ * Tailwind v4 の `@theme inline` を使うので、生成されるユーティリティは
+ * 値を焼き込まずに var() 参照になり、ダーク/ライトの切替がそのまま効く。
+ *
+ * 命名について: shadcn/ui が `--color-accent`（ホバー背景の意味）と
+ * `--radius-sm|md|lg` を占有するため、ブランド色と角丸はぶつからない
+ * 意味ベースの名前にしてある。`brand` / `chip・control・card・sheet`。
+ */
+
+/* ---------------------------------------------------------------- 実体 */
+
+:root {
+  color-scheme: dark;
+
+  /* ダークが既定（暗い会場が基準） */
+  --lt-bg: #0a0c11;
+  --lt-bg-elev: #10141c;
+  --lt-surface: rgb(255 255 255 / 0.06);
+  --lt-surface-strong: rgb(255 255 255 / 0.1);
+  --lt-border: rgb(255 255 255 / 0.1);
+  --lt-border-strong: rgb(255 255 255 / 0.18);
+  --lt-text: #eef1f7;
+  --lt-text-muted: #9aa3b7;
+  --lt-text-faint: #646e85;
+
+  /* ブランド色は両モード共通（暗所でも明所でも成立する彩度に調整済み） */
+  --lt-brand: #6b8aff;
+  --lt-brand-2: #b47cff;
+  --lt-like: #ff4d6d;
+  --lt-online: #3dd68c;
+  --lt-gradient-brand: linear-gradient(135deg, #6b8aff, #b47cff);
+
+  --lt-shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.5);
+  --lt-shadow-float: 0 -1px 0 rgb(255 255 255 / 0.06), 0 12px 40px -8px rgb(0 0 0 / 0.7);
+  --lt-shadow-glow: 0 4px 20px -4px rgb(107 138 255 / 0.5);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+
+    --lt-bg: #f4f6fb;
+    --lt-bg-elev: #ffffff;
+    --lt-surface: rgb(255 255 255 / 0.72);
+    --lt-surface-strong: rgb(255 255 255 / 0.9);
+    --lt-border: rgb(15 20 32 / 0.08);
+    --lt-border-strong: rgb(15 20 32 / 0.14);
+    --lt-text: #0f1420;
+    --lt-text-muted: #5a6479;
+    --lt-text-faint: #8a93a6;
+
+    --lt-shadow-card: 0 1px 2px rgb(15 20 32 / 0.04), 0 8px 24px -12px rgb(15 20 32 / 0.16);
+    --lt-shadow-float: 0 -1px 0 rgb(15 20 32 / 0.04), 0 12px 40px -8px rgb(15 20 32 / 0.18);
+    --lt-shadow-glow: 0 4px 20px -4px rgb(107 138 255 / 0.4);
+  }
+}
+
+/* ------------------------------------------- Tailwind に流し込むトークン */
+
+@theme inline {
+  --color-bg: var(--lt-bg);
+  --color-bg-elev: var(--lt-bg-elev);
+  --color-surface: var(--lt-surface);
+  --color-surface-strong: var(--lt-surface-strong);
+  --color-border: var(--lt-border);
+  --color-border-strong: var(--lt-border-strong);
+  --color-text: var(--lt-text);
+  --color-text-muted: var(--lt-text-muted);
+  --color-text-faint: var(--lt-text-faint);
+
+  --color-brand: var(--lt-brand);
+  --color-brand-2: var(--lt-brand-2);
+  --color-like: var(--lt-like);
+  --color-online: var(--lt-online);
+
+  --radius-chip: 8px;
+  --radius-control: 14px;
+  --radius-card: 20px;
+  --radius-sheet: 28px;
+
+  --shadow-card: var(--lt-shadow-card);
+  --shadow-float: var(--lt-shadow-float);
+  --shadow-glow: var(--lt-shadow-glow);
+
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring-ish: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Helvetica Neue", Arial,
+    sans-serif;
+}
+
+/* ------------------------------------------------------------ 共通の型 */
+
+@layer base {
+  /* 数字が増減しても幅が揺れないように */
+  .lt-num {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* グラスモーフィズム。audience-web 限定（透過ウィンドウでは重すぎる） */
+  .lt-glass {
+    background: var(--lt-surface);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--lt-border);
+  }
+
+  /* オーバーレイのコメント文字。どんなスライド背景でも読める縁取り。
+   * paint-order: stroke fill が要点 — 無いと縁取りが字面を侵食して細字が潰れる。 */
+  .lt-overlay-text {
+    color: #fff;
+    -webkit-text-stroke: 3px rgb(0 0 0 / 0.85);
+    paint-order: stroke fill;
+    text-shadow: 0 2px 8px rgb(0 0 0 / 0.6);
+  }
+
+  /* タップのハイライトを消す（iOS Safari の灰色フラッシュ） */
+  .lt-tap {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+  }
+}

@@ -1,0 +1,26 @@
+node_modules/
+.DS_Store
+
+# builds
+dist/
+.next/
+out/
+target/
+
+# env
+.env
+.env.local
+.env*.local
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+
+# editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# typescript
+*.tsbuildinfo
