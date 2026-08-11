@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LayerTalk 差別化メモ</title>
+<style>
+/* LayerTalk のデザイントークンをそのまま使う（packages/shared/styles/theme.css）。
+ * 日本語 Web フォントは読み込まない — プロダクト側と同じ制約で作る。 */
+:root {
+  color-scheme: dark;
+  --bg: #0a0c11;
+  --bg-elev: #10141c;
+  --surface: rgb(255 255 255 / 0.04);
+  --border: rgb(255 255 255 / 0.1);
+  --border-strong: rgb(255 255 255 / 0.18);
+  --text: #eef1f7;
+  --text-muted: #9aa3b7;
+  --text-faint: #646e85;
+  --brand: #6b8aff;
+  --brand-2: #b47cff;
+  --like: #ff4d6d;
+  --online: #3dd68c;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.5);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP",
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  --r-chip: 8px;
+  --r-control: 14px;
+  --r-card: 20px;
+
+  --measure: 74ch;
+  --wide: 1080px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #f4f6fb;
+    --bg-elev: #ffffff;
+    --surface: rgb(15 20 32 / 0.03);
+    --border: rgb(15 20 32 / 0.1);
+    --border-strong: rgb(15 20 32 / 0.16);
+    --text: #0f1420;
+    --text-muted: #5a6479;
+    --text-faint: #8a93a6;
+    --shadow-card: 0 1px 2px rgb(15 20 32 / 0.04), 0 8px 24px -12px rgb(15 20 32 / 0.16);
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f6fb;
+  --bg-elev: #ffffff;
+  --surface: rgb(15 20 32 / 0.03);
+  --border: rgb(15 20 32 / 0.1);
+  --border-strong: rgb(15 20 32 / 0.16);
+  --text: #0f1420;
+  --text-muted: #5a6479;
+  --text-faint: #8a93a6;
+  --shadow-card: 0 1px 2px rgb(15 20 32 / 0.04), 0 8px 24px -12px rgb(15 20 32 / 0.16);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  width: min(100% - 40px, var(--wide));
+  margin-inline: auto;
+  padding-block: 56px 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 64px;
+}
+
+.prose { max-width: var(--measure); }
+
+/* ------------------------------------------------------------- 見出し */
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+h1 {
+  margin: 12px 0 0;
+  font-size: clamp(30px, 4.4vw, 44px);
+  line-height: 1.16;
+  letter-spacing: -0.02em;
+  font-weight: 800;
+  text-wrap: balance;
+}
+
+h2 {
+  margin: 0;
+  font-size: clamp(21px, 2.4vw, 26px);
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  font-weight: 800;
+  text-wrap: balance;
+}
+
+h3 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 700;
+}
+
+p { margin: 0; }
+
+section { display: flex; flex-direction: column; gap: 20px; }
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.lede {
+  font-size: 18px;
+  line-height: 1.8;
+  color: var(--text-muted);
+}
+
+.stack { display: flex; flex-direction: column; gap: 16px; }
+
+strong { font-weight: 700; color: var(--text); }
+
+a {
+  color: var(--brand);
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+a:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-chip);
+  padding: 1px 5px;
+}
+
+/* ---------------------------------------------------------------- 表紙 */
+
+.masthead {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.masthead .meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-faint);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.verdict {
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--bg-elev);
+  box-shadow: var(--shadow-card);
+  padding: 24px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: var(--measure);
+}
+.verdict p { font-size: 17px; }
+
+/* 主題そのもの — 重ねる。図は3枚の面が少しずつずれて積まれる。 */
+.thesis {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(280px, 420px);
+  gap: 32px;
+  align-items: center;
+}
+@media (max-width: 720px) {
+  .thesis { grid-template-columns: 1fr; }
+}
+.thesis svg { width: 100%; height: auto; display: block; }
+
+/* ---------------------------------------------------------- 比較マトリクス */
+
+.scroller {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--bg-elev);
+  box-shadow: var(--shadow-card);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 860px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-elev);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-weight: 600;
+  text-align: left;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--border-strong);
+  white-space: nowrap;
+}
+
+tbody td, tbody th {
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  text-align: left;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+tbody th {
+  color: var(--text);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+tbody tr:last-child td, tbody tr:last-child th { border-bottom: 0; }
+tbody tr.self th, tbody tr.self td { background: rgb(107 138 255 / 0.07); color: var(--text); }
+tbody tr.self th { box-shadow: inset 3px 0 0 var(--brand); }
+
+.mark { font-weight: 700; }
+.yes { color: var(--online); }
+.no { color: var(--text-faint); }
+.part { color: var(--brand-2); }
+.unknown {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--like);
+  border: 1px solid rgb(255 77 109 / 0.4);
+  border-radius: var(--r-chip);
+  padding: 0 5px;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------ カード群 */
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+  gap: 18px;
+}
+
+/* 「重なり」を主題にしているので、カード自身も紙が重なった縁を持つ */
+.card {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--bg-elev);
+  padding: 22px 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: var(--shadow-card);
+}
+.card::before,
+.card::after {
+  content: "";
+  position: absolute;
+  inset: auto 10px -5px 10px;
+  height: 12px;
+  border: 1px solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 var(--r-card) var(--r-card);
+  background: var(--bg-elev);
+  z-index: -1;
+}
+.card::after { inset: auto 20px -10px 20px; opacity: 0.6; }
+
+.card .tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brand);
+}
+.card p { color: var(--text-muted); font-size: 14.5px; line-height: 1.7; }
+
+/* ----------------------------------------------------------- リスト類 */
+
+ul.facts, ul.gaps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: var(--measure);
+}
+
+ul.facts li, ul.gaps li {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 12px;
+  align-items: start;
+  color: var(--text-muted);
+  font-size: 15px;
+}
+
+ul.facts li::before {
+  content: "";
+  width: 8px; height: 8px;
+  margin-top: 9px;
+  margin-left: 5px;
+  border-radius: 2px;
+  background: var(--online);
+}
+ul.gaps li::before {
+  content: "";
+  width: 8px; height: 8px;
+  margin-top: 9px;
+  margin-left: 5px;
+  border-radius: 2px;
+  background: var(--like);
+}
+
+/* -------------------------------------------------------------- 提案表 */
+
+.props { display: flex; flex-direction: column; gap: 14px; }
+
+.prop {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  padding: 18px 20px;
+}
+@media (max-width: 640px) {
+  .prop { grid-template-columns: 1fr; }
+}
+
+.prop .rank {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-faint);
+  grid-row: span 2;
+  padding-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.prop h3 { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
+.prop p { color: var(--text-muted); font-size: 14.5px; }
+
+.cost {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  border-radius: var(--r-chip);
+  padding: 2px 7px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-faint);
+  font-weight: 500;
+}
+.cost.s { color: var(--online); border-color: rgb(61 214 140 / 0.4); }
+.cost.m { color: var(--brand-2); border-color: rgb(180 124 255 / 0.4); }
+.cost.l { color: var(--like); border-color: rgb(255 77 109 / 0.4); }
+
+/* --------------------------------------------------------------- ピッチ */
+
+.pitch {
+  border-radius: var(--r-card);
+  padding: 28px 30px;
+  background:
+    linear-gradient(135deg, rgb(107 138 255 / 0.16), rgb(180 124 255 / 0.16));
+  border: 1px solid rgb(107 138 255 / 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: var(--measure);
+}
+.pitch .oneline {
+  font-size: clamp(19px, 2.4vw, 24px);
+  font-weight: 800;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.pitch p { color: var(--text-muted); font-size: 15px; }
+.pitch .oneline { color: var(--text); }
+
+/* -------------------------------------------------------------- 脚注 */
+
+.colophon {
+  max-width: var(--measure);
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--text-faint);
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.colophon ol { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 4px; }
+</style>
+</head>
+<body>
+<main class="page">
+
+  <header class="masthead">
+    <div>
+      <div class="eyebrow">LayerTalk / 競合と差別化</div>
+      <h1>「なんでもいける」は正しい。<br>ただし、それだけでは差別化にならない。</h1>
+    </div>
+    <div class="meta">
+      <span>2026-08-11</span>
+      <span>社内メモ</span>
+      <span>競合情報は公開情報ベース・要再確認</span>
+    </div>
+
+    <div class="thesis">
+      <div class="verdict">
+        <p>
+          Canva・PowerPoint・Google Slides に縛られないのは <strong>LayerTalk の強み</strong>で間違いない。
+          ただしそれは「画面に重ねる」というアプローチ全体の強みで、
+          <strong>同じアプローチの先行プロダクトがすでにある</strong>（Comment Screen）。
+        </p>
+        <p>
+          だから訴えるべきは「どのツールでも使える」ではなく、
+          <strong>重ねたあとに何が起きるか</strong>——発表者が事故らないこと、
+          流れる声と残る質問が分かれていること、データが自分の手元にあること。
+        </p>
+      </div>
+
+      <svg viewBox="0 0 420 300" role="img" aria-label="スライドの上にコメント層・質問層が重なる構造の図">
+        <defs>
+          <linearGradient id="lt-grad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#6b8aff"></stop>
+            <stop offset="100%" stop-color="#b47cff"></stop>
+          </linearGradient>
+        </defs>
+        <!-- 一番下: 何のスライドでもよい面 -->
+        <g>
+          <path d="M40 200 L250 140 L390 190 L180 250 Z" fill="currentColor" opacity="0.07"></path>
+          <path d="M40 200 L250 140 L390 190 L180 250 Z" fill="none" stroke="currentColor" opacity="0.35" stroke-width="1"></path>
+          <text x="196" y="232" font-size="12" fill="currentColor" opacity="0.55" font-family="ui-monospace, monospace">Keynote / PPT / VS Code / ブラウザ</text>
+        </g>
+        <!-- 中間: コメントが流れる面 -->
+        <g>
+          <path d="M40 145 L250 85 L390 135 L180 195 Z" fill="url(#lt-grad)" opacity="0.16"></path>
+          <path d="M40 145 L250 85 L390 135 L180 195 Z" fill="none" stroke="url(#lt-grad)" stroke-width="1.4"></path>
+          <text x="150" y="163" font-size="12" fill="currentColor" opacity="0.75" font-family="ui-monospace, monospace">コメント / スタンプ</text>
+        </g>
+        <!-- 上: 質問だけが残る面 -->
+        <g>
+          <path d="M40 90 L250 30 L390 80 L180 140 Z" fill="url(#lt-grad)" opacity="0.1"></path>
+          <path d="M40 90 L250 30 L390 80 L180 140 Z" fill="none" stroke="url(#lt-grad)" stroke-width="1.4" opacity="0.8"></path>
+          <rect x="286" y="72" width="58" height="30" rx="7" fill="url(#lt-grad)" opacity="0.85"></rect>
+          <text x="308" y="92" font-size="14" font-weight="700" fill="#ffffff" font-family="ui-monospace, monospace">Q</text>
+          <text x="70" y="108" font-size="12" fill="currentColor" opacity="0.75" font-family="ui-monospace, monospace">質問は右端に残る</text>
+        </g>
+      </svg>
+    </div>
+  </header>
+
+  <section>
+    <div class="head">
+      <div class="eyebrow">01 — 市場の地図</div>
+      <h2>競合は2種類いる。戦う相手が違う。</h2>
+    </div>
+    <div class="stack prose">
+      <p>
+        観客参加ツールは、<strong>スライドの中に住むもの</strong>と<strong>画面の上に住むもの</strong>に割れる。
+        ここを混ぜて語ると差別化がぼやける。
+      </p>
+      <p>
+        <strong>埋め込み型（Slido / Mentimeter / Poll Everywhere）</strong>は
+        PowerPoint・Google Slides のアドインとして、あるいは自社エディタとして動く。
+        投票やクイズ、モデレーション付き Q&amp;A の運用は厚い。かわりに
+        <strong>スライド以外の画面には原理的に出られない</strong>——
+        ライブコーディング中のエディタにも、デモ中のブラウザにも重ねられない。
+      </p>
+      <p>
+        <strong>オーバーレイ型（Comment Screen / LayerTalk）</strong>は画面そのものに重ねる。
+        だから何を映していても効く。ここが指摘のとおり効く一方で、
+        <strong>この土俵にはすでに先行者がいる</strong>。Comment Screen は
+        ニコニコ動画式に画面へコメントを流す発想で、観客はアプリを入れずスマホから投稿でき、
+        QR での参加もできる。「ツールを選ばない」「アプリ不要」だけでは並ぶだけになる。
+      </p>
+    </div>
+
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">プロダクト</th>
+            <th scope="col">住む場所</th>
+            <th scope="col">全画面スライドショーの上</th>
+            <th scope="col">スライド以外の画面</th>
+            <th scope="col">質問の常設表示</th>
+            <th scope="col">いいねで優先度</th>
+            <th scope="col">投票 / クイズ</th>
+            <th scope="col">発表者アカウント</th>
+            <th scope="col">データの置き場所</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="self">
+            <th scope="row">LayerTalk</th>
+            <td>画面の上</td>
+            <td><span class="mark yes">◯</span> 実装で対処済み</td>
+            <td><span class="mark yes">◯</span></td>
+            <td><span class="mark yes">◯</span> 右端に最大5件</td>
+            <td><span class="mark yes">◯</span></td>
+            <td><span class="mark no">—</span> 追わない</td>
+            <td><span class="mark no">不要</span></td>
+            <td>自分の Supabase</td>
+          </tr>
+          <tr>
+            <th scope="row">Comment Screen</th>
+            <td>画面の上</td>
+            <td><span class="unknown">要確認</span></td>
+            <td><span class="mark yes">◯</span></td>
+            <td><span class="unknown">要確認</span></td>
+            <td><span class="unknown">要確認</span></td>
+            <td><span class="mark no">—</span></td>
+            <td>必要</td>
+            <td>提供元</td>
+          </tr>
+          <tr>
+            <th scope="row">Slido</th>
+            <td>スライドの中</td>
+            <td><span class="mark part">△</span> アドインの枠内</td>
+            <td><span class="mark no">×</span></td>
+            <td><span class="mark yes">◯</span> Q&amp;A が主戦場</td>
+            <td><span class="mark yes">◯</span></td>
+            <td><span class="mark yes">◯</span></td>
+            <td>必要</td>
+            <td>提供元</td>
+          </tr>
+          <tr>
+            <th scope="row">Mentimeter</th>
+            <td>自社エディタ</td>
+            <td><span class="mark part">△</span></td>
+            <td><span class="mark no">×</span></td>
+            <td><span class="mark part">△</span></td>
+            <td><span class="mark yes">◯</span></td>
+            <td><span class="mark yes">◯</span> 得意</td>
+            <td>必要</td>
+            <td>提供元</td>
+          </tr>
+          <tr>
+            <th scope="row">Poll Everywhere</th>
+            <td>スライドの中</td>
+            <td><span class="mark part">△</span> アドインの枠内</td>
+            <td><span class="mark no">×</span></td>
+            <td><span class="mark part">△</span></td>
+            <td><span class="mark yes">◯</span></td>
+            <td><span class="mark yes">◯</span> 得意</td>
+            <td>必要</td>
+            <td>提供元</td>
+          </tr>
+          <tr>
+            <th scope="row">Zoom / Teams のリアクション</th>
+            <td>会議アプリの中</td>
+            <td><span class="mark no">×</span></td>
+            <td><span class="mark no">×</span></td>
+            <td><span class="mark no">×</span></td>
+            <td><span class="mark no">×</span></td>
+            <td><span class="mark part">△</span></td>
+            <td>必要</td>
+            <td>提供元</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="prose" style="color: var(--text-muted); font-size: 14px;">
+      競合の欄は公開情報からの整理で、外に出す前に各社の現行仕様を確認すること。
+      とくに <strong>Comment Screen が Keynote / PowerPoint のフルスクリーン・スライドショーより前面に出られるか</strong>は、
+      この表で唯一「勝負が決まる」セル。実機で1回確かめる価値がある。
+    </p>
+  </section>
+
+  <section>
+    <div class="head">
+      <div class="eyebrow">02 — 勝ち筋</div>
+      <h2>重ねたあとに何が起きるかで差がつく</h2>
+    </div>
+    <div class="cards">
+      <article class="card">
+        <span class="tag">A — 事故らない</span>
+        <h3>発表者が失敗しようがない設計</h3>
+        <p>
+          クリックスルーは常時 ON で切り替え UI すら持たない（気づかず背面を操作不能にする事故が起きない）。
+          開始を押すまで何も出ず、開始より前の投稿は流さない（リハーサルの残骸が本番に出ない）。
+          Dock にも ⌘-Tab にも現れず、⇧⌘L とメニューバーだけで戻れる。
+          表示先モニターは選んだ画面に確認枠を出して選ばせる。
+        </p>
+      </article>
+      <article class="card">
+        <span class="tag">B — 分ける</span>
+        <h3>流れて消える声と、残って効く質問</h3>
+        <p>
+          コメントとスタンプは流れて消える。質問は同じように流れたうえで、
+          右端のパネルに新着順で残り、折りたたむと未読数だけが出る。
+          いいねの多い質問が上に来る。
+          <strong>オーバーレイ型に Q&amp;A の運用を持ち込んでいるのは、この土俵では新しい。</strong>
+        </p>
+      </article>
+      <article class="card">
+        <span class="tag">C — 手元に置く</span>
+        <h3>データも運用も自分の側</h3>
+        <p>
+          発表者アカウントなし、観客はアプリ不要で6桁コードか QR。
+          バックエンドは自分の Supabase プロジェクトなので、
+          社内の発表内容が他社の SaaS に残らない。参加人数での課金もない。
+          社内利用のセキュリティ審査に対して強い立ち位置。
+        </p>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <div class="eyebrow">03 — 裏付け</div>
+      <h2>言えることは、実装で担保されている</h2>
+    </div>
+    <ul class="facts">
+      <li><span></span><span><strong>フルスクリーンのスライドショーより前に出る。</strong> <code>alwaysOnTop</code>（NSFloatingWindowLevel = 3）では Keynote / PowerPoint に負けるので、NSWindow を直接 1000 まで上げ、<code>CanJoinAllSpaces | Stationary | IgnoresCycle | FullScreenAuxiliary</code> を立てている。<strong>ここが競合との比較で一番効く一点</strong>。</span></li>
+      <li><span></span><span><strong>クリックスルーは固定仕様。</strong> オーバーレイはマウスを一切受け取らない。操作が要る質問パネルだけを別ウィンドウに切り出して、右端の範囲内でだけ受け取る。</span></li>
+      <li><span></span><span><strong>スタンプは DB に書かない。</strong> Broadcast のみ、連打は 100ms 単位で集約してから送る。会場全員が連打しても DB が詰まらない。</span></li>
+      <li><span></span><span><strong>取りこぼしを前提に組んである。</strong> Realtime は購読確立からフィルタが効くまでズレるので、購読直後と 2.5 秒後の二度取り直して回収する。</span></li>
+      <li><span></span><span><strong>会場の Wi-Fi を疑っている。</strong> 数MBの日本語 Web フォントは読み込まない。観客側はダーク基調（暗い会場でスマホを見る前提）。</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="head">
+      <div class="eyebrow">04 — 提案</div>
+      <h2>差別化を厚くするなら、この順で</h2>
+    </div>
+    <div class="props">
+      <div class="prop">
+        <span class="rank">01</span>
+        <h3>ライブコーディング・デモに寄せて名乗る <span class="cost s">コスト小</span></h3>
+        <span></span>
+        <p>
+          埋め込み型が<strong>原理的に入れない領域</strong>がここ。スライドではなくエディタ・ターミナル・ブラウザ・Figma を映している時間こそ、
+          観客の反応が欲しい。「勉強会・ハンズオン・ライブコーディングで使える唯一の観客参加ツール」と名乗るだけで立ち位置が変わる。
+          機能としては「コメントを画面下 25% に寄せる」オプションがあれば、コードを隠さずに済む。
+        </p>
+      </div>
+      <div class="prop">
+        <span class="rank">02</span>
+        <h3>発表の記録を書き出す <span class="cost s">コスト小</span></h3>
+        <span></span>
+        <p>
+          コメントには時刻があり、開始時刻はアプリが持っている。<strong>「開始から何分何秒に、どの声が来たか」</strong>を
+          Markdown / CSV に出せる。どこで沸いてどこで質問が出たかは、次の発表を直す材料そのもの。
+          競合はレポートを上位プランに置いていることが多く、こちらは無料で出せる。
+        </p>
+      </div>
+      <div class="prop">
+        <span class="rank">03</span>
+        <h3>モデレーション（NGワード・個別非表示・数秒ディレイ） <span class="cost m">コスト中</span></h3>
+        <span></span>
+        <p>
+          社外イベントや社内の大きな会で採用されるかは、ほぼここで決まる。いまは何も無い＝提案時の一番の穴。
+          全部は要らない。<strong>「いま流れているものを1クリックで止める」</strong>のが最優先で、次に NG ワード。
+        </p>
+      </div>
+      <div class="prop">
+        <span class="rank">04</span>
+        <h3>オンライン会議での挙動を検証して明記する <span class="cost s">コスト小</span></h3>
+        <span></span>
+        <p>
+          画面に重ねる方式は、Zoom / Meet で<strong>「画面全体」を共有していれば相手にも映り、「ウィンドウ」共有だと映らない</strong>。
+          この一行を書けるかどうかでオンライン用途の信頼が変わる。実機で確認してドキュメントに残す。
+        </p>
+      </div>
+      <div class="prop">
+        <span class="rank">05</span>
+        <h3>Windows 対応 <span class="cost l">コスト大</span></h3>
+        <span></span>
+        <p>
+          企業の発表現場の多数派。Tauri なので土台は同じだが、最前面化とクリックスルーは OS ごとに別実装になる。
+          差別化ではなく<strong>市場の広さ</strong>の問題なので、上の4つを終えてから。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <div class="eyebrow">05 — 穴</div>
+      <h2>正直に埋めておくべきところ</h2>
+    </div>
+    <ul class="gaps">
+      <li><span></span><span><strong>macOS 専用。</strong> しかもコード署名・公証をしていないので、配布すると Gatekeeper に止められる。</span></li>
+      <li><span></span><span><strong>荒らしに無防備。</strong> 認証が無いので、いいねの水増しも不適切投稿も止められない（提案03がそのまま対策）。</span></li>
+      <li><span></span><span><strong>観客用 Web が未デプロイ。</strong> QR も URL 共有も、公開ホストに出すまで本番では使えない。</span></li>
+      <li><span></span><span><strong>投票・クイズは無い。</strong> ただしこれは Mentimeter / Poll Everywhere の土俵で、追うと消耗戦になる。<strong>「反応が流れる」体験に絞るのが正解</strong>だと思う。</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="head">
+      <div class="eyebrow">06 — 言い方</div>
+      <h2>そのまま使えるピッチ</h2>
+    </div>
+    <div class="pitch">
+      <p class="oneline">スライドを選ばない。画面に重ねるから、Keynote でも VS Code でも、デモ中のブラウザでも観客の声が流れる。</p>
+      <p>
+        観客はアプリを入れず、QR か6桁コードだけで参加。コメントとスタンプは流れて消え、質問だけが画面の右端に残る。
+        発表者側はクリックスルー固定なので、スライド操作を一切邪魔しない。開始を押すまでは何も映らないので、リハーサルの声が本番に流れることもない。
+        バックエンドは自分の Supabase なので、発表の内容も参加者の声も社外に出ない。
+      </p>
+    </div>
+  </section>
+
+  <footer class="colophon">
+    <p>参照（2026-08-11 時点の公開情報。外部に出す前に各社の現行仕様を確認すること）</p>
+    <ol>
+      <li><a href="https://note.com/commentscreen/n/n2ab935cf06fd">ニコニコ式プレゼン革命！？「コメントスクリーン」でプレゼンをもっと面白く！ — CommentScreen</a></li>
+      <li><a href="https://www.atpress.ne.jp/news/208082">オンライン会議アプリ「Comment Screen」の無料配信を決定 — 株式会社コメントスクリーン</a></li>
+      <li><a href="https://www.polleverywhere.com/use-cases/vs/poll-everywhere-vs-slido">Poll Everywhere vs. Slido (2026): Hands-On Comparison</a></li>
+      <li><a href="https://presengage.com/blog/slido-vs-mentimeter/">Slido vs Mentimeter (2026): Honest Comparison</a></li>
+    </ol>
+    <p>
+      配色・角丸・書体は <code>packages/shared/styles/theme.css</code> のトークンをそのまま使用。
+      日本語 Web フォントは読み込まない（プロダクト側と同じ制約）。
+    </p>
+  </footer>
+
+</main>
+</body>
+</html>

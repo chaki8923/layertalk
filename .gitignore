@@ -24,3 +24,8 @@ npm-debug.log*
 
 # typescript
 *.tsbuildinfo
+
+# editor swap/backup files
+*.swp
+*.swo
+*~
