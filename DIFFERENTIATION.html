@@ -327,31 +327,31 @@ ul.facts, ul.gaps {
   max-width: var(--measure);
 }
 
+/* li は grid にも flex にもしないこと。
+   子を並べる方式だと、項目数が想定とずれた瞬間に本文が 18px 幅の列に落ち、
+   CJK は 1 文字ずつ改行・英単語だけはみ出す（＝縦一列）状態になる。
+   マーカーは絶対配置でフローから外すので、子要素が何個でも本文は全幅で流れる。 */
 ul.facts li, ul.gaps li {
-  display: grid;
-  grid-template-columns: 18px 1fr;
-  gap: 12px;
-  align-items: start;
+  position: relative;
+  padding-left: 20px;
   color: var(--text-muted);
   font-size: 15px;
+  line-height: 1.7;
 }
 
-ul.facts li::before {
+/* 本文を包む span は素の inline のまま。幅を与えると再発するので触らない。 */
+
+ul.facts li::before, ul.gaps li::before {
   content: "";
-  width: 8px; height: 8px;
-  margin-top: 9px;
-  margin-left: 5px;
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 2px;
-  background: var(--online);
 }
-ul.gaps li::before {
-  content: "";
-  width: 8px; height: 8px;
-  margin-top: 9px;
-  margin-left: 5px;
-  border-radius: 2px;
-  background: var(--like);
-}
+ul.facts li::before { background: var(--online); }
+ul.gaps li::before { background: var(--like); }
 
 /* -------------------------------------------------------------- 提案表 */
 
@@ -657,11 +657,11 @@ ul.gaps li::before {
       <h2>言えることは、実装で担保されている</h2>
     </div>
     <ul class="facts">
-      <li><span></span><span><strong>フルスクリーンのスライドショーより前に出る。</strong> <code>alwaysOnTop</code>（NSFloatingWindowLevel = 3）では Keynote / PowerPoint に負けるので、NSWindow を直接 1000 まで上げ、<code>CanJoinAllSpaces | Stationary | IgnoresCycle | FullScreenAuxiliary</code> を立てている。<strong>ここが競合との比較で一番効く一点</strong>。</span></li>
-      <li><span></span><span><strong>クリックスルーは固定仕様。</strong> オーバーレイはマウスを一切受け取らない。操作が要る質問パネルだけを別ウィンドウに切り出して、右端の範囲内でだけ受け取る。</span></li>
-      <li><span></span><span><strong>スタンプは DB に書かない。</strong> Broadcast のみ、連打は 100ms 単位で集約してから送る。会場全員が連打しても DB が詰まらない。</span></li>
-      <li><span></span><span><strong>取りこぼしを前提に組んである。</strong> Realtime は購読確立からフィルタが効くまでズレるので、購読直後と 2.5 秒後の二度取り直して回収する。</span></li>
-      <li><span></span><span><strong>会場の Wi-Fi を疑っている。</strong> 数MBの日本語 Web フォントは読み込まない。観客側はダーク基調（暗い会場でスマホを見る前提）。</span></li>
+      <li><span><strong>フルスクリーンのスライドショーより前に出る。</strong> <code>alwaysOnTop</code>（NSFloatingWindowLevel = 3）では Keynote / PowerPoint に負けるので、NSWindow を直接 1000 まで上げ、<code>CanJoinAllSpaces | Stationary | IgnoresCycle | FullScreenAuxiliary</code> を立てている。<strong>ここが競合との比較で一番効く一点</strong>。</span></li>
+      <li><span><strong>クリックスルーは固定仕様。</strong> オーバーレイはマウスを一切受け取らない。操作が要る質問パネルだけを別ウィンドウに切り出して、右端の範囲内でだけ受け取る。</span></li>
+      <li><span><strong>スタンプは DB に書かない。</strong> Broadcast のみ、連打は 100ms 単位で集約してから送る。会場全員が連打しても DB が詰まらない。</span></li>
+      <li><span><strong>取りこぼしを前提に組んである。</strong> Realtime は購読確立からフィルタが効くまでズレるので、購読直後と 2.5 秒後の二度取り直して回収する。</span></li>
+      <li><span><strong>会場の Wi-Fi を疑っている。</strong> 数MBの日本語 Web フォントは読み込まない。観客側はダーク基調（暗い会場でスマホを見る前提）。</span></li>
     </ul>
   </section>
 
@@ -674,7 +674,6 @@ ul.gaps li::before {
       <div class="prop">
         <span class="rank">01</span>
         <h3>ライブコーディング・デモに寄せて名乗る <span class="cost s">コスト小</span></h3>
-        <span></span>
         <p>
           埋め込み型が<strong>原理的に入れない領域</strong>がここ。スライドではなくエディタ・ターミナル・ブラウザ・Figma を映している時間こそ、
           観客の反応が欲しい。「勉強会・ハンズオン・ライブコーディングで使える唯一の観客参加ツール」と名乗るだけで立ち位置が変わる。
@@ -684,7 +683,6 @@ ul.gaps li::before {
       <div class="prop">
         <span class="rank">02</span>
         <h3>発表の記録を書き出す <span class="cost s">コスト小</span></h3>
-        <span></span>
         <p>
           コメントには時刻があり、開始時刻はアプリが持っている。<strong>「開始から何分何秒に、どの声が来たか」</strong>を
           Markdown / CSV に出せる。どこで沸いてどこで質問が出たかは、次の発表を直す材料そのもの。
@@ -694,7 +692,6 @@ ul.gaps li::before {
       <div class="prop">
         <span class="rank">03</span>
         <h3>モデレーション（NGワード・個別非表示・数秒ディレイ） <span class="cost m">コスト中</span></h3>
-        <span></span>
         <p>
           社外イベントや社内の大きな会で採用されるかは、ほぼここで決まる。いまは何も無い＝提案時の一番の穴。
           全部は要らない。<strong>「いま流れているものを1クリックで止める」</strong>のが最優先で、次に NG ワード。
@@ -703,7 +700,6 @@ ul.gaps li::before {
       <div class="prop">
         <span class="rank">04</span>
         <h3>オンライン会議での挙動を検証して明記する <span class="cost s">コスト小</span></h3>
-        <span></span>
         <p>
           画面に重ねる方式は、Zoom / Meet で<strong>「画面全体」を共有していれば相手にも映り、「ウィンドウ」共有だと映らない</strong>。
           この一行を書けるかどうかでオンライン用途の信頼が変わる。実機で確認してドキュメントに残す。
@@ -712,7 +708,6 @@ ul.gaps li::before {
       <div class="prop">
         <span class="rank">05</span>
         <h3>Windows 対応 <span class="cost l">コスト大</span></h3>
-        <span></span>
         <p>
           企業の発表現場の多数派。Tauri なので土台は同じだが、最前面化とクリックスルーは OS ごとに別実装になる。
           差別化ではなく<strong>市場の広さ</strong>の問題なので、上の4つを終えてから。
@@ -727,10 +722,10 @@ ul.gaps li::before {
       <h2>正直に埋めておくべきところ</h2>
     </div>
     <ul class="gaps">
-      <li><span></span><span><strong>macOS 専用。</strong> しかもコード署名・公証をしていないので、配布すると Gatekeeper に止められる。</span></li>
-      <li><span></span><span><strong>荒らしに無防備。</strong> 認証が無いので、いいねの水増しも不適切投稿も止められない（提案03がそのまま対策）。</span></li>
-      <li><span></span><span><strong>観客用 Web が未デプロイ。</strong> QR も URL 共有も、公開ホストに出すまで本番では使えない。</span></li>
-      <li><span></span><span><strong>投票・クイズは無い。</strong> ただしこれは Mentimeter / Poll Everywhere の土俵で、追うと消耗戦になる。<strong>「反応が流れる」体験に絞るのが正解</strong>だと思う。</span></li>
+      <li><span><strong>macOS 専用。</strong> しかもコード署名・公証をしていないので、配布すると Gatekeeper に止められる。</span></li>
+      <li><span><strong>荒らしに無防備。</strong> 認証が無いので、いいねの水増しも不適切投稿も止められない（提案03がそのまま対策）。</span></li>
+      <li><span><strong>観客用 Web が未デプロイ。</strong> QR も URL 共有も、公開ホストに出すまで本番では使えない。</span></li>
+      <li><span><strong>投票・クイズは無い。</strong> ただしこれは Mentimeter / Poll Everywhere の土俵で、追うと消耗戦になる。<strong>「反応が流れる」体験に絞るのが正解</strong>だと思う。</span></li>
     </ul>
   </section>
 
