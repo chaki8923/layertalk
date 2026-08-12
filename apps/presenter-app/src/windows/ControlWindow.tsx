@@ -541,7 +541,7 @@ export function ControlWindow() {
             type="button"
             onClick={() => {
               reloadMonitors();
-              void refitOverlay(settings.monitorName);
+              void refitOverlay();
             }}
             className="lt-tap border-border hover:bg-surface-strong flex w-full items-center justify-center gap-2 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors"
           >

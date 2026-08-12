@@ -69,12 +69,13 @@ export function OverlayWindow() {
     if (live) setPeeking(false);
   }, [live]);
 
-  // ディスプレイ構成が変わったらオーバーレイを貼り直す
+  // ディスプレイ構成が変わったらオーバーレイを貼り直す。
+  // 表示先モニターは渡さない（Rust が持っている。理由は refitOverlay のコメント）。
   useEffect(() => {
-    const handleResize = () => void refitOverlay(settings.monitorName);
+    const handleResize = () => void refitOverlay();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, [settings.monitorName]);
+  }, []);
 
   const showComment = useCallback(
     (text: string) => {

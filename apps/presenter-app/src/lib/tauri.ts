@@ -37,12 +37,18 @@ export const getPresentationState = () => invoke<boolean>("get_presentation_stat
 export const peekOverlay = (monitor: string | null, ms: number) =>
   invoke<void>("peek_overlay", { monitor, ms });
 
-/** ディスプレイ構成が変わったときにオーバーレイを貼り直す */
-export const refitOverlay = (monitor: string | null) => invoke<void>("refit_overlay", { monitor });
+/**
+ * ディスプレイ構成が変わったときにオーバーレイを貼り直す。
+ *
+ * 表示先モニターは**渡さない**。Rust が覚えている値を使う。各窓が自分の
+ * `settings` から渡すと、設定変更の到着順で古い名前を送り返してしまい、
+ * オーバーレイが主ディスプレイへ引き戻される（実際に起きた）。
+ */
+export const refitOverlay = () => invoke<void>("refit_overlay");
 
-/** 質問窓を右端のパネル幅／タブ幅へ切り替える。 */
-export const setQuestionPanelExpanded = (monitor: string | null, expanded: boolean) =>
-  invoke<void>("set_question_panel_expanded", { monitor, expanded });
+/** 質問窓を右端のパネル幅／タブ幅へ切り替える。表示先は Rust が持っている。 */
+export const setQuestionPanelExpanded = (expanded: boolean) =>
+  invoke<void>("set_question_panel_expanded", { expanded });
 
 export const showControlWindow = () => invoke<void>("show_control");
 

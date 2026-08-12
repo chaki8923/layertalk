@@ -29,3 +29,16 @@ serde_json = "1"
 # スライドショーより前面に出られないため、objc の生メッセージ送信が必要。
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
+# オーバーレイ窓を自前の NSWindow にするために使う。tao が作る窓は他アプリの
+# 全画面 Space（Canva のプレゼン等）に入れないため（罠 #9）。
+# tao が既に依存しているのでロックは変わらない。
+objc2-app-kit = { version = "0.3", features = [
+  "NSWindow",
+  "NSPanel",
+  "NSGraphics",
+  "NSColor",
+  "NSResponder",
+  "NSScreen",
+  "NSView",
+] }
+objc2-foundation = "0.3"

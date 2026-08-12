@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { loadSettings, onQuestionReceived, onSettingsChanged } from "../lib/settings";
+import { onQuestionReceived } from "../lib/settings";
 import {
   getPresentationState,
   onPresentationStateChanged,
@@ -22,13 +22,12 @@ export function QuestionWindow() {
   const liveRef = useRef(false);
   const expandedRef = useRef(true);
   const hasQuestionsRef = useRef(false);
-  const monitorRef = useRef(loadSettings().monitorName);
 
   const applyExpanded = (next: boolean) => {
     expandedRef.current = next;
     setExpanded(next);
     setUnreadCount(0);
-    void setQuestionPanelExpanded(monitorRef.current, next);
+    void setQuestionPanelExpanded(next);
   };
 
   useEffect(() => {
@@ -52,18 +51,6 @@ export function QuestionWindow() {
   }, []);
 
   useEffect(() => {
-    const unlisten = onSettingsChanged((settings) => {
-      monitorRef.current = settings.monitorName;
-      if (liveRef.current && hasQuestionsRef.current) {
-        void setQuestionPanelExpanded(settings.monitorName, expandedRef.current);
-      }
-    });
-    return () => {
-      void unlisten.then((off) => off());
-    };
-  }, []);
-
-  useEffect(() => {
     const unlisten = onQuestionReceived((question) => {
       setQuestions((prev) => [
         question,
@@ -75,7 +62,7 @@ export function QuestionWindow() {
         expandedRef.current = true;
         setExpanded(true);
         setUnreadCount(0);
-        void setQuestionPanelExpanded(monitorRef.current, true);
+        void setQuestionPanelExpanded(true);
       } else if (!expandedRef.current) {
         setUnreadCount((count) => count + 1);
       }

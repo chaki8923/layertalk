@@ -78,6 +78,27 @@ tao の実装は `makeKeyAndOrderFront` ＋ **非推奨の** `activateIgnoringOt
 `setCollectionBehavior`（Space を切り替えさせない）→ `setLevel(1000)` →
 `orderFrontRegardless` → `NSApplication activate` を自前で叩いている。
 
+**9. ブラウザの全画面プレゼン（Canva 等）にはオーバーレイが出ない — 調査中**
+Keynote / PowerPoint は**同じ Space** に高レベル窓を出すので罠 #5 で勝てるが、**Canva を Chrome の
+プレゼンテーションモードにするとコメント／スタンプが完全に見えない**。確定している事実:
+- **レベルの問題ではない。** ⇧⌘L のコントロール窓（同じ level 1000 / 同じ collectionBehavior）は
+  Canva の全画面に**重なって出る**。オーバーレイとの差は `NSApplication activate` の有無だけ
+- **順序の問題でもない。** tao の `show()` は既に `makeKeyAndOrderFront`（`window.rs:668`）を
+  呼んでいて、`orderFrontRegardless` を後から足しても症状は変わらなかった
+- 残る候補は「別 Space に置き去り」か「前に居るが WKWebView が描画を止めている」。
+  `lib.rs` の `log_window_state` に計測を入れた。`LAYERTALK_DEBUG_OVERLAY=1` で起動すると
+  `isVisible` / `isOnActiveSpace` / `occlusionState` が 1 秒ごとに出るので、これで切り分ける
+  （`onActiveSpace=false` → Space、`occluded=true` → 描画停止）
+
+ここまでで分かった副産物:
+- **`isVisible()` を前面化のガードに使うな。** macOS は別 Space の窓や隠れている窓を false と
+  報告することがあり、「一度負けたら二度と復帰できない」状態を作る。判断は Rust 側の
+  `live` / `panel_shown`（`SessionState`）に寄せてある
+- **tao のサイズ・位置の setter は `*_async`。** 当てた直後に `frame` を読むと反映前の値が出る
+- 発表**開始後**に全画面にされると新しい Space が後から生まれるので、発表中だけ 1 秒ごとに
+  当て直すウォッチドッグ（`start_front_watchdog`）を回している。本筋は
+  `NSWorkspace.activeSpaceDidChangeNotification` だが `block2` の依存追加が要るので採らなかった
+
 ## 設計上の決めごと
 
 - **コメント／スタンプの全面オーバーレイはクリックスルー常時 ON。** 切り替え UI も
