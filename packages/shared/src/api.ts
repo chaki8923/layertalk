@@ -1,6 +1,12 @@
 import type { LayerTalkClient } from "./client";
-import { COMMENT_MAX_LENGTH, normalizeRoomCode } from "./constants";
-import type { Comment, Room } from "./types";
+import {
+  COMMENT_MAX_LENGTH,
+  ROOM_STAMP_BUCKET,
+  ROOM_STAMP_MAX_PER_CLIENT,
+  ROOM_STAMP_MAX_PER_ROOM,
+  normalizeRoomCode,
+} from "./constants";
+import type { Comment, Room, RoomStamp } from "./types";
 
 export async function findRoomByCode(
   client: LayerTalkClient,
@@ -92,4 +98,98 @@ export async function fetchLikedIds(
 
   if (error) throw new Error(error.message);
   return (data as string[]) ?? [];
+}
+
+// ------------------------------------------------- カスタムスタンプ（ルーム固有）
+
+/** Storage のパスから公開 URL を作る。バケットが public なので署名は要らない。 */
+export function roomStampUrl(client: LayerTalkClient, path: string): string {
+  return client.storage.from(ROOM_STAMP_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+export async function fetchRoomStamps(
+  client: LayerTalkClient,
+  roomId: string,
+): Promise<RoomStamp[]> {
+  const { data, error } = await client
+    .from("room_stamps")
+    .select("*")
+    .eq("room_id", roomId)
+    .order("created_at", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+/** DB のトリガが投げる上限エラーを、観客に見せる日本語に置き換える。 */
+function roomStampInsertMessage(raw: string): string {
+  if (raw.includes("limit reached for client")) {
+    return `ひとつの端末から追加できるのは${ROOM_STAMP_MAX_PER_CLIENT}個までです`;
+  }
+  if (raw.includes("limit reached for room")) {
+    return `このルームのカスタムスタンプは${ROOM_STAMP_MAX_PER_ROOM}個で上限です`;
+  }
+  return raw;
+}
+
+export type UploadRoomStampInput = {
+  roomId: string;
+  clientId: string;
+  /** toStampPng で正規化済みの PNG */
+  blob: Blob;
+};
+
+/**
+ * 画像を Storage に上げてから room_stamps に登録する。
+ *
+ * 登録に失敗したら上げたファイルを消す。上限トリガに当たったときに、
+ * どこからも参照されないファイルが Storage に残り続けるのを防ぐため。
+ */
+export async function uploadRoomStamp(
+  client: LayerTalkClient,
+  { roomId, clientId, blob }: UploadRoomStampInput,
+): Promise<RoomStamp> {
+  const path = `${roomId}/${crypto.randomUUID()}.png`;
+
+  const { error: uploadError } = await client.storage
+    .from(ROOM_STAMP_BUCKET)
+    .upload(path, blob, {
+      contentType: "image/png",
+      // パスは uuid で不変なので本当はいくらでもキャッシュさせてよいが、消した画像が
+      // CDN に残る時間もこれで決まる（実測: 削除直後の公開URLはまだ 200 を返す）。
+      // 発表1回ぶんを賄えれば十分なので1時間で切る。
+      cacheControl: "3600",
+      upsert: false,
+    });
+
+  if (uploadError) throw new Error(uploadError.message);
+
+  const { data, error } = await client
+    .from("room_stamps")
+    .insert({ room_id: roomId, client_id: clientId, path })
+    .select()
+    .single();
+
+  if (error) {
+    await client.storage.from(ROOM_STAMP_BUCKET).remove([path]);
+    throw new Error(roomStampInsertMessage(error.message));
+  }
+
+  return data;
+}
+
+/**
+ * カスタムスタンプを消す。
+ *
+ * 行が真実（押せるかどうかも、オーバーレイに出るかどうかも行で決まる）なので行を先に消す。
+ * ファイルの削除に失敗しても UI 上はもう消えている。
+ */
+export async function deleteRoomStamp(
+  client: LayerTalkClient,
+  stamp: Pick<RoomStamp, "id" | "path">,
+): Promise<void> {
+  const { error } = await client.from("room_stamps").delete().eq("id", stamp.id);
+  if (error) throw new Error(error.message);
+
+  await client.storage.from(ROOM_STAMP_BUCKET).remove([stamp.path]);
 }

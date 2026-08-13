@@ -10,7 +10,9 @@ import {
   normalizeRoomCode,
   sortComments,
   toggleLike,
+  uploadRoomStamp,
   useComments,
+  useRoomStamps,
   useStampChannel,
   type Room,
   type SortMode,
@@ -82,6 +84,25 @@ export function RoomClient({ code }: { code: string }) {
     // 観客側は他人のスタンプを描画しないので、受信ハンドラは持たない
     ignoreSelf: true,
   });
+
+  // このルームだけで押せる画像スタンプ。誰かが追加すると全員のバーに並ぶ。
+  const { stamps, addLocal: addStampLocal } = useRoomStamps({ client: supabase, roomId });
+
+  /**
+   * 失敗したら throw して StampBar 側にトーストを出させる。
+   * 上げたファイルの後始末は uploadRoomStamp が中でやるので、ここでの巻き戻しはない。
+   */
+  const handleUploadStamp = useCallback(
+    async (blob: Blob) => {
+      if (!roomId || !clientId) return;
+
+      const created = await uploadRoomStamp(supabase, { roomId, clientId, blob });
+      // Realtime のエコーを待たずに自分のバーへ出す（useRoomStamps 側で二重にならない）
+      addStampLocal(created);
+      toast.success("スタンプを追加しました");
+    },
+    [roomId, clientId, addStampLocal],
+  );
 
   // いいね済みの復元。localStorage ではなくサーバに問い合わせる
   // （端末を変えても、キャッシュを消しても、二重にいいねできないのが正）。
@@ -246,7 +267,12 @@ export function RoomClient({ code }: { code: string }) {
         <div className="from-bg pointer-events-none h-12 bg-gradient-to-t to-transparent" />
         <div className="bg-bg pb-safe pointer-events-auto px-4">
           <div className="mx-auto flex w-full max-w-lg flex-col gap-2.5 pb-2">
-            <StampBar onSend={sendStamp} />
+            <StampBar
+              onSend={sendStamp}
+              stamps={stamps}
+              onUpload={handleUploadStamp}
+              disabled={!roomId}
+            />
             <Composer onSubmit={handleSubmit} disabled={!roomId} />
           </div>
         </div>

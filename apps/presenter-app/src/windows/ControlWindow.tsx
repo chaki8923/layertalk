@@ -1,9 +1,14 @@
 import {
   createRoom,
+  customStampKey,
+  deleteRoomStamp,
   findRoomByCode,
   normalizeRoomCode,
   ROOM_CODE_PATTERN,
+  roomStampUrl,
   useComments,
+  useRoomStamps,
+  type RoomStamp,
 } from "@layertalk/shared";
 import { motion } from "motion/react";
 import {
@@ -18,6 +23,7 @@ import {
   Sparkles,
   Square,
   Undo2,
+  X,
 } from "lucide-react";
 import { STAMP_EMOJIS } from "@layertalk/shared";
 import { useCallback, useEffect, useState } from "react";
@@ -59,6 +65,11 @@ export function ControlWindow() {
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
 
   const { comments, status } = useComments({
+    client: settings.roomId ? supabase : null,
+    roomId: settings.roomId,
+  });
+
+  const { stamps, removeLocal: removeStampLocal, addLocal: addStampLocal } = useRoomStamps({
     client: settings.roomId ? supabase : null,
     roomId: settings.roomId,
   });
@@ -177,6 +188,18 @@ export function ControlWindow() {
     const next = !settings.showJoinQr;
     update({ showJoinQr: next });
     if (next && !live) void peekOverlay(settings.monitorName, PEEK_MS);
+  };
+
+  /**
+   * カスタムスタンプを消す。先に画面から消して、失敗したら戻す。
+   * 不適切な画像を消す操作なので、通信の往復を待たせない。
+   */
+  const handleDeleteStamp = (stamp: RoomStamp) => {
+    removeStampLocal(stamp.id);
+    void deleteRoomStamp(supabase, stamp).catch(() => {
+      addStampLocal(stamp);
+      setError("スタンプを削除できませんでした");
+    });
   };
 
   const handleCopy = async () => {
@@ -506,8 +529,14 @@ export function ControlWindow() {
                   OVERLAY_DEFAULTS.stampDurationSec * 1000 + 1500,
                 );
               }
+              // カスタムがあれば、それも混ぜて実物の見え方を確かめられるようにする
+              const custom = settings.allowCustomStamps ? stamps : [];
+              const pool = [
+                ...STAMP_EMOJIS,
+                ...custom.map((stamp) => customStampKey(stamp.id)),
+              ];
               void sendTestStamp({
-                emoji: STAMP_EMOJIS[Math.floor(Math.random() * STAMP_EMOJIS.length)],
+                emoji: pool[Math.floor(Math.random() * pool.length)],
                 count: 6,
               });
             }}
@@ -520,6 +549,84 @@ export function ControlWindow() {
             スマホを持ち出さずに、その場で速さを確かめられます。
             {!live && " 開始前でも、確認のあいだだけオーバーレイが出ます。"}
           </p>
+        </section>
+
+        {/* -------------------------------------------- カスタムスタンプ */}
+        <section className="space-y-3">
+          <SectionLabel>カスタムスタンプ</SectionLabel>
+
+          <div className="border-border bg-bg-elev space-y-3 rounded-[20px] border p-4">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.allowCustomStamps}
+              onClick={() => update({ allowCustomStamps: !settings.allowCustomStamps })}
+              className={`lt-tap flex w-full items-center justify-between rounded-[14px] border px-3 py-2.5 text-left transition-colors ${
+                settings.allowCustomStamps
+                  ? "border-brand/40 bg-brand/12"
+                  : "border-border hover:bg-surface-strong"
+              }`}
+            >
+              <span className="text-[13px] font-semibold">観客が追加した画像を流す</span>
+              <span
+                aria-hidden
+                className="relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors"
+                style={{
+                  background: settings.allowCustomStamps
+                    ? "var(--lt-brand)"
+                    : "var(--lt-border-strong)",
+                }}
+              >
+                <motion.span
+                  className="absolute top-[3px] h-4 w-4 rounded-full bg-white shadow-sm"
+                  animate={{ left: settings.allowCustomStamps ? 19 : 3 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 32, mass: 0.6 }}
+                />
+              </span>
+            </button>
+
+            <p className="text-text-faint text-[11px] leading-relaxed">
+              {settings.allowCustomStamps
+                ? "観客はスタンプバーの ＋ から画像を追加できます。発表中でも即座にオフにできます。"
+                : "オフのあいだは、観客が押しても画像はスライドに出ません（絵文字は出ます）。"}
+            </p>
+
+            {!settings.roomId ? (
+              <p className="text-text-faint text-[11px]">ルームを作成すると使えます。</p>
+            ) : stamps.length === 0 ? (
+              <p className="text-text-faint border-border border-t pt-3 text-[11px] leading-relaxed">
+                まだありません。観客がスタンプバーの ＋ から追加できます。
+              </p>
+            ) : (
+              <div className="border-border space-y-2 border-t pt-3">
+                <div className="grid grid-cols-5 gap-2">
+                  {stamps.map((stamp) => (
+                    <div key={stamp.id} className="relative">
+                      <div className="border-border bg-surface-strong flex aspect-square items-center justify-center rounded-[12px] border p-1.5">
+                        <img
+                          src={roomStampUrl(supabase, stamp.path)}
+                          alt=""
+                          draggable={false}
+                          className="h-full w-full object-contain"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="このスタンプを削除"
+                        onClick={() => handleDeleteStamp(stamp)}
+                        className="lt-tap bg-bg-elev border-border text-text-muted hover:border-like hover:text-like absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border transition-colors"
+                      >
+                        <X size={11} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-text-faint text-[11px] leading-relaxed">
+                  × で消すと観客のスタンプバーからも消えます。
+                </p>
+              </div>
+            )}
+          </div>
         </section>
 
         {/* ------------------------------------------------------ オーバーレイ */}

@@ -117,6 +117,16 @@
     text-shadow: 0 2px 8px rgb(0 0 0 / 0.6);
   }
 
+  /* 横スクロールする列（スタンプバー）。バー自体が細いので、スクロールバーが
+   * 出ると押せる面積を食う。指とスワイプで足りるので隠す。 */
+  .lt-no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .lt-no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   /* タップのハイライトを消す（iOS Safari の灰色フラッシュ） */
   .lt-tap {
     -webkit-tap-highlight-color: transparent;

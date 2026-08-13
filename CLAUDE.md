@@ -99,6 +99,18 @@ Keynote / PowerPoint は**同じ Space** に高レベル窓を出すので罠 #5
   当て直すウォッチドッグ（`start_front_watchdog`）を回している。本筋は
   `NSWorkspace.activeSpaceDidChangeNotification` だが `block2` の依存追加が要るので採らなかった
 
+**10. `postgres_changes` の DELETE は old に主キーしか載せない**
+`replica identity full` にしても実測で `{"id": "…"}` だけだった（`comments` の UPDATE で
+old が要るときとは事情が違う）。つまり **DELETE の購読に `room_id=eq.…` の filter を
+付けると絶対に一致せず、イベントが一切届かない**。`useRoomStamps` は DELETE だけ
+filter 無しで購読し、手元に無い id は受け取ってから捨てている。
+
+**11. Storage の `remove()` は SELECT ポリシーが無いと黙って何もしない**
+消す前に `storage.objects` を引くので、DELETE ポリシーだけ作っても
+**エラーも返らないまま0件削除**になる（実測でファイルが残り続けた）。
+public バケットは画像の取得だけならポリシー無しで通るので気付きにくい。
+`room-stamps` には insert / delete に加えて **select** も開けてある。
+
 ## 設計上の決めごと
 
 - **コメント／スタンプの全面オーバーレイはクリックスルー常時 ON。** 切り替え UI も
@@ -127,12 +139,28 @@ Keynote / PowerPoint は**同じ Space** に高レベル窓を出すので罠 #5
 - **いいねは `toggle_comment_like` RPC 経由のみ。** anon に `comments` の UPDATE を開けると
   `content` まで書き換えられる。`comment_likes` は RLS ポリシーを一切作らず完全に閉じている
 - **スタンプは DB に保存しない。** Broadcast のみ。連打は 100ms 単位で集約してから送る
+- **カスタムスタンプはルーム単位。** 観客が誰でも画像を上げられ、そのルームでだけ押せる
+  （`room_stamps` + Storage の `room-stamps` バケット）。上限はルーム24枚／1端末5枚で、
+  RLS ではなくトリガで守る（同じ表の副問い合わせを `with check` に書くと自分の
+  SELECT ポリシーを再帰的に踏む）
+- **Broadcast には画像 URL を載せない。** 飛ばすのは `custom:<room_stamps.id>` だけで、
+  URL への解決は受信側が自分の持つ一覧で行う。URL を載せると、誰でも任意の画像を
+  スライド最前面に描画させられる。知らない id（削除済み含む）は黙って捨てる
+- **カスタムスタンプの非常ブレーキは発表者ローカルのトグル。** 認証がないので
+  「この端末は発表者だ」を DB 側で証明できず、削除は誰でも呼べる。手元で描画しない
+  `allowCustomStamps` なら DB に依存せず必ず効く
+- **アップロードは静止画のみ。** ブラウザ側で 128px 四方の PNG に正規化してから上げる
+  （会場の Wi-Fi に数MBを流させない。アニメーションGIFは対象外）
 - **audience-web はダークファースト。** 観客は暗い会場でスマホを見る
 - **日本語 Web フォントは読み込まない。** 数MBあり会場の Wi-Fi で初期表示が壊れる
 
 ## 既知の制約
 
 - 匿名アプリなので**いいねの水増しは原理的に防げない**（`client_id` は端末が自由に作れる）
+- 同じ理由で**カスタムスタンプの削除も誰でも呼べる**。`room_stamps` はこのプロジェクトで
+  唯一 DELETE ポリシーを開けている表（不適切な画像を消す操作を詰まらせないため）
+- **ルームを消してもカスタムスタンプの画像は Storage に残る。** `on delete cascade` は
+  `room_stamps` の行にしか効かない。画像を消すのは `deleteRoomStamp` の経路だけ
 - ルーム作成は anon に開いている
 - Supabase advisor は5件指摘を出すが、いずれも上記の設計を選んだ結果で意図どおり
 - 複数モニター同時表示（ミラー）は未対応。1台を選ぶ方式

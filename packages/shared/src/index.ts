@@ -1,8 +1,10 @@
 export * from "./api";
 export * from "./client";
 export * from "./constants";
+export * from "./image";
 export * from "./types";
 export * from "./useComments";
+export * from "./useRoomStamps";
 export * from "./useStampChannel";
 export type { Database, Json } from "./database.types";
 

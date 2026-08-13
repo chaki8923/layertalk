@@ -70,6 +70,38 @@ export type Database = {
           },
         ];
       };
+      room_stamps: {
+        Row: {
+          client_id: string;
+          created_at: string;
+          id: string;
+          path: string;
+          room_id: string;
+        };
+        Insert: {
+          client_id: string;
+          created_at?: string;
+          id?: string;
+          path: string;
+          room_id: string;
+        };
+        Update: {
+          client_id?: string;
+          created_at?: string;
+          id?: string;
+          path?: string;
+          room_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "room_stamps_room_id_fkey";
+            columns: ["room_id"];
+            isOneToOne: false;
+            referencedRelation: "rooms";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       rooms: {
         Row: {
           code: string;

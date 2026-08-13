@@ -9,6 +9,13 @@ export type PresenterSettings = {
   previousRoomCode: string | null;
   /** スライドの上に参加用 QR を出すか。自動表示はせず、コントロール窓のトグルだけで動かす。 */
   showJoinQr: boolean;
+  /**
+   * 観客がアップロードしたカスタムスタンプを流すか。
+   *
+   * 認証がないので「この端末は発表者だ」を DB 側で証明できず、削除は誰でも呼べる。
+   * これは DB に一切依存しない非常ブレーキ — 押されても手元で描画しないだけなので必ず効く。
+   */
+  allowCustomStamps: boolean;
   displayMode: DisplayMode;
   /** 表示先モニターの名前。null ならプライマリ。 */
   monitorName: string | null;
@@ -20,6 +27,7 @@ export const DEFAULT_SETTINGS: PresenterSettings = {
   roomTitle: null,
   previousRoomCode: null,
   showJoinQr: false,
+  allowCustomStamps: true,
   displayMode: "flow",
   monitorName: null,
 };
@@ -52,6 +60,7 @@ export function loadSettings(): PresenterSettings {
       roomTitle: parsed.roomTitle,
       previousRoomCode: parsed.previousRoomCode,
       showJoinQr: parsed.showJoinQr === true,
+      allowCustomStamps: parsed.allowCustomStamps !== false,
       displayMode: parsed.displayMode === "bubble" ? "bubble" : "flow",
       monitorName: parsed.monitorName,
     };

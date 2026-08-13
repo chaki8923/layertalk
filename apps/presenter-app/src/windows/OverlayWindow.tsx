@@ -1,4 +1,11 @@
-import { useComments, useStampChannel, type Comment } from "@layertalk/shared";
+import {
+  parseCustomStampKey,
+  roomStampUrl,
+  useComments,
+  useRoomStamps,
+  useStampChannel,
+  type Comment,
+} from "@layertalk/shared";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -106,13 +113,56 @@ export function OverlayWindow() {
     onInsert: handleInsert,
   });
 
+  /**
+   * カスタムスタンプの一覧。
+   *
+   * ここだけ active ではなく roomId で回す。発表を開始した直後の1発目が
+   * 「画像を取りに行ってから出る」ことにならないよう、開始前に温めておきたいため。
+   */
+  const { stamps: roomStamps, byId: roomStampsById } = useRoomStamps({
+    client: settings.roomId ? supabase : null,
+    roomId: settings.roomId,
+  });
+
+  // 一覧が変わったらブラウザキャッシュに載せておく。やらないと最初のバーストの
+  // 1フレーム目が間に合わず、パラパラと遅れて出てくる。
+  useEffect(() => {
+    for (const stamp of roomStamps) {
+      const image = new Image();
+      image.src = roomStampUrl(supabase, stamp.path);
+    }
+  }, [roomStamps]);
+
+  /**
+   * スタンプを1種類ぶん再生する。Broadcast とコントロール窓のテスト送信で共通。
+   *
+   * カスタムは id しか飛んでこない（URL を Broadcast に載せると、誰でも任意の画像を
+   * スライド最前面に描画させられる）。ここで自分の持つ一覧を引いて URL にする。
+   */
+  const playStamp = useCallback(
+    (key: string, count: number) => {
+      const id = parseCustomStampKey(key);
+      if (id === null) {
+        stampRef.current?.burst(key, count);
+        return;
+      }
+
+      if (!settings.allowCustomStamps) return;
+
+      const stamp = roomStampsById.get(id);
+      // 削除済み・未知の id は黙って捨てる
+      if (!stamp) return;
+
+      stampRef.current?.burstImage(roomStampUrl(supabase, stamp.path), count);
+    },
+    [settings.allowCustomStamps, roomStampsById],
+  );
+
   useStampChannel({
     client: active ? supabase : null,
     roomId: settings.roomId,
     clientId,
-    onStamp: (payload) => {
-      stampRef.current?.burst(payload.emoji, payload.count);
-    },
+    onStamp: (payload) => playStamp(payload.emoji, payload.count),
   });
 
   // 表示モードを切り替えたら、いま流れているものは片付ける
@@ -131,13 +181,11 @@ export function OverlayWindow() {
 
   // コントロール窓の「テスト送信」からスタンプを受け取る
   useEffect(() => {
-    const unlisten = onTestStamp(({ emoji, count }) => {
-      stampRef.current?.burst(emoji, count);
-    });
+    const unlisten = onTestStamp(({ emoji, count }) => playStamp(emoji, count));
     return () => {
       void unlisten.then((off) => off());
     };
-  }, []);
+  }, [playStamp]);
 
   // Supabase を介さず、現在選択中のコメント表示スタイルを確認する。
   useEffect(() => {
