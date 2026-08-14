@@ -1,5 +1,5 @@
 import { emit, listen } from "@tauri-apps/api/event";
-import type { Comment, DisplayMode } from "@layertalk/shared";
+import type { Comment, DisplayMode, Locale } from "@layertalk/shared";
 
 export type PresenterSettings = {
   roomId: string | null;
@@ -19,6 +19,13 @@ export type PresenterSettings = {
   displayMode: DisplayMode;
   /** 表示先モニターの名前。null ならプライマリ。 */
   monitorName: string | null;
+  /**
+   * 発表者用アプリの表示言語。ルームにも保存され、観客用 Web もこれに従う。
+   *
+   * 変更は `setRoomLanguage` で DB にも反映する。ここは端末側の記憶で、
+   * 次の起動でも最後に選んだ言語で立ち上がる。
+   */
+  language: Locale;
 };
 
 export const DEFAULT_SETTINGS: PresenterSettings = {
@@ -30,6 +37,7 @@ export const DEFAULT_SETTINGS: PresenterSettings = {
   allowCustomStamps: true,
   displayMode: "flow",
   monitorName: null,
+  language: "ja",
 };
 
 /** シンプルな固定表示。コントロール窓からは変更しない。 */
@@ -63,6 +71,7 @@ export function loadSettings(): PresenterSettings {
       allowCustomStamps: parsed.allowCustomStamps !== false,
       displayMode: parsed.displayMode === "bubble" ? "bubble" : "flow",
       monitorName: parsed.monitorName,
+      language: parsed.language === "en" ? "en" : "ja",
     };
   } catch {
     return DEFAULT_SETTINGS;

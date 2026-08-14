@@ -1,4 +1,5 @@
 import { ROOM_STAMP_SIZE } from "./constants";
+import { LayerTalkError } from "./errors";
 
 /**
  * 任意の画像ファイルをスタンプ用の PNG にする。ブラウザ専用。
@@ -16,7 +17,7 @@ export async function toStampPng(file: File): Promise<Blob> {
   } catch {
     // iOS の HEIC は Safari が JPEG に変換して渡すことが多いが、
     // そのまま渡ってきた場合や壊れたファイルはここで落ちる。
-    throw new Error("この画像は読み込めませんでした。別の画像を選んでください");
+    throw new LayerTalkError("image_unreadable");
   }
 
   try {
@@ -25,7 +26,7 @@ export async function toStampPng(file: File): Promise<Blob> {
     canvas.height = ROOM_STAMP_SIZE;
 
     const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("この端末では画像を変換できませんでした");
+    if (!ctx) throw new LayerTalkError("image_unsupported_device");
 
     ctx.clearRect(0, 0, ROOM_STAMP_SIZE, ROOM_STAMP_SIZE);
 
@@ -37,7 +38,7 @@ export async function toStampPng(file: File): Promise<Blob> {
     const blob = await new Promise<Blob | null>((resolve) => {
       canvas.toBlob(resolve, "image/png");
     });
-    if (!blob) throw new Error("画像の変換に失敗しました");
+    if (!blob) throw new LayerTalkError("image_convert_failed");
 
     return blob;
   } finally {

@@ -1,11 +1,7 @@
 import type { LayerTalkClient } from "./client";
-import {
-  COMMENT_MAX_LENGTH,
-  ROOM_STAMP_BUCKET,
-  ROOM_STAMP_MAX_PER_CLIENT,
-  ROOM_STAMP_MAX_PER_ROOM,
-  normalizeRoomCode,
-} from "./constants";
+import { COMMENT_MAX_LENGTH, ROOM_STAMP_BUCKET, normalizeRoomCode } from "./constants";
+import { LayerTalkError } from "./errors";
+import type { Locale } from "./i18n";
 import type { Comment, Room, RoomStamp } from "./types";
 
 export async function findRoomByCode(
@@ -18,19 +14,48 @@ export async function findRoomByCode(
     .eq("code", normalizeRoomCode(code))
     .maybeSingle();
 
-  if (error) throw new Error(error.message);
+  if (error) throw new LayerTalkError("room_fetch_failed", error.message);
   return data;
 }
 
-export async function createRoom(client: LayerTalkClient, title?: string): Promise<Room> {
+export type CreateRoomInput = {
+  title?: string;
+  /** 発表者が選んでいる表示言語。観客用 Web はこれに従う。 */
+  language?: Locale;
+};
+
+export async function createRoom(
+  client: LayerTalkClient,
+  { title, language = "ja" }: CreateRoomInput = {},
+): Promise<Room> {
   const { data, error } = await client
     .from("rooms")
-    .insert({ title: title?.trim() || null })
+    .insert({ title: title?.trim() || null, language })
     .select()
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) throw new LayerTalkError("room_create_failed", error.message);
   return data;
+}
+
+/**
+ * ルームの表示言語を差し替える。
+ *
+ * `rooms` には UPDATE ポリシーを作らない方針（ルームを閉じる概念を持たないため）なので、
+ * 書き換えてよい列を関数側で固定した security definer の RPC 経由で行う。
+ * `toggle_comment_like` と同じ考え方。
+ */
+export async function setRoomLanguage(
+  client: LayerTalkClient,
+  roomId: string,
+  language: Locale,
+): Promise<void> {
+  const { error } = await client.rpc("set_room_language", {
+    p_room_id: roomId,
+    p_language: language,
+  });
+
+  if (error) throw new LayerTalkError("room_language_failed", error.message);
 }
 
 /**
@@ -41,9 +66,9 @@ export async function createRoom(client: LayerTalkClient, title?: string): Promi
  */
 export function buildComment(roomId: string, content: string, isQuestion = false): Comment {
   const trimmed = content.trim();
-  if (!trimmed) throw new Error("コメントが空です");
+  if (!trimmed) throw new LayerTalkError("comment_empty");
   if (trimmed.length > COMMENT_MAX_LENGTH) {
-    throw new Error(`コメントは${COMMENT_MAX_LENGTH}文字までです`);
+    throw new LayerTalkError("comment_too_long");
   }
 
   return {
@@ -67,7 +92,7 @@ export async function insertComment(
     is_question: comment.is_question,
   });
 
-  if (error) throw new Error(error.message);
+  if (error) throw new LayerTalkError("comment_insert_failed", error.message);
 }
 
 /** いいねのトグル。戻り値は更新後の likes_count。 */
@@ -81,7 +106,7 @@ export async function toggleLike(
     p_client_id: clientId,
   });
 
-  if (error) throw new Error(error.message);
+  if (error) throw new LayerTalkError("like_failed", error.message);
   return data as number;
 }
 
@@ -96,7 +121,7 @@ export async function fetchLikedIds(
     p_client_id: clientId,
   });
 
-  if (error) throw new Error(error.message);
+  if (error) throw new LayerTalkError("liked_ids_failed", error.message);
   return (data as string[]) ?? [];
 }
 
@@ -117,19 +142,19 @@ export async function fetchRoomStamps(
     .eq("room_id", roomId)
     .order("created_at", { ascending: true });
 
-  if (error) throw new Error(error.message);
+  if (error) throw new LayerTalkError("stamp_fetch_failed", error.message);
   return data ?? [];
 }
 
-/** DB のトリガが投げる上限エラーを、観客に見せる日本語に置き換える。 */
-function roomStampInsertMessage(raw: string): string {
+/** DB のトリガが投げる上限エラーを、観客に見せられるコードに置き換える。 */
+function roomStampInsertError(raw: string): LayerTalkError {
   if (raw.includes("limit reached for client")) {
-    return `ひとつの端末から追加できるのは${ROOM_STAMP_MAX_PER_CLIENT}個までです`;
+    return new LayerTalkError("stamp_limit_client", raw);
   }
   if (raw.includes("limit reached for room")) {
-    return `このルームのカスタムスタンプは${ROOM_STAMP_MAX_PER_ROOM}個で上限です`;
+    return new LayerTalkError("stamp_limit_room", raw);
   }
-  return raw;
+  return new LayerTalkError("stamp_upload_failed", raw);
 }
 
 export type UploadRoomStampInput = {
@@ -162,7 +187,7 @@ export async function uploadRoomStamp(
       upsert: false,
     });
 
-  if (uploadError) throw new Error(uploadError.message);
+  if (uploadError) throw new LayerTalkError("stamp_upload_failed", uploadError.message);
 
   const { data, error } = await client
     .from("room_stamps")
@@ -172,7 +197,7 @@ export async function uploadRoomStamp(
 
   if (error) {
     await client.storage.from(ROOM_STAMP_BUCKET).remove([path]);
-    throw new Error(roomStampInsertMessage(error.message));
+    throw roomStampInsertError(error.message);
   }
 
   return data;
@@ -189,7 +214,7 @@ export async function deleteRoomStamp(
   stamp: Pick<RoomStamp, "id" | "path">,
 ): Promise<void> {
   const { error } = await client.from("room_stamps").delete().eq("id", stamp.id);
-  if (error) throw new Error(error.message);
+  if (error) throw new LayerTalkError("stamp_delete_failed", error.message);
 
   await client.storage.from(ROOM_STAMP_BUCKET).remove([stamp.path]);
 }

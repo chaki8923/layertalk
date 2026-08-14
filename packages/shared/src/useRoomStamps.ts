@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchRoomStamps } from "./api";
 import type { LayerTalkClient } from "./client";
 import { roomStampChannelName } from "./constants";
+import { LayerTalkError } from "./errors";
 import type { RoomStamp } from "./types";
 
 const oldestFirst = (a: RoomStamp, b: RoomStamp) => a.created_at.localeCompare(b.created_at);
@@ -23,7 +24,8 @@ export type UseRoomStampsResult = {
   /** Broadcast で飛んできた id から実体を引くための索引 */
   byId: Map<string, RoomStamp>;
   loading: boolean;
-  error: string | null;
+  /** 表示側で `resolveErrorMessage(error, locale)` に通す。 */
+  error: Error | null;
   /** 楽観的追加・ロールバック用 */
   addLocal: (stamp: RoomStamp) => void;
   removeLocal: (id: string) => void;
@@ -38,7 +40,7 @@ export type UseRoomStampsResult = {
 export function useRoomStamps({ client, roomId }: UseRoomStampsOptions): UseRoomStampsResult {
   const [stamps, setStamps] = useState<RoomStamp[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
 
   /**
    * 取り込み済みの id と、消えた id。
@@ -102,7 +104,9 @@ export function useRoomStamps({ client, roomId }: UseRoomStampsOptions): UseRoom
         setError(null);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "スタンプの取得に失敗しました");
+          setError(
+            err instanceof Error ? err : new LayerTalkError("stamp_fetch_failed", String(err)),
+          );
         }
       } finally {
         if (!cancelled) setLoading(false);

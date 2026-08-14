@@ -39,6 +39,34 @@ struct SessionState {
     monitor: Mutex<Option<String>>,
 }
 
+/// トレイメニューの項目ハンドル。
+///
+/// トレイは起動時に一度だけ組み立てられ、あとから作り直す口が無い。表示言語を
+/// 切り替えたときにラベルだけ差し替えられるよう、`MenuItem` を持っておく。
+struct TrayMenu {
+    show_control: MenuItem<tauri::Wry>,
+    stop: MenuItem<tauri::Wry>,
+    quit: MenuItem<tauri::Wry>,
+}
+
+/// トレイの 3 項目のラベル。フロントの文言カタログはここへ届かないので、
+/// この 3 本だけ Rust 側にも持つ。
+fn tray_labels(language: &str) -> (&'static str, &'static str, &'static str) {
+    if language == "en" {
+        (
+            "Show Controls  ⇧⌘L",
+            "Stop presenting",
+            "Quit LayerTalk",
+        )
+    } else {
+        (
+            "コントロールを表示  ⇧⌘L",
+            "プレゼンを終了",
+            "LayerTalk を終了",
+        )
+    }
+}
+
 /// 前面化を当て直す間隔。Space の切り替えに追従するためのもので、発表中だけ回る。
 const FRONT_WATCHDOG_INTERVAL: Duration = Duration::from_millis(1000);
 
@@ -1028,24 +1056,53 @@ fn show_control(app: AppHandle) {
     focus_control_window(&app);
 }
 
+/// トレイのラベルを表示言語に合わせて書き換える。
+///
+/// 呼ぶのはコントロール窓だけ（3 つの窓から呼ぶと同じ更新が競合する）。
+/// Rust 側は言語を永続化しないので、起動のたびにフロントから渡し直してもらう。
+#[tauri::command]
+fn set_app_language(app: AppHandle, language: String) {
+    let (show_control, stop, quit) = tray_labels(&language);
+    let handle = app.clone();
+
+    // NSMenuItem の変更はメインスレッドから行う必要がある。
+    // tauri のコマンドはワーカースレッドで走るので、ここで渡し直す。
+    if let Err(err) = app.run_on_main_thread(move || {
+        let Some(menu) = handle.try_state::<TrayMenu>() else {
+            return;
+        };
+        let _ = menu.show_control.set_text(show_control);
+        let _ = menu.stop.set_text(stop);
+        let _ = menu.quit.set_text(quit);
+    }) {
+        eprintln!("[layertalk] トレイのラベルを更新できませんでした: {err}");
+    }
+}
+
 // -------------------------------------------------------------------- tray
 
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
-    let show_control_item = MenuItem::with_id(
-        app,
-        "show_control",
-        "コントロールを表示  ⇧⌘L",
-        true,
-        None::<&str>,
-    )?;
-    let stop_item = MenuItem::with_id(app, "stop", "プレゼンを終了", true, None::<&str>)?;
+    // 起動時は既定の日本語。フロントが localStorage を読んだあと
+    // set_app_language で正しい言語に直す。
+    let (show_control, stop, quit) = tray_labels("ja");
+
+    let show_control_item = MenuItem::with_id(app, "show_control", show_control, true, None::<&str>)?;
+    let stop_item = MenuItem::with_id(app, "stop", stop, true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
-    let quit_item = MenuItem::with_id(app, "quit", "LayerTalk を終了", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", quit, true, None::<&str>)?;
 
     let menu = Menu::with_items(
         app,
         &[&show_control_item, &stop_item, &separator, &quit_item],
     )?;
+
+    // ラベルを後から差し替えるためにハンドルを保持する。
+    // メニュー項目の判別は event.id で行っているので、文字を変えても動作は変わらない。
+    app.manage(TrayMenu {
+        show_control: show_control_item.clone(),
+        stop: stop_item.clone(),
+        quit: quit_item.clone(),
+    });
 
     let mut builder = TrayIconBuilder::with_id("layertalk-tray")
         .menu(&menu)
@@ -1095,6 +1152,7 @@ pub fn run() {
             refit_overlay,
             set_question_panel_expanded,
             show_control,
+            set_app_language,
         ])
         .setup(|app| {
             // Dock アイコンを出さず、⌘-Tab にも現れず、オーバーレイが

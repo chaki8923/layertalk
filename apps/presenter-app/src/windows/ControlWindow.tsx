@@ -3,11 +3,15 @@ import {
   customStampKey,
   deleteRoomStamp,
   findRoomByCode,
+  LOCALES,
   normalizeRoomCode,
+  resolveErrorMessage,
   ROOM_CODE_PATTERN,
   roomStampUrl,
+  setRoomLanguage,
   useComments,
   useRoomStamps,
+  type Locale,
   type RoomStamp,
 } from "@layertalk/shared";
 import { motion } from "motion/react";
@@ -29,6 +33,7 @@ import { STAMP_EMOJIS } from "@layertalk/shared";
 import { useCallback, useEffect, useState } from "react";
 
 import { JoinQrCard } from "../components/JoinQrCard";
+import { useDocumentLang, useMessages, type Messages } from "../i18n";
 import { audienceUrl as buildAudienceUrl } from "../lib/audience";
 import {
   loadSettings,
@@ -45,6 +50,7 @@ import {
   onPresentationStateChanged,
   peekOverlay,
   refitOverlay,
+  setAppLanguage,
   setOverlayMonitor,
   startCurrentWindowDragging,
   startPresentation,
@@ -64,6 +70,9 @@ export function ControlWindow() {
   const [live, setLive] = useState(false);
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
 
+  const t = useMessages(settings.language);
+  useDocumentLang(settings.language);
+
   const { comments, status } = useComments({
     client: settings.roomId ? supabase : null,
     roomId: settings.roomId,
@@ -81,6 +90,14 @@ export function ControlWindow() {
     return () => {
       void unlisten.then((off) => off());
     };
+  }, []);
+
+  // トレイのラベルは Rust 側が起動時に組み立てる。Rust は言語を永続化しないので、
+  // localStorage に残っている選択を起動のたびに渡し直す。
+  useEffect(() => {
+    void setAppLanguage(settings.language);
+    // 変更時は handleChangeLanguage が呼ぶので、ここは起動時の 1 回だけでよい。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const reloadMonitors = useCallback(() => {
@@ -121,10 +138,10 @@ export function ControlWindow() {
     setBusy(true);
     setError(null);
     try {
-      const room = await createRoom(supabase);
+      const room = await createRoom(supabase, { language: settings.language });
       update({ roomId: room.id, roomCode: room.code, roomTitle: room.title });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "ルームの作成に失敗しました");
+      setError(resolveErrorMessage(err, settings.language));
     } finally {
       setBusy(false);
     }
@@ -137,7 +154,7 @@ export function ControlWindow() {
   const handleJoin = async (codeArg?: string) => {
     const code = normalizeRoomCode(codeArg ?? joinCode);
     if (!ROOM_CODE_PATTERN.test(code)) {
-      setError("ルームコードは6文字です");
+      setError(t.room.codeLength);
       return;
     }
 
@@ -146,13 +163,20 @@ export function ControlWindow() {
     try {
       const room = await findRoomByCode(supabase, code);
       if (!room) {
-        setError("そのコードのルームは見つかりませんでした");
+        setError(t.room.notFound);
         return;
       }
       update({ roomId: room.id, roomCode: room.code, roomTitle: room.title });
       setJoinCode("");
+      // 発表者の設定を正とする。ルーム側の値を読み込むと、ルームを繋ぎ直すたびに
+      // トグルが独りでに動いたように見えてしまう。
+      if (room.language !== settings.language) {
+        void setRoomLanguage(supabase, room.id, settings.language).catch(() => {
+          // 観客側の言語が揃わないだけなので、発表の妨げにはしない。
+        });
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "ルームの取得に失敗しました");
+      setError(resolveErrorMessage(err, settings.language));
     } finally {
       setBusy(false);
     }
@@ -196,9 +220,9 @@ export function ControlWindow() {
    */
   const handleDeleteStamp = (stamp: RoomStamp) => {
     removeStampLocal(stamp.id);
-    void deleteRoomStamp(supabase, stamp).catch(() => {
+    void deleteRoomStamp(supabase, stamp).catch((err) => {
       addStampLocal(stamp);
-      setError("スタンプを削除できませんでした");
+      setError(resolveErrorMessage(err, settings.language));
     });
   };
 
@@ -207,6 +231,24 @@ export function ControlWindow() {
     await navigator.clipboard.writeText(audienceUrl);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
+  };
+
+  /**
+   * 表示言語を変える。手元の 3 つの窓・トレイ・ルームの 3 方向へ配る。
+   *
+   * 手元は即座に切り替え、DB とトレイは追いかけさせる。ルームへの保存に失敗しても
+   * 発表者の画面は英語のまま使えるべきなので、エラーは出すだけで巻き戻さない。
+   */
+  const handleChangeLanguage = (language: Locale) => {
+    if (language === settings.language) return;
+    update({ language });
+    void setAppLanguage(language);
+    if (settings.roomId) {
+      void setRoomLanguage(supabase, settings.roomId, language).catch((err) => {
+        // 切り替えた後の言語で見せる。手元はもう切り替わっているので混ざらない。
+        setError(resolveErrorMessage(err, language));
+      });
+    }
   };
 
   const handleEmptyAreaMouseDown = (event: React.MouseEvent<HTMLElement>) => {
@@ -223,11 +265,16 @@ export function ControlWindow() {
         onMouseDown={(event) => {
           if (event.button === 0) void startCurrentWindowDragging();
         }}
-        className="border-border flex h-11 shrink-0 items-center justify-center border-b"
+        className="border-border relative flex h-11 shrink-0 items-center justify-center border-b"
       >
         <span className="text-text-muted pointer-events-none text-[13px] font-semibold">
           LayerTalk
         </span>
+        <LanguageToggle
+          label={t.header.language}
+          value={settings.language}
+          onChange={handleChangeLanguage}
+        />
       </div>
 
       <div
@@ -249,27 +296,27 @@ export function ControlWindow() {
             }`}
           >
             {live ? <Square size={16} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
-            {live ? "プレゼンを終了" : "プレゼンを開始"}
+            {live ? t.live.stop : t.live.start}
           </motion.button>
 
           <p className="text-text-faint text-center text-[11px] leading-relaxed">
             {!settings.roomId
-              ? "先にルームを作成してください"
+              ? t.live.needsRoom
               : live
-                ? `${settings.monitorName ?? "主ディスプレイ"} に表示中。開始後に届いたコメントだけが流れます。`
-                : "開始するまでオーバーレイはどこにも表示されません。"}
+                ? t.live.showingOn(settings.monitorName ?? t.monitor.primary)
+                : t.live.hidden}
           </p>
         </section>
 
         {/* ---------------------------------------------------------- ルーム */}
         <section className="space-y-3">
-          <SectionLabel>ルーム</SectionLabel>
+          <SectionLabel>{t.room.section}</SectionLabel>
 
           {settings.roomCode ? (
             <div className="border-border bg-bg-elev space-y-3 rounded-[20px] border p-4">
               <div>
                 <div className="text-text-faint text-[11px] font-semibold tracking-wider">
-                  参加コード
+                  {t.room.joinCode}
                 </div>
                 <div className="lt-num mt-1 text-[34px] leading-none font-bold tracking-[0.14em]">
                   {settings.roomCode}
@@ -284,12 +331,12 @@ export function ControlWindow() {
                 {copied ? (
                   <>
                     <Check size={15} className="text-online" />
-                    コピーしました
+                    {t.room.copied}
                   </>
                 ) : (
                   <>
                     <Copy size={15} />
-                    観客用URLをコピー
+                    {t.room.copyUrl}
                   </>
                 )}
               </button>
@@ -299,7 +346,12 @@ export function ControlWindow() {
               {audienceUrl && (
                 <div className="border-border space-y-3 border-t pt-3">
                   <div className="flex justify-center">
-                    <JoinQrCard url={audienceUrl} code={settings.roomCode} size={132} />
+                    <JoinQrCard
+                      url={audienceUrl}
+                      code={settings.roomCode}
+                      size={132}
+                      label={t.qr.scan}
+                    />
                   </div>
 
                   <button
@@ -313,7 +365,7 @@ export function ControlWindow() {
                         : "border-border hover:bg-surface-strong"
                     }`}
                   >
-                    <span className="text-[13px] font-semibold">スライドに参加QRを表示</span>
+                    <span className="text-[13px] font-semibold">{t.room.showQr}</span>
                     <span
                       aria-hidden
                       className="relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors"
@@ -332,17 +384,15 @@ export function ControlWindow() {
                   </button>
 
                   <p className="text-text-faint text-[11px] leading-relaxed">
-                    {settings.showJoinQr
-                      ? "発表中はスライド左下に出ます。"
-                      : "オンにすると発表中もスライドの左下に QR を重ねます。"}
+                    {settings.showJoinQr ? t.room.qrOn : t.room.qrOff}
                   </p>
                 </div>
               )}
 
               <div className="border-border flex items-center justify-between border-t pt-3">
-                <StatusPill status={status} />
+                <StatusPill status={status} labels={t.status} />
                 <span className="text-text-muted lt-num text-[12px]">
-                  コメント {comments.length} 件
+                  {t.room.commentCount(comments.length)}
                 </span>
               </div>
 
@@ -352,7 +402,7 @@ export function ControlWindow() {
                 {confirmSwitch && !live ? (
                   <div className="space-y-2">
                     <p className="text-text-muted text-[12px] leading-relaxed">
-                      切り替えると参加コードが変わります。このルームはコードで再開できます。
+                      {t.room.switchWarning}
                     </p>
                     <div className="flex items-center gap-2">
                       <button
@@ -360,14 +410,14 @@ export function ControlWindow() {
                         onClick={() => setConfirmSwitch(false)}
                         className="lt-tap border-border hover:bg-surface-strong flex-1 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors"
                       >
-                        やめる
+                        {t.room.cancel}
                       </button>
                       <button
                         type="button"
                         onClick={handleSwitchRoom}
                         className="lt-tap flex-1 rounded-[14px] bg-[var(--lt-like)] px-3 py-2.5 text-[13px] font-semibold text-white transition-transform active:scale-[0.97]"
                       >
-                        切り替える
+                        {t.room.switchConfirm}
                       </button>
                     </div>
                   </div>
@@ -380,11 +430,11 @@ export function ControlWindow() {
                       className="lt-tap border-border hover:bg-surface-strong flex w-full items-center justify-center gap-2 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors disabled:opacity-40"
                     >
                       <Repeat size={15} />
-                      ルームを切り替える
+                      {t.room.switch}
                     </button>
                     {live && (
                       <p className="text-text-faint mt-2 text-[11px] leading-relaxed">
-                        発表中は切り替えられません。先に「プレゼンを終了」してください。
+                        {t.room.switchBlocked(t.live.stop)}
                       </p>
                     )}
                   </>
@@ -400,7 +450,7 @@ export function ControlWindow() {
                 className="lt-tap flex w-full items-center justify-center gap-2 rounded-[14px] bg-[linear-gradient(135deg,#6b8aff,#b47cff)] px-3 py-3 text-[14px] font-semibold text-white shadow-[var(--lt-shadow-glow)] transition-transform active:scale-[0.97] disabled:opacity-60"
               >
                 {busy && <Loader2 size={15} className="animate-spin" />}
-                新しいルームを作成
+                {t.room.create}
               </button>
 
               <div className="flex items-center gap-2">
@@ -408,7 +458,7 @@ export function ControlWindow() {
                   value={joinCode}
                   onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
                   onKeyDown={(event) => event.key === "Enter" && handleJoin()}
-                  placeholder="既存コードで再開"
+                  placeholder={t.room.joinPlaceholder}
                   maxLength={6}
                   className="border-border focus:border-border-strong lt-num placeholder:text-text-faint min-w-0 flex-1 rounded-[14px] border bg-transparent px-3 py-2.5 text-[14px] tracking-[0.12em] outline-none"
                 />
@@ -418,7 +468,7 @@ export function ControlWindow() {
                   disabled={busy || joinCode.length < 6}
                   className="lt-tap border-border hover:bg-surface-strong shrink-0 rounded-[14px] border px-4 py-2.5 text-[13px] font-semibold disabled:opacity-40"
                 >
-                  接続
+                  {t.room.join}
                 </button>
               </div>
 
@@ -430,9 +480,9 @@ export function ControlWindow() {
                   className="lt-tap text-text-muted hover:text-text flex w-full items-center justify-center gap-1.5 text-[12px] font-medium transition-colors disabled:opacity-40"
                 >
                   <Undo2 size={13} />
-                  直前のルーム
+                  {t.room.backToPrevious.before}
                   <span className="lt-num tracking-[0.12em]">{settings.previousRoomCode}</span>
-                  に戻る
+                  {t.room.backToPrevious.after}
                 </button>
               )}
             </div>
@@ -443,12 +493,12 @@ export function ControlWindow() {
 
         {/* ------------------------------------------------------ 表示モニター */}
         <section className="space-y-3">
-          <SectionLabel>表示モニター</SectionLabel>
+          <SectionLabel>{t.monitor.section}</SectionLabel>
 
           <div className="border-border bg-bg-elev overflow-hidden rounded-[16px] border">
             <MonitorRow
-              label="主ディスプレイに追従"
-              sub="接続構成が変わっても自動でメイン画面へ"
+              label={t.monitor.followPrimary}
+              sub={t.monitor.followPrimarySub}
               selected={settings.monitorName === null}
               onSelect={() => handlePickMonitor(null)}
             />
@@ -456,7 +506,7 @@ export function ControlWindow() {
               <MonitorRow
                 key={monitor.name}
                 label={monitor.name}
-                sub={`${monitor.width}×${monitor.height}${monitor.is_primary ? " ・ 主ディスプレイ" : ""}`}
+                sub={`${monitor.width}×${monitor.height}${monitor.is_primary ? t.monitor.primarySuffix : ""}`}
                 selected={settings.monitorName === monitor.name}
                 onSelect={() => handlePickMonitor(monitor.name)}
               />
@@ -464,14 +514,14 @@ export function ControlWindow() {
           </div>
 
           <p className="text-text-faint text-[11px] leading-relaxed">
-            選ぶとその画面に確認用の枠が数秒表示されます。
-            {monitors.length <= 1 && " 現在つながっているディスプレイは1台です。"}
+            {t.monitor.hint}
+            {monitors.length <= 1 && t.monitor.hintSingle}
           </p>
         </section>
 
         {/* ------------------------------------------------------ 表示スタイル */}
         <section className="space-y-3">
-          <SectionLabel>表示スタイル</SectionLabel>
+          <SectionLabel>{t.display.section}</SectionLabel>
 
           <div className="border-border bg-bg-elev relative grid grid-cols-2 gap-1 rounded-[16px] border p-1">
             {(["flow", "bubble"] as const).map((mode) => {
@@ -491,7 +541,7 @@ export function ControlWindow() {
                     />
                   )}
                   <span className={`relative ${active ? "text-white" : "text-text-muted"}`}>
-                    {mode === "flow" ? "横流れ" : "フキダシ"}
+                    {mode === "flow" ? t.display.flow : t.display.bubble}
                   </span>
                 </button>
               );
@@ -506,18 +556,18 @@ export function ControlWindow() {
                   ? OVERLAY_DEFAULTS.bubbleDurationSec * 1000 + 1200
                   : OVERLAY_DEFAULTS.flowDurationSec * 1000 + 2200;
               if (!live) void peekOverlay(settings.monitorName, previewMs);
-              void sendTestComment("コメントの表示テストです");
+              void sendTestComment(t.display.testText);
             }}
             className="lt-tap border-border hover:bg-surface-strong flex w-full items-center justify-center gap-2 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors"
           >
             <MessageSquareText size={15} />
-            コメントをテスト表示
+            {t.display.test}
           </button>
         </section>
 
         {/* ---------------------------------------------------------- スタンプ */}
         <section className="space-y-3">
-          <SectionLabel>スタンプ</SectionLabel>
+          <SectionLabel>{t.stamp.section}</SectionLabel>
 
           <button
             type="button"
@@ -543,17 +593,17 @@ export function ControlWindow() {
             className="lt-tap border-border hover:bg-surface-strong flex w-full items-center justify-center gap-2 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors"
           >
             <Sparkles size={15} />
-            スタンプをテスト送信
+            {t.stamp.test}
           </button>
           <p className="text-text-faint text-[11px] leading-relaxed">
-            スマホを持ち出さずに、その場で速さを確かめられます。
-            {!live && " 開始前でも、確認のあいだだけオーバーレイが出ます。"}
+            {t.stamp.hint}
+            {!live && t.stamp.hintPeek}
           </p>
         </section>
 
         {/* -------------------------------------------- カスタムスタンプ */}
         <section className="space-y-3">
-          <SectionLabel>カスタムスタンプ</SectionLabel>
+          <SectionLabel>{t.customStamp.section}</SectionLabel>
 
           <div className="border-border bg-bg-elev space-y-3 rounded-[20px] border p-4">
             <button
@@ -567,7 +617,7 @@ export function ControlWindow() {
                   : "border-border hover:bg-surface-strong"
               }`}
             >
-              <span className="text-[13px] font-semibold">観客が追加した画像を流す</span>
+              <span className="text-[13px] font-semibold">{t.customStamp.allow}</span>
               <span
                 aria-hidden
                 className="relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors"
@@ -586,16 +636,14 @@ export function ControlWindow() {
             </button>
 
             <p className="text-text-faint text-[11px] leading-relaxed">
-              {settings.allowCustomStamps
-                ? "観客はスタンプバーの ＋ から画像を追加できます。発表中でも即座にオフにできます。"
-                : "オフのあいだは、観客が押しても画像はスライドに出ません（絵文字は出ます）。"}
+              {settings.allowCustomStamps ? t.customStamp.allowOn : t.customStamp.allowOff}
             </p>
 
             {!settings.roomId ? (
-              <p className="text-text-faint text-[11px]">ルームを作成すると使えます。</p>
+              <p className="text-text-faint text-[11px]">{t.customStamp.needsRoom}</p>
             ) : stamps.length === 0 ? (
               <p className="text-text-faint border-border border-t pt-3 text-[11px] leading-relaxed">
-                まだありません。観客がスタンプバーの ＋ から追加できます。
+                {t.customStamp.empty}
               </p>
             ) : (
               <div className="border-border space-y-2 border-t pt-3">
@@ -612,7 +660,7 @@ export function ControlWindow() {
                       </div>
                       <button
                         type="button"
-                        aria-label="このスタンプを削除"
+                        aria-label={t.customStamp.delete}
                         onClick={() => handleDeleteStamp(stamp)}
                         className="lt-tap bg-bg-elev border-border text-text-muted hover:border-like hover:text-like absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border transition-colors"
                       >
@@ -622,7 +670,7 @@ export function ControlWindow() {
                   ))}
                 </div>
                 <p className="text-text-faint text-[11px] leading-relaxed">
-                  × で消すと観客のスタンプバーからも消えます。
+                  {t.customStamp.deleteHint}
                 </p>
               </div>
             )}
@@ -631,15 +679,14 @@ export function ControlWindow() {
 
         {/* ------------------------------------------------------ オーバーレイ */}
         <section className="space-y-3">
-          <SectionLabel>オーバーレイ</SectionLabel>
+          <SectionLabel>{t.overlay.section}</SectionLabel>
 
           <div className="border-border bg-bg-elev flex items-start gap-2 rounded-[16px] border px-4 py-3">
             <MousePointerClick size={14} className="text-online mt-0.5 shrink-0" />
             <div>
-              <p className="text-[13px] font-medium">クリックスルー 有効</p>
+              <p className="text-[13px] font-medium">{t.overlay.clickThrough}</p>
               <p className="text-text-faint mt-0.5 text-[11px] leading-relaxed">
-                コメントとスタンプはマウス操作を受け取りません。右端の質問パネルだけを
-                展開・折りたたみできます。
+                {t.overlay.clickThroughHint}
               </p>
             </div>
           </div>
@@ -653,10 +700,10 @@ export function ControlWindow() {
             className="lt-tap border-border hover:bg-surface-strong flex w-full items-center justify-center gap-2 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors"
           >
             <Monitor size={15} />
-            画面サイズに合わせ直す
+            {t.overlay.refit}
           </button>
           <p className="text-text-faint text-[11px] leading-relaxed">
-            外部ディスプレイを繋いだ後や解像度を変えた後に押してください。
+            {t.overlay.refitHint}
           </p>
         </section>
       </div>
@@ -665,6 +712,61 @@ export function ControlWindow() {
 }
 
 // ------------------------------------------------------------------ 部品
+
+/** 各言語は**その言語自身の名前**で出す。ここだけは翻訳しない。 */
+const LOCALE_NAMES: Record<Locale, string> = { ja: "日本語", en: "English" };
+const LOCALE_SHORT: Record<Locale, string> = { ja: "JA", en: "EN" };
+
+type LanguageToggleProps = {
+  label: string;
+  value: Locale;
+  onChange: (locale: Locale) => void;
+};
+
+/**
+ * タイトルバー右端の JA/EN トグル。
+ *
+ * セクションの中ではなくタイトルバーに置いてあるのは、本文がスクロールしても
+ * 常に見えている場所がここだけだから（発表の直前に一発で切り替えたい）。
+ * 親はドラッグ領域なので、`onMouseDown` を止めないと押すたびに窓が動く。
+ */
+function LanguageToggle({ label, value, onChange }: LanguageToggleProps) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      onMouseDown={(event) => event.stopPropagation()}
+      className="border-border bg-bg-elev absolute right-2 flex gap-0.5 rounded-full border p-0.5"
+    >
+      {LOCALES.map((locale) => {
+        const active = value === locale;
+        return (
+          <button
+            key={locale}
+            type="button"
+            aria-label={LOCALE_NAMES[locale]}
+            aria-pressed={active}
+            onClick={() => onChange(locale)}
+            className="lt-tap relative rounded-full px-2 py-0.5 text-[11px] font-bold"
+          >
+            {active && (
+              <motion.span
+                // display-mode-indicator と共有してはいけない。同じ id の要素が
+                // 2 つ生きていると、ピルが互いのあいだを飛ぶ。
+                layoutId="language-indicator"
+                className="absolute inset-0 rounded-full bg-[linear-gradient(135deg,#6b8aff,#b47cff)]"
+                transition={{ type: "spring", stiffness: 220, damping: 26 }}
+              />
+            )}
+            <span className={`relative ${active ? "text-white" : "text-text-faint"}`}>
+              {LOCALE_SHORT[locale]}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 type MonitorRowProps = {
   label: string;
@@ -709,14 +811,19 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function StatusPill({ status }: { status: "connecting" | "connected" | "disconnected" }) {
-  const map = {
-    connecting: { text: "接続中…", color: "var(--lt-text-faint)" },
-    connected: { text: "接続済み", color: "var(--lt-online)" },
-    disconnected: { text: "切断", color: "var(--lt-like)" },
-  } as const;
+type StatusPillProps = {
+  status: "connecting" | "connected" | "disconnected";
+  labels: Messages["status"];
+};
 
-  const { text, color } = map[status];
+function StatusPill({ status, labels }: StatusPillProps) {
+  const color = {
+    connecting: "var(--lt-text-faint)",
+    connected: "var(--lt-online)",
+    disconnected: "var(--lt-like)",
+  }[status];
+
+  const text = labels[status];
 
   return (
     <span className="text-text-muted flex items-center gap-1.5 text-[12px] font-medium">

@@ -107,18 +107,21 @@ export type Database = {
           code: string;
           created_at: string;
           id: string;
+          language: string;
           title: string | null;
         };
         Insert: {
           code?: string;
           created_at?: string;
           id?: string;
+          language?: string;
           title?: string | null;
         };
         Update: {
           code?: string;
           created_at?: string;
           id?: string;
+          language?: string;
           title?: string | null;
         };
         Relationships: [];
@@ -132,6 +135,10 @@ export type Database = {
       liked_comment_ids: {
         Args: { p_client_id: string; p_room_id: string };
         Returns: string[];
+      };
+      set_room_language: {
+        Args: { p_language: string; p_room_id: string };
+        Returns: string;
       };
       toggle_comment_like: {
         Args: { p_client_id: string; p_comment_id: string };

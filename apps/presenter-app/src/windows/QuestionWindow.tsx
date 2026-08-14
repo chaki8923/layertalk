@@ -3,7 +3,13 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { onQuestionReceived } from "../lib/settings";
+import { useDocumentLang, useMessages } from "../i18n";
+import {
+  loadSettings,
+  onQuestionReceived,
+  onSettingsChanged,
+  type PresenterSettings,
+} from "../lib/settings";
 import {
   getPresentationState,
   onPresentationStateChanged,
@@ -18,6 +24,18 @@ export function QuestionWindow() {
   const [questions, setQuestions] = useState<Comment[]>([]);
   const [expanded, setExpanded] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [settings, setSettings] = useState<PresenterSettings>(loadSettings);
+
+  const t = useMessages(settings.language);
+  useDocumentLang(settings.language);
+
+  // この窓だけ設定を購読していなかった。言語トグルを反映するために要る。
+  useEffect(() => {
+    const unlisten = onSettingsChanged(setSettings);
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  }, []);
 
   const liveRef = useRef(false);
   const expandedRef = useRef(true);
@@ -77,7 +95,7 @@ export function QuestionWindow() {
       <div className="relative h-screen w-screen bg-transparent">
         <button
           type="button"
-          aria-label={`質問を表示${unreadCount > 0 ? `、未読${unreadCount}件` : ""}`}
+          aria-label={t.questions.show(unreadCount)}
           onClick={() => applyExpanded(true)}
           className="lt-tap absolute top-[5vh] right-0 flex min-h-28 w-12 flex-col items-center justify-center gap-2 rounded-l-[18px] border border-r-0 border-white/18 bg-black/80 text-white shadow-[0_12px_34px_rgb(0_0_0/0.38)]"
         >
@@ -95,7 +113,7 @@ export function QuestionWindow() {
 
   return (
     <motion.aside
-      aria-label="質問"
+      aria-label={t.questions.title}
       className="absolute top-[5vh] right-3 bottom-[5vh] left-3 flex flex-col gap-3 overflow-hidden"
       initial={{ opacity: 0, x: reduceMotion ? 0 : 20 }}
       animate={{ opacity: 1, x: 0 }}
@@ -103,10 +121,10 @@ export function QuestionWindow() {
     >
       <div className="flex items-center justify-end gap-2 pr-1 text-white">
         <span className="h-px flex-1 bg-white/18" />
-        <span className="text-[13px] font-bold tracking-[0.16em]">質問</span>
+        <span className="text-[13px] font-bold tracking-[0.16em]">{t.questions.title}</span>
         <button
           type="button"
-          aria-label="質問を隠す"
+          aria-label={t.questions.hide}
           onClick={() => applyExpanded(false)}
           className="lt-tap flex h-9 w-9 items-center justify-center rounded-full border border-white/18 bg-black/75 text-white transition-colors hover:bg-black/90"
         >

@@ -32,7 +32,7 @@
       },
       {
         "label": "control",
-        "title": "LayerTalk コントロール",
+        "title": "LayerTalk Control",
         "width": 420,
         "height": 680,
         "minWidth": 380,
@@ -44,7 +44,7 @@
       },
       {
         "label": "questions",
-        "title": "LayerTalk 質問",
+        "title": "LayerTalk Questions",
         "transparent": true,
         "decorations": false,
         "alwaysOnTop": true,
@@ -67,13 +67,21 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["app", "dmg"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "category": "Productivity",
+    "publisher": "LayerTalk",
+    "copyright": "© 2026 LayerTalk",
+    "shortDescription": "スライドに観客のコメントとスタンプを重ねる",
+    "longDescription": "発表中のスライド最前面に、観客からのリアルタイムコメント／スタンプを背景透過・クリックスルーで重ねて表示します。観客は参加 QR を読むだけで、アプリのインストールも登録もなしに参加できます。",
+    "macOS": {
+      "minimumSystemVersion": "13.0"
+    }
   }
 }

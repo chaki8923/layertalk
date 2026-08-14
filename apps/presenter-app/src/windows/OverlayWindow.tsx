@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BubbleLayer } from "../components/BubbleLayer";
 import { FlowLayer, type CommentLayerHandle } from "../components/FlowLayer";
 import { JoinQrCard } from "../components/JoinQrCard";
+import { useDocumentLang, useMessages } from "../i18n";
 import { StampLayer, type StampLayerHandle } from "../components/StampLayer";
 import { audienceUrl } from "../lib/audience";
 import {
@@ -35,6 +36,9 @@ export function OverlayWindow() {
   const [settings, setSettings] = useState<PresenterSettings>(loadSettings);
   const [live, setLive] = useState(false);
   const [peeking, setPeeking] = useState(false);
+
+  const t = useMessages(settings.language);
+  useDocumentLang(settings.language);
 
   const flowRef = useRef<CommentLayerHandle>(null);
   const bubbleRef = useRef<CommentLayerHandle>(null);
@@ -197,7 +201,7 @@ export function OverlayWindow() {
     };
   }, [showComment]);
 
-  const monitorLabel = settings.monitorName ?? "主ディスプレイ";
+  const monitorLabel = settings.monitorName ?? t.monitor.primary;
 
   // 右端は質問パネルの領域なので、QR は左下に逃がす。
   // peek 中にも出して、発表前でも置き場所を確認できるようにする。
@@ -237,7 +241,7 @@ export function OverlayWindow() {
             exit={{ opacity: 0, y: 12, scale: 0.96 }}
             transition={{ type: "spring", stiffness: 340, damping: 30 }}
           >
-            <JoinQrCard url={joinUrl} code={settings.roomCode} size={220} />
+            <JoinQrCard url={joinUrl} code={settings.roomCode} size={220} label={t.qr.scan} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -263,7 +267,7 @@ export function OverlayWindow() {
               transition={{ type: "spring", stiffness: 400, damping: 30 }}
             >
               <p className="text-[15px] font-semibold tracking-wider text-white/70">
-                この画面に表示します
+                {t.monitor.peek}
               </p>
               <p className="mt-2 text-[38px] leading-tight font-bold text-white">{monitorLabel}</p>
             </motion.div>

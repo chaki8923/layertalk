@@ -8,12 +8,14 @@ import {
   insertComment,
   motionPresets,
   normalizeRoomCode,
+  resolveErrorMessage,
   sortComments,
   toggleLike,
   uploadRoomStamp,
   useComments,
   useRoomStamps,
   useStampChannel,
+  type Locale,
   type Room,
   type SortMode,
 } from "@layertalk/shared";
@@ -27,15 +29,17 @@ import { CommentCard } from "@/components/comment-card";
 import { Composer } from "@/components/composer";
 import { SortTabs } from "@/components/sort-tabs";
 import { StampBar } from "@/components/stamp-bar";
+import { localeFromRoom, messages, type Messages } from "@/i18n";
+import { LocaleProvider } from "@/i18n/locale-context";
 import { supabase } from "@/lib/supabase";
 
 type RoomState =
   | { kind: "loading" }
   | { kind: "ready"; room: Room }
   | { kind: "notfound" }
-  | { kind: "error"; message: string };
+  | { kind: "error"; error: unknown };
 
-export function RoomClient({ code }: { code: string }) {
+export function RoomClient({ code, fallbackLocale }: { code: string; fallbackLocale: Locale }) {
   const [roomState, setRoomState] = useState<RoomState>({ kind: "loading" });
   const [sortMode, setSortMode] = useState<SortMode>("popular");
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
@@ -49,6 +53,11 @@ export function RoomClient({ code }: { code: string }) {
   const room = roomState.kind === "ready" ? roomState.room : null;
   const roomId = room?.id ?? null;
 
+  // 表示言語はルームが持つ。取得できるまでは Accept-Language 由来の推測を使うが、
+  // その間に読める文言は出さない（下の loading は文字を持たない）ので入れ替わりは見えない。
+  const locale = room ? localeFromRoom(room.language) : fallbackLocale;
+  const t = messages[locale];
+
   // コードからルームを解決する
   useEffect(() => {
     let cancelled = false;
@@ -60,10 +69,7 @@ export function RoomClient({ code }: { code: string }) {
         setRoomState(found ? { kind: "ready", room: found } : { kind: "notfound" });
       } catch (err) {
         if (cancelled) return;
-        setRoomState({
-          kind: "error",
-          message: err instanceof Error ? err.message : "接続に失敗しました",
-        });
+        setRoomState({ kind: "error", error: err });
       }
     })();
 
@@ -99,9 +105,9 @@ export function RoomClient({ code }: { code: string }) {
       const created = await uploadRoomStamp(supabase, { roomId, clientId, blob });
       // Realtime のエコーを待たずに自分のバーへ出す（useRoomStamps 側で二重にならない）
       addStampLocal(created);
-      toast.success("スタンプを追加しました");
+      toast.success(t.stamp.added);
     },
-    [roomId, clientId, addStampLocal],
+    [roomId, clientId, addStampLocal, t],
   );
 
   // いいね済みの復元。localStorage ではなくサーバに問い合わせる
@@ -132,7 +138,7 @@ export function RoomClient({ code }: { code: string }) {
       try {
         optimistic = buildComment(roomId, text, isQuestion);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "送信できませんでした");
+        toast.error(resolveErrorMessage(err, locale));
         return;
       }
 
@@ -140,12 +146,12 @@ export function RoomClient({ code }: { code: string }) {
       upsertLocal(optimistic);
       setMyIds((prev) => new Set(prev).add(optimistic.id));
 
-      void insertComment(supabase, optimistic).catch(() => {
+      void insertComment(supabase, optimistic).catch((err) => {
         removeLocal(optimistic.id);
-        toast.error("コメントを送信できませんでした");
+        toast.error(resolveErrorMessage(err, locale));
       });
     },
-    [roomId, upsertLocal, removeLocal],
+    [roomId, upsertLocal, removeLocal, locale],
   );
 
   const handleToggleLike = useCallback(
@@ -165,7 +171,7 @@ export function RoomClient({ code }: { code: string }) {
 
       void toggleLike(supabase, commentId, clientId)
         .then((serverCount) => patchLikes(commentId, serverCount))
-        .catch(() => {
+        .catch((err) => {
           // 巻き戻す
           setLikedIds((prev) => {
             const next = new Set(prev);
@@ -174,30 +180,36 @@ export function RoomClient({ code }: { code: string }) {
             return next;
           });
           patchLikes(commentId, currentCount);
-          toast.error("いいねを反映できませんでした");
+          toast.error(resolveErrorMessage(err, locale));
         });
     },
-    [clientId, likedIds, patchLikes],
+    [clientId, likedIds, patchLikes, locale],
   );
 
   const sorted = useMemo(() => sortComments(comments, sortMode), [comments, sortMode]);
 
+  // ルームの言語が分かる前に文言を出さない。ここで「接続中…」と書くと、
+  // 英語のルームに入った観客が最初の一瞬だけ日本語を読むことになる。
   if (roomState.kind === "loading") {
-    return <CenteredMessage icon={<Loader2 size={22} className="animate-spin" />} title="接続中…" />;
+    return (
+      <div className="text-text-faint flex h-dvh items-center justify-center">
+        <Loader2 size={22} className="animate-spin" aria-hidden />
+      </div>
+    );
   }
 
   if (roomState.kind === "notfound") {
     return (
       <CenteredMessage
         icon={<MessageSquareOff size={22} />}
-        title="ルームが見つかりません"
-        body={`コード「${normalizeRoomCode(code)}」のルームは存在しないか、終了しています。`}
+        title={t.room.notFound}
+        body={t.room.notFoundBody(normalizeRoomCode(code))}
         action={
           <Link
             href="/"
             className="rounded-control border-border hover:bg-surface-strong border px-4 py-2 text-[13px] font-semibold transition-colors"
           >
-            コードを入力し直す
+            {t.room.retype}
           </Link>
         }
       />
@@ -208,13 +220,14 @@ export function RoomClient({ code }: { code: string }) {
     return (
       <CenteredMessage
         icon={<MessageSquareOff size={22} />}
-        title="接続できませんでした"
-        body={roomState.message}
+        title={t.room.connectFailed}
+        body={resolveErrorMessage(roomState.error, locale)}
       />
     );
   }
 
   return (
+    <LocaleProvider locale={locale}>
     <div className="flex h-dvh flex-col">
       {/* ------------------------------------------------------------ ヘッダ */}
       <header className="lt-glass pt-safe sticky top-0 z-20 shrink-0 rounded-none border-x-0 border-t-0 px-4 pb-3">
@@ -223,7 +236,7 @@ export function RoomClient({ code }: { code: string }) {
             <h1 className="min-w-0 truncate text-[16px] leading-tight font-[650] tracking-[-0.01em]">
               {roomState.room.title ?? "LayerTalk"}
             </h1>
-            <ConnectionDot status={status} />
+            <ConnectionDot status={status} labels={t.status} />
           </div>
           <SortTabs value={sortMode} onChange={setSortMode} />
         </div>
@@ -238,10 +251,8 @@ export function RoomClient({ code }: { code: string }) {
             </div>
           ) : sorted.length === 0 ? (
             <div className="text-text-muted py-16 text-center">
-              <p className="text-[15px] font-medium">まだコメントがありません</p>
-              <p className="text-text-faint mt-1 text-[13px]">
-                最初のひとことを送ってみましょう
-              </p>
+              <p className="text-[15px] font-medium">{t.room.emptyTitle}</p>
+              <p className="text-text-faint mt-1 text-[13px]">{t.room.emptyBody}</p>
             </div>
           ) : (
             <motion.ul layout className="flex flex-col gap-2.5">
@@ -278,19 +289,25 @@ export function RoomClient({ code }: { code: string }) {
         </div>
       </div>
     </div>
+    </LocaleProvider>
   );
 }
 
 // ------------------------------------------------------------------ 部品
 
-function ConnectionDot({ status }: { status: "connecting" | "connected" | "disconnected" }) {
-  const map = {
-    connecting: { label: "接続中", color: "var(--lt-text-faint)" },
-    connected: { label: "接続済み", color: "var(--lt-online)" },
-    disconnected: { label: "切断", color: "var(--lt-like)" },
-  } as const;
+type ConnectionDotProps = {
+  status: "connecting" | "connected" | "disconnected";
+  labels: Messages["status"];
+};
 
-  const { label, color } = map[status];
+function ConnectionDot({ status, labels }: ConnectionDotProps) {
+  const color = {
+    connecting: "var(--lt-text-faint)",
+    connected: "var(--lt-online)",
+    disconnected: "var(--lt-like)",
+  }[status];
+
+  const label = labels[status];
 
   return (
     <span className="text-text-muted flex shrink-0 items-center gap-1.5 text-[12px] font-medium">

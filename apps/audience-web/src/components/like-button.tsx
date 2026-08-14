@@ -5,6 +5,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { Heart } from "lucide-react";
 import { useState } from "react";
 
+import { useMessages } from "@/i18n/locale-context";
+
 type Props = {
   count: number;
   liked: boolean;
@@ -15,6 +17,7 @@ type Props = {
 const BURST_ANGLES = [0, 60, 120, 180, 240, 300];
 
 export function LikeButton({ count, liked, onToggle }: Props) {
+  const t = useMessages();
   const [burstKey, setBurstKey] = useState(0);
 
   const handleClick = () => {
@@ -33,7 +36,7 @@ export function LikeButton({ count, liked, onToggle }: Props) {
       whileTap={{ scale: 0.9 }}
       transition={motionPresets.press}
       aria-pressed={liked}
-      aria-label={liked ? "いいねを取り消す" : "いいね"}
+      aria-label={liked ? t.comment.unlike : t.comment.like}
       className={`lt-tap relative flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 transition-colors ${
         liked
           ? "border-like/35 bg-like/12 text-like"

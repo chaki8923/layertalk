@@ -5,12 +5,15 @@ import { motion } from "motion/react";
 import { ArrowUp, CircleHelp } from "lucide-react";
 import { useState } from "react";
 
+import { useMessages } from "@/i18n/locale-context";
+
 type Props = {
   onSubmit: (text: string, isQuestion: boolean) => void;
   disabled?: boolean;
 };
 
 export function Composer({ onSubmit, disabled }: Props) {
+  const t = useMessages();
   const [draft, setDraft] = useState("");
   const [isQuestion, setIsQuestion] = useState(false);
 
@@ -52,7 +55,7 @@ export function Composer({ onSubmit, disabled }: Props) {
           >
             <CircleHelp size={15} strokeWidth={2.2} />
           </span>
-          質問として投稿する
+          {t.composer.asQuestion}
         </span>
 
         <span
@@ -84,7 +87,7 @@ export function Composer({ onSubmit, disabled }: Props) {
               submit();
             }}
             rows={1}
-            placeholder={isQuestion ? "質問を入力" : "コメントを入力"}
+            placeholder={isQuestion ? t.composer.placeholderQuestion : t.composer.placeholderComment}
             disabled={disabled}
             className="placeholder:text-text-faint max-h-28 min-h-[42px] w-full resize-none bg-transparent px-3 py-2.5 text-[15px] leading-[1.45] outline-none disabled:opacity-50"
           />
@@ -102,7 +105,7 @@ export function Composer({ onSubmit, disabled }: Props) {
 
         <motion.button
           type="submit"
-          aria-label={isQuestion ? "質問を送信" : "コメントを送信"}
+          aria-label={isQuestion ? t.composer.sendQuestion : t.composer.sendComment}
           disabled={!canSend}
           whileTap={canSend ? { scale: 0.88 } : undefined}
           animate={{ opacity: canSend ? 1 : 0.35, scale: canSend ? 1 : 0.94 }}
@@ -115,7 +118,7 @@ export function Composer({ onSubmit, disabled }: Props) {
 
       {/* 改行キーが送信に変わったので、黙って変えない。 */}
       <p className="text-text-faint px-3 pt-0.5 text-[11px]">
-        Enter で送信・Shift+Enter で改行
+        {t.composer.enterHint}
       </p>
     </form>
   );

@@ -9,7 +9,9 @@ export type CommentLayerHandle = {
 type FlowItem = {
   key: string;
   text: string;
-  lane: number;
+  /** 発射時に確定させた縦位置(px)。レーン由来だがジッターを含むので、
+   *  再レンダーのたびに引き直すと位置が飛ぶ。ここに焼き付けておく。 */
+  top: number;
   width: number;
   durationSec: number;
 };
@@ -48,12 +50,11 @@ export const FlowLayer = forwardRef<CommentLayerHandle, Props>(function FlowLaye
   const seqRef = useRef(0);
   const timersRef = useRef<Set<number>>(new Set());
 
-  const laneHeight = Math.round(fontSize * 1.55);
-  const usableTop = Math.round(window.innerHeight * TOP_MARGIN_RATIO);
-
   useImperativeHandle(ref, () => ({
     push(text) {
       const viewportWidth = window.innerWidth;
+      const laneHeight = Math.round(fontSize * 1.55);
+      const usableTop = Math.round(window.innerHeight * TOP_MARGIN_RATIO);
       const usableHeight = window.innerHeight * USABLE_HEIGHT_RATIO;
       const laneCount = Math.max(1, Math.floor(usableHeight / (laneHeight + LANE_GAP_PX)));
 
@@ -75,15 +76,26 @@ export const FlowLayer = forwardRef<CommentLayerHandle, Props>(function FlowLaye
       // 文字列の末尾が画面右端を抜けきるまでの時間。これを過ぎればレーンを再利用できる。
       const clearMs = ((width + LANE_GAP_PX) / pxPerSec) * 1000;
 
-      let lane = currentLanes.findIndex((freeAt) => freeAt <= now);
-      if (lane === -1) {
-        // 全レーン埋まり → 最も早く空くレーンに重ねる（表示しないよりはまし）
-        lane = currentLanes.reduce((best, freeAt, i) => (freeAt < currentLanes[best] ? i : best), 0);
-      }
+      // 空きレーンから抽選する。先頭から詰める（findIndex）と、コメントが疎なときに
+      // 全部が最上段だけを流れてしまう。条件は元と同じ freeAt <= now なので追突はしない。
+      const freeLanes: number[] = [];
+      for (let i = 0; i < laneCount; i += 1) if (currentLanes[i] <= now) freeLanes.push(i);
+
+      const lane =
+        freeLanes.length > 0
+          ? freeLanes[Math.floor(Math.random() * freeLanes.length)]
+          : // 全レーン埋まり → 最も早く空くレーンに重ねる（表示しないよりはまし）
+            currentLanes.reduce((best, freeAt, i) => (freeAt < currentLanes[best] ? i : best), 0);
       currentLanes[lane] = now + clearMs;
 
+      // レーン内でさらに揺らしてグリッド感を消す。振れ幅は隙間の半分まで
+      // （ピッチ 70.5px − 揺れ最大 24px = 46.5px > 実際の文字高 36px）。
+      // これ以上広げると隣のレーンの文字と重なる。
+      const jitter = (Math.random() * 2 - 1) * (LANE_GAP_PX / 2);
+      const top = usableTop + lane * (laneHeight + LANE_GAP_PX) + jitter;
+
       const key = `flow-${seqRef.current++}`;
-      setItems((prev) => [...prev, { key, text, lane, width, durationSec }]);
+      setItems((prev) => [...prev, { key, text, top, width, durationSec }]);
 
       const timer = window.setTimeout(
         () => {
@@ -110,7 +122,7 @@ export const FlowLayer = forwardRef<CommentLayerHandle, Props>(function FlowLaye
             key={item.key}
             className="lt-overlay-text absolute font-bold whitespace-nowrap"
             style={{
-              top: usableTop + item.lane * (laneHeight + LANE_GAP_PX),
+              top: item.top,
               fontSize,
               lineHeight: 1.2,
               opacity,

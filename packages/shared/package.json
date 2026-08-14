@@ -9,6 +9,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./motion": "./src/motion.ts",
+    "./i18n": "./src/i18n.ts",
     "./theme.css": "./styles/theme.css"
   },
   "dependencies": {

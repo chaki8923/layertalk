@@ -52,6 +52,15 @@ export const setQuestionPanelExpanded = (expanded: boolean) =>
 
 export const showControlWindow = () => invoke<void>("show_control");
 
+/**
+ * トレイメニューのラベルを言語に合わせて書き換える。
+ *
+ * トレイは Rust が起動時に一度だけ組み立てるので、React 側の文言カタログが届かない。
+ * コントロール窓**だけ**が呼ぶこと（3 つの窓から呼ぶと同じ更新が競合する）。
+ */
+export const setAppLanguage = (language: "ja" | "en") =>
+  invoke<void>("set_app_language", { language });
+
 /** 発表の開始・終了を購読する。トレイからの終了もここに届く。 */
 export const onPresentationStateChanged = (handler: (live: boolean) => void) =>
   listen<boolean>("presentation-state-changed", (event) => handler(event.payload));

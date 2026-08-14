@@ -35,6 +35,13 @@
   --lt-shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.5);
   --lt-shadow-float: 0 -1px 0 rgb(255 255 255 / 0.06), 0 12px 40px -8px rgb(0 0 0 / 0.7);
   --lt-shadow-glow: 0 4px 20px -4px rgb(107 138 255 / 0.5);
+
+  /* オーバーレイのフキダシ。スライドの上に乗るので OS のライト/ダークには追従させない
+   * — --lt-surface 系を使うと明るいスライドで板が消える。下の light ブロックには書かない。 */
+  --lt-bubble-bg: #ffffff;
+  --lt-bubble-text: #12161f;
+  --lt-bubble-border: rgb(15 20 32 / 0.14);
+  --lt-shadow-bubble: 0 2px 6px rgb(0 0 0 / 0.22), 0 14px 34px -10px rgb(0 0 0 / 0.45);
 }
 
 @media (prefers-color-scheme: light) {
@@ -83,6 +90,7 @@
   --shadow-card: var(--lt-shadow-card);
   --shadow-float: var(--lt-shadow-float);
   --shadow-glow: var(--lt-shadow-glow);
+  --shadow-bubble: var(--lt-shadow-bubble);
 
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-spring-ish: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -115,6 +123,53 @@
     -webkit-text-stroke: 3px rgb(0 0 0 / 0.85);
     paint-order: stroke fill;
     text-shadow: 0 2px 8px rgb(0 0 0 / 0.6);
+  }
+
+  /* オーバーレイのフキダシ（BubbleLayer）。lt-overlay-text とは併用しない
+   * — 白い板の上に白文字＋黒縁を載せると読めない。
+   *
+   * 幅は inline-block の shrink-to-fit ＋ max-width で決まる。つまり
+   * 短文は文字に吸い付き、長文は親（レーン）の幅まで伸びてから折り返して縦に伸びる。
+   * backdrop-filter は使わない（透過ウィンドウでは重すぎる。べた塗りにすること）。 */
+  .lt-overlay-bubble {
+    position: relative;
+    display: inline-block;
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 2.5em; /* 1〜2文字でも棒にならない */
+    padding: 14px 22px;
+    border: 1px solid var(--lt-bubble-border);
+    border-radius: var(--radius-card);
+    background: var(--lt-bubble-bg);
+    color: var(--lt-bubble-text);
+    box-shadow: var(--lt-shadow-bubble);
+    text-align: center;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* 左下のしっぽ。枠線ぶんの三角(::before)に塗りの三角(::after)を少し小さく重ねて、
+   * はみ出した外周だけを枠線として見せる。 */
+  .lt-overlay-bubble::before,
+  .lt-overlay-bubble::after {
+    content: "";
+    position: absolute;
+    left: 26px;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-color: transparent;
+  }
+  .lt-overlay-bubble::before {
+    bottom: -15px;
+    border-width: 15px 13px 0 0;
+    border-top-color: var(--lt-bubble-border);
+  }
+  /* 1px ぶん上へ食い込ませて、本体の下辺の枠線がしっぽの根元を横切るのを隠す */
+  .lt-overlay-bubble::after {
+    bottom: -12px;
+    border-width: 13px 11px 0 0;
+    border-top-color: var(--lt-bubble-bg);
   }
 
   /* 横スクロールする列（スタンプバー）。バー自体が細いので、スクロールバーが

@@ -5,6 +5,7 @@ import {
   STAMP_EMOJIS,
   customStampKey,
   motionPresets,
+  resolveErrorMessage,
   roomStampUrl,
   toStampPng,
   type RoomStamp,
@@ -14,6 +15,7 @@ import { ImagePlus, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { useLocale, useMessages } from "@/i18n/locale-context";
 import { supabase } from "@/lib/supabase";
 
 /** バーに並ぶ一枚。組み込みの絵文字か、このルームにアップロードされた画像。 */
@@ -47,6 +49,8 @@ type Props = {
  * 枚数が可変なのでバーは横スクロールする。
  */
 export function StampBar({ onSend, stamps, onUpload, disabled = false }: Props) {
+  const t = useMessages();
+  const locale = useLocale();
   const [floating, setFloating] = useState<FloatingStamp[]>([]);
   const seqRef = useRef(0);
   const barRef = useRef<HTMLDivElement>(null);
@@ -104,9 +108,9 @@ export function StampBar({ onSend, stamps, onUpload, disabled = false }: Props) 
       const blob = await toStampPng(file);
       setPending({ blob, previewUrl: URL.createObjectURL(blob) });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "この画像は使えませんでした");
+      toast.error(resolveErrorMessage(err, locale));
     }
-  }, []);
+  }, [locale]);
 
   const handleConfirmUpload = useCallback(async () => {
     if (!pending) return;
@@ -115,11 +119,11 @@ export function StampBar({ onSend, stamps, onUpload, disabled = false }: Props) 
       await onUpload(pending.blob);
       setPending(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "スタンプを追加できませんでした");
+      toast.error(resolveErrorMessage(err, locale));
     } finally {
       setUploading(false);
     }
-  }, [pending, onUpload]);
+  }, [pending, onUpload, locale]);
 
   const roomFull = stamps.length >= ROOM_STAMP_MAX_PER_ROOM;
 
@@ -142,9 +146,9 @@ export function StampBar({ onSend, stamps, onUpload, disabled = false }: Props) 
             </div>
 
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold">この画像をスタンプにする</p>
+              <p className="text-[13px] font-semibold">{t.stamp.confirmTitle}</p>
               <p className="text-text-faint mt-0.5 text-[11px] leading-relaxed">
-                このルームにいる全員が押せるようになります
+                {t.stamp.confirmBody}
               </p>
             </div>
 
@@ -155,7 +159,7 @@ export function StampBar({ onSend, stamps, onUpload, disabled = false }: Props) 
                 disabled={uploading}
                 className="lt-tap rounded-control border-border hover:bg-surface-strong border px-3 py-2 text-[13px] font-semibold transition-colors disabled:opacity-40"
               >
-                やめる
+                {t.stamp.cancel}
               </button>
               <motion.button
                 type="button"
@@ -166,7 +170,7 @@ export function StampBar({ onSend, stamps, onUpload, disabled = false }: Props) 
                 className="lt-tap rounded-control bg-gradient-brand shadow-glow flex items-center gap-1.5 px-3 py-2 text-[13px] font-semibold text-white disabled:opacity-60"
               >
                 {uploading && <Loader2 size={13} className="animate-spin" />}
-                追加する
+                {t.stamp.add}
               </motion.button>
             </div>
           </motion.div>
@@ -213,7 +217,7 @@ export function StampBar({ onSend, stamps, onUpload, disabled = false }: Props) 
                 key={item.key}
                 type="button"
                 aria-label={
-                  item.kind === "emoji" ? `${item.emoji} を送る` : "カスタムスタンプを送る"
+                  item.kind === "emoji" ? t.stamp.send(item.emoji) : t.stamp.sendCustom
                 }
                 onClick={(event) => handleTap(item, event.currentTarget)}
                 disabled={disabled}
@@ -252,8 +256,8 @@ export function StampBar({ onSend, stamps, onUpload, disabled = false }: Props) 
           />
           <motion.button
             type="button"
-            aria-label={roomFull ? "カスタムスタンプは上限です" : "画像からスタンプを追加"}
-            title={roomFull ? "カスタムスタンプは上限です" : "画像からスタンプを追加"}
+            aria-label={roomFull ? t.stamp.roomFull : t.stamp.addFromImage}
+            title={roomFull ? t.stamp.roomFull : t.stamp.addFromImage}
             onClick={() => fileRef.current?.click()}
             disabled={disabled || roomFull || Boolean(pending)}
             whileTap={{ scale: 0.82 }}
