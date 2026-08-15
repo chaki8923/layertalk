@@ -18,10 +18,11 @@ export function createLayerTalkClient({ url, anonKey }: LayerTalkConfig): LayerT
   }
 
   return createClient<Database>(url, anonKey, {
-    // 認証を使わないアプリなので、セッションの永続化もトークン更新も不要。
+    // Presenter OTP と観客の匿名セッションを同じクライアントで扱う。
     auth: {
-      persistSession: false,
-      autoRefreshToken: false,
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
     },
     realtime: {
       // 既定の 10 だとスタンプ連打で送信がドロップする。

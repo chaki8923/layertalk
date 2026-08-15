@@ -14,10 +14,11 @@
     "build:presenter": "npm run tauri:build -w @layertalk/presenter-app",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
+    "configure:supabase-auth": "node scripts/configure-supabase-auth.mjs",
     "smoke:realtime": "node scripts/realtime-smoke.mjs"
   },
   "engines": {
-    "node": ">=20.9"
+    "node": ">=22.0"
   },
   "devDependencies": {
     "ws": "^8.18.3"

@@ -1,6 +1,6 @@
 # LayerTalk 収益化・実装計画
 
-- ステータス: Draft
+- ステータス: Event Pass / Phase 1 implemented
 - 作成日: 2026-08-15
 - 対象: 発表者用macOSアプリ、観客用Web、Supabaseバックエンド
 - 目的: LayerTalkの体験を壊さず、単発イベントから企業利用まで段階的に課金できる状態を作る
@@ -437,4 +437,3 @@ Webhook署名を必ず検証する。`billing_events` にStripe Event IDを主�
 - [Slido Engage](https://www.slido.com/engage-plan): 単発と年間プランを用意し、出力や運営機能を有料価値にしている。
 
 競合価格は変更されるため、外部公開前と価格改定時に再確認する。
-

@@ -15,6 +15,7 @@ import { DEFAULT_LOCALE, type Locale } from "./i18n";
 export type LayerTalkErrorCode =
   | "room_fetch_failed"
   | "room_create_failed"
+  | "room_join_failed"
   | "room_language_failed"
   | "comment_empty"
   | "comment_too_long"
@@ -26,6 +27,10 @@ export type LayerTalkErrorCode =
   | "stamp_delete_failed"
   | "stamp_limit_client"
   | "stamp_limit_room"
+  | "entitlement_fetch_failed"
+  | "moderation_failed"
+  | "session_failed"
+  | "report_failed"
   | "image_unreadable"
   | "image_unsupported_device"
   | "image_convert_failed"
@@ -34,6 +39,7 @@ export type LayerTalkErrorCode =
 const ja: Record<LayerTalkErrorCode, string> = {
   room_fetch_failed: "ルームの取得に失敗しました",
   room_create_failed: "ルームの作成に失敗しました",
+  room_join_failed: "ルームに入室できませんでした。コードとパスコードを確認してください",
   room_language_failed: "表示言語をルームに保存できませんでした",
   comment_empty: "コメントが空です",
   comment_too_long: `コメントは${COMMENT_MAX_LENGTH}文字までです`,
@@ -45,6 +51,10 @@ const ja: Record<LayerTalkErrorCode, string> = {
   stamp_delete_failed: "スタンプを削除できませんでした",
   stamp_limit_client: `ひとつの端末から追加できるのは${ROOM_STAMP_MAX_PER_CLIENT}個までです`,
   stamp_limit_room: `このルームのカスタムスタンプは${ROOM_STAMP_MAX_PER_ROOM}個で上限です`,
+  entitlement_fetch_failed: "購入状態を確認できませんでした",
+  moderation_failed: "運営設定を更新できませんでした",
+  session_failed: "発表セッションを更新できませんでした",
+  report_failed: "発表レポートを作成できませんでした",
   image_unreadable: "この画像は読み込めませんでした。別の画像を選んでください",
   image_unsupported_device: "この端末では画像を変換できませんでした",
   image_convert_failed: "画像の変換に失敗しました",
@@ -54,6 +64,7 @@ const ja: Record<LayerTalkErrorCode, string> = {
 const en: Record<LayerTalkErrorCode, string> = {
   room_fetch_failed: "Could not load the room",
   room_create_failed: "Could not create the room",
+  room_join_failed: "Could not join the room. Check the code and passcode",
   room_language_failed: "Could not save the language to the room",
   comment_empty: "Your comment is empty",
   comment_too_long: `Comments can be up to ${COMMENT_MAX_LENGTH} characters`,
@@ -65,6 +76,10 @@ const en: Record<LayerTalkErrorCode, string> = {
   stamp_delete_failed: "Could not delete the stamp",
   stamp_limit_client: `You can add up to ${ROOM_STAMP_MAX_PER_CLIENT} stamps from one device`,
   stamp_limit_room: `This room is at its limit of ${ROOM_STAMP_MAX_PER_ROOM} custom stamps`,
+  entitlement_fetch_failed: "Could not check your purchase",
+  moderation_failed: "Could not update the event controls",
+  session_failed: "Could not update the presentation session",
+  report_failed: "Could not create the presentation report",
   image_unreadable: "That image could not be read. Please choose another one",
   image_unsupported_device: "This device cannot convert images",
   image_convert_failed: "Could not convert the image",

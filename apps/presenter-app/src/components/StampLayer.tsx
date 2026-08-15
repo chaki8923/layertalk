@@ -8,6 +8,8 @@ export type StampLayerHandle = {
   burst: (emoji: string, count: number) => void;
   /** ルーム固有の画像スタンプを count 個ぶん舞い上げる */
   burstImage: (url: string, count: number) => void;
+  /** 非常停止・発表終了時に残っている粒子を即時除去する。 */
+  clear: () => void;
 };
 
 /** 同時に生きられるパーティクル数の上限。超えたら古い順に回収する。
@@ -161,6 +163,10 @@ export const StampLayer = forwardRef<StampLayerHandle, Props>(function StampLaye
           el.style.height = "auto";
           return el;
         });
+      },
+      clear() {
+        for (const particle of liveRef.current) particle.remove();
+        liveRef.current = [];
       },
     }),
     [spawn],

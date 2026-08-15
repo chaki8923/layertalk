@@ -1,3 +1,5 @@
+"use client";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LayerTalkClient } from "./client";
 import { INITIAL_COMMENT_LIMIT, commentChannelName } from "./constants";
@@ -33,6 +35,8 @@ export type UseCommentsOptions = {
   /** 新着1件ごとに呼ばれる。presenter 側の演出トリガに使う。 */
   onInsert?: (comment: Comment) => void;
   limit?: number;
+  /** 発表者の承認キュー用にpending/hiddenも保持する。観客はfalse。 */
+  includeModerated?: boolean;
 };
 
 export type UseCommentsResult = {
@@ -58,6 +62,7 @@ export function useComments({
   roomId,
   onInsert,
   limit = INITIAL_COMMENT_LIMIT,
+  includeModerated = false,
 }: UseCommentsOptions): UseCommentsResult {
   const [comments, setComments] = useState<Comment[]>([]);
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
@@ -80,6 +85,7 @@ export function useComments({
    * ref なら React のレンダリング周期に依存せず、その場で同期的に判定できる。
    */
   const seenIdsRef = useRef<Set<string>>(new Set());
+  const approvedIdsRef = useRef<Set<string>>(new Set());
 
   /** 未処理なら記録して true を返す */
   const markSeen = useCallback((id: string) => {
@@ -115,6 +121,7 @@ export function useComments({
 
     // ルームが変わったら演出済みの記録もリセットする
     seenIdsRef.current = new Set();
+    approvedIdsRef.current = new Set();
     setComments([]);
     setLoading(true);
     setStatus("connecting");
@@ -148,6 +155,7 @@ export function useComments({
 
       // 古い順に流したいので、announce のときだけ並べ直す
       const fresh = rows.filter((row) => markSeen(row.id));
+      for (const row of rows) if (row.status === "approved") approvedIdsRef.current.add(row.id);
       if (announce) {
         for (const row of [...fresh].reverse()) onInsertRef.current?.(row);
       }
@@ -164,8 +172,10 @@ export function useComments({
         { event: "INSERT", schema: "public", table: "comments", filter },
         ({ new: row }) => {
           const comment = row as Comment;
+          if (!includeModerated && comment.status !== "approved") return;
           // 自分の楽観的追加や、hydrate で既に拾った行はここで弾く
           if (!markSeen(comment.id)) return;
+          if (comment.status === "approved") approvedIdsRef.current.add(comment.id);
 
           setComments((prev) => [comment, ...prev]);
           onInsertRef.current?.(comment);
@@ -176,6 +186,16 @@ export function useComments({
         { event: "UPDATE", schema: "public", table: "comments", filter },
         ({ new: row }) => {
           const comment = row as Comment;
+          if (comment.status === "approved" && !approvedIdsRef.current.has(comment.id)) {
+            approvedIdsRef.current.add(comment.id);
+            onInsertRef.current?.(comment);
+          } else if (comment.status !== "approved") {
+            approvedIdsRef.current.delete(comment.id);
+          }
+          if (!includeModerated && comment.status !== "approved") {
+            setComments((prev) => prev.filter((c) => c.id !== comment.id));
+            return;
+          }
           setComments((prev) => prev.map((c) => (c.id === comment.id ? { ...c, ...comment } : c)));
         },
       )
@@ -203,7 +223,7 @@ export function useComments({
       clearTimeout(reconcileTimer);
       void client.removeChannel(channel);
     };
-  }, [client, roomId, limit, markSeen]);
+  }, [client, roomId, limit, markSeen, includeModerated]);
 
   return { comments, status, loading, error, upsertLocal, removeLocal, patchLikes };
 }

@@ -1,3 +1,5 @@
+"use client";
+
 import { useCallback, useEffect, useRef } from "react";
 import type { LayerTalkClient } from "./client";
 import { STAMP_BATCH_MS, STAMP_EVENT, STAMP_MAX_BATCH, stampChannelName } from "./constants";
@@ -14,7 +16,7 @@ export type UseStampChannelOptions = {
 };
 
 /**
- * スタンプの Broadcast 送受信。DB は一切経由しない。
+ * スタンプの private Broadcast 送受信。送信RPCはレポート用の集計行もDBへ記録する。
  *
  * 送信は STAMP_BATCH_MS ごとに絵文字単位で集約する。連打をそのまま流すと
  * Realtime のレート上限に当たってメッセージが黙って落ちるため。
@@ -42,7 +44,7 @@ export function useStampChannel({
       .channel(stampChannelName(roomId), {
         // 自分の送信もサーバから返してもらう。presenter は自分では送らないので影響なく、
         // 観客側は ignoreSelf で落とす。
-        config: { broadcast: { self: true } },
+        config: { private: true, broadcast: { self: true } },
       })
       .on("broadcast", { event: STAMP_EVENT }, ({ payload }) => {
         const stamp = payload as StampPayload;
@@ -71,16 +73,14 @@ export function useStampChannel({
     if (!channel || pending.size === 0) return;
 
     for (const [emoji, count] of pending) {
-      const payload: StampPayload = {
-        emoji,
-        count: Math.min(count, STAMP_MAX_BATCH),
-        clientId,
-        at: Date.now(),
-      };
-      void channel.send({ type: "broadcast", event: STAMP_EVENT, payload });
+      void client?.rpc("send_stamp", {
+        p_room_id: roomId!,
+        p_stamp_key: emoji,
+        p_count: Math.min(count, STAMP_MAX_BATCH),
+      });
     }
     pending.clear();
-  }, [clientId]);
+  }, [client, roomId]);
 
   /** 1タップ = 1回呼ぶ。実際の送信は次の flush でまとめて行われる。 */
   const sendStamp = useCallback(

@@ -5,6 +5,8 @@ import {
   useRoomStamps,
   useStampChannel,
   type Comment,
+  type ModerationRules,
+  type RoomBranding,
 } from "@layertalk/shared";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -36,6 +38,8 @@ export function OverlayWindow() {
   const [settings, setSettings] = useState<PresenterSettings>(loadSettings);
   const [live, setLive] = useState(false);
   const [peeking, setPeeking] = useState(false);
+  const [moderation, setModeration] = useState<ModerationRules | null>(null);
+  const [branding, setBranding] = useState<(RoomBranding & { logoUrl?: string }) | null>(null);
 
   const t = useMessages(settings.language);
   useDocumentLang(settings.language);
@@ -80,6 +84,54 @@ export function OverlayWindow() {
     if (live) setPeeking(false);
   }, [live]);
 
+  useEffect(() => {
+    if (!settings.roomId) { setModeration(null); return; }
+    let cancelled = false;
+    const roomId = settings.roomId;
+    try {
+      const cached = localStorage.getItem(`layertalk:event-controls:${roomId}`);
+      if (cached) setModeration(JSON.parse(cached) as ModerationRules);
+    } catch { /* Ignore a corrupt local cache; the server fetch below replaces it. */ }
+    void supabase.from("moderation_rules").select("*").eq("room_id", roomId).single()
+      .then(({ data }) => {
+        if (!cancelled && data) {
+          setModeration(data);
+          localStorage.setItem(`layertalk:event-controls:${roomId}`, JSON.stringify(data));
+        }
+      });
+    const channel = supabase.channel(`moderation:${roomId}`).on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "moderation_rules", filter: `room_id=eq.${roomId}` },
+      ({ new: row }) => {
+        setModeration(row as ModerationRules);
+        localStorage.setItem(`layertalk:event-controls:${roomId}`, JSON.stringify(row));
+      },
+    ).subscribe();
+    return () => { cancelled = true; void supabase.removeChannel(channel); };
+  }, [settings.roomId]);
+
+  useEffect(() => {
+    if (!settings.roomId) { setBranding(null); return; }
+    let cancelled = false;
+    const roomId = settings.roomId;
+    const loadBranding = async () => {
+      const { data } = await supabase.from("room_branding").select("*").eq("room_id", roomId).single();
+      if (!data || cancelled) return;
+      let logoUrl: string | undefined;
+      if (data.logo_path) {
+        const signed = await supabase.storage.from("room-branding").createSignedUrl(data.logo_path, 3600);
+        logoUrl = signed.data?.signedUrl;
+      }
+      if (!cancelled) setBranding({ ...data, logoUrl });
+    };
+    void loadBranding();
+    const channel = supabase.channel(`branding:${roomId}`).on(
+      "postgres_changes", { event: "UPDATE", schema: "public", table: "room_branding", filter: `room_id=eq.${roomId}` },
+      () => void loadBranding(),
+    ).subscribe();
+    return () => { cancelled = true; void supabase.removeChannel(channel); };
+  }, [settings.roomId]);
+
   // ディスプレイ構成が変わったらオーバーレイを貼り直す。
   // 表示先モニターは渡さない（Rust が持っている。理由は refitOverlay のコメント）。
   useEffect(() => {
@@ -98,23 +150,28 @@ export function OverlayWindow() {
 
   const handleInsert = useCallback(
     (comment: Comment) => {
+      if (comment.status !== "approved" || moderation?.comments_paused) return;
+      if (moderation?.question_only && !comment.is_question) return;
       // 質問は右端のパネルにも積む。流れる演出は通常コメントと同じにする
       // （質問だけ見た目を変えない）。
       if (comment.is_question) {
         void sendQuestionToPanel(comment);
       }
-      showComment(comment.content);
+      const delay = (moderation?.display_delay_seconds ?? 0) * 1000;
+      if (delay > 0) window.setTimeout(() => showComment(comment.content), delay);
+      else showComment(comment.content);
     },
-    [showComment],
+    [moderation, showComment],
   );
 
   // 発表中だけ購読する。client に null を渡すとフックは何もしない。
-  const active = live && Boolean(settings.roomId);
+  const active = live && !settings.emergencyPaused && Boolean(settings.roomId);
 
   useComments({
     client: active ? supabase : null,
     roomId: settings.roomId,
     onInsert: handleInsert,
+    includeModerated: true,
   });
 
   /**
@@ -145,13 +202,14 @@ export function OverlayWindow() {
    */
   const playStamp = useCallback(
     (key: string, count: number) => {
+      if (moderation?.reactions_paused) return;
       const id = parseCustomStampKey(key);
       if (id === null) {
         stampRef.current?.burst(key, count);
         return;
       }
 
-      if (!settings.allowCustomStamps) return;
+      if (!settings.allowCustomStamps || moderation?.custom_stamps_enabled === false) return;
 
       const stamp = roomStampsById.get(id);
       // 削除済み・未知の id は黙って捨てる
@@ -159,7 +217,7 @@ export function OverlayWindow() {
 
       stampRef.current?.burstImage(roomStampUrl(supabase, stamp.path), count);
     },
-    [settings.allowCustomStamps, roomStampsById],
+    [moderation, settings.allowCustomStamps, roomStampsById],
   );
 
   useStampChannel({
@@ -177,11 +235,12 @@ export function OverlayWindow() {
 
   // 終了したら流れているものを全部消す（次に開始したとき残骸が出ない）
   useEffect(() => {
-    if (!live) {
+    if (!live || settings.emergencyPaused) {
       flowRef.current?.clear();
       bubbleRef.current?.clear();
+      stampRef.current?.clear();
     }
-  }, [live]);
+  }, [live, settings.emergencyPaused]);
 
   // コントロール窓の「テスト送信」からスタンプを受け取る
   useEffect(() => {
@@ -241,7 +300,15 @@ export function OverlayWindow() {
             exit={{ opacity: 0, y: 12, scale: 0.96 }}
             transition={{ type: "spring", stiffness: 340, damping: 30 }}
           >
-            <JoinQrCard url={joinUrl} code={settings.roomCode} size={220} label={t.qr.scan} />
+            <JoinQrCard
+              url={joinUrl}
+              code={settings.roomCode}
+              size={220}
+              label={t.qr.scan}
+              brandColor={branding?.brand_color}
+              logoUrl={branding?.logoUrl}
+              hideLayerTalk={branding?.hide_layertalk_branding}
+            />
           </motion.div>
         )}
       </AnimatePresence>

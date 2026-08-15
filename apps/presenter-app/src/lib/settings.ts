@@ -7,6 +7,10 @@ export type PresenterSettings = {
   roomTitle: string | null;
   /** 直前に外したルームのコード。押し間違えても1タップで戻れるように残す。 */
   previousRoomCode: string | null;
+  /** DB上の現在の発表セッション。終了・レポートの境界に使う。 */
+  presentationSessionId: string | null;
+  /** 無料版にも残す、画面上の全リアクション非常停止。 */
+  emergencyPaused: boolean;
   /** スライドの上に参加用 QR を出すか。自動表示はせず、コントロール窓のトグルだけで動かす。 */
   showJoinQr: boolean;
   /**
@@ -33,6 +37,8 @@ export const DEFAULT_SETTINGS: PresenterSettings = {
   roomCode: null,
   roomTitle: null,
   previousRoomCode: null,
+  presentationSessionId: null,
+  emergencyPaused: false,
   showJoinQr: false,
   allowCustomStamps: true,
   displayMode: "flow",
@@ -67,6 +73,8 @@ export function loadSettings(): PresenterSettings {
       roomCode: parsed.roomCode,
       roomTitle: parsed.roomTitle,
       previousRoomCode: parsed.previousRoomCode,
+      presentationSessionId: parsed.presentationSessionId,
+      emergencyPaused: parsed.emergencyPaused === true,
       showJoinQr: parsed.showJoinQr === true,
       allowCustomStamps: parsed.allowCustomStamps !== false,
       displayMode: parsed.displayMode === "bubble" ? "bubble" : "flow",

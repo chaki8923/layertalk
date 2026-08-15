@@ -7,11 +7,12 @@
  * 確認するのは3点:
  *   1. postgres_changes INSERT（コメント追加）
  *   2. postgres_changes UPDATE（いいね）
- *   3. broadcast（スタンプ・DB 非経由）
+ *   3. private broadcast（スタンプ。集計イベントはDBにも記録）
  *
- * 事前に検証用ルームが1つ必要。無ければ:
- *   insert into public.rooms (title) values ('smoke test') returning id, code;
- * で作って ROOM_ID に入れるか、環境変数 LAYERTALK_SMOKE_ROOM_ID で渡す。
+ * 所有している検証用ルームのID/コードと、発表者セッションのaccess tokenを
+ * LAYERTALK_SMOKE_ROOM_ID / LAYERTALK_SMOKE_ROOM_CODE /
+ * LAYERTALK_SMOKE_PRESENTER_ACCESS_TOKEN で渡す。CAPTCHAを有効にした環境では
+ * LAYERTALK_SMOKE_CAPTCHA_TOKEN も必要。
  *
  * Node 20 には WebSocket グローバルが無いため ws を注入している。
  * Node 22 以降なら transport の指定は不要（ブラウザ側は元から不要）。
@@ -41,10 +42,13 @@ const env = readEnv("apps/audience-web/.env.local", [
 
 const URL = env.NEXT_PUBLIC_SUPABASE_URL;
 const KEY = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const ROOM = process.env.LAYERTALK_SMOKE_ROOM_ID ?? "166d9fb1-d3b2-4644-8cd4-7c19ef6f9134";
+const ROOM = process.env.LAYERTALK_SMOKE_ROOM_ID;
+const ROOM_CODE = process.env.LAYERTALK_SMOKE_ROOM_CODE;
+const PRESENTER_TOKEN = process.env.LAYERTALK_SMOKE_PRESENTER_ACCESS_TOKEN;
+const CAPTCHA_TOKEN = process.env.LAYERTALK_SMOKE_CAPTCHA_TOKEN;
 
-if (!URL || !KEY) {
-  console.error("apps/audience-web/.env.local に URL / anon キーがありません");
+if (!URL || !KEY || !ROOM || !ROOM_CODE || !PRESENTER_TOKEN) {
+  console.error("Supabase URL/key と smoke 用 room ID/code/presenter access token が必要です");
   process.exit(1);
 }
 
@@ -55,8 +59,12 @@ const clientOptions = {
   realtime: { params: { eventsPerSecond: 20 }, transport: WS },
 };
 
-const rx = createClient(URL, KEY, clientOptions); // 受信側（プレゼンター相当）
+const rx = createClient(URL, KEY, {
+  ...clientOptions,
+  global: { headers: { Authorization: `Bearer ${PRESENTER_TOKEN}` } },
+}); // 受信側（プレゼンター相当）
 const tx = createClient(URL, KEY, clientOptions); // 送信側（観客相当）
+rx.realtime.setAuth(PRESENTER_TOKEN);
 
 const filter = `room_id=eq.${ROOM}`;
 
@@ -77,7 +85,7 @@ const commentChannel = rx
   });
 
 const stampChannel = rx
-  .channel(`stamps:${ROOM}`, { config: { broadcast: { self: true } } })
+  .channel(`room:${ROOM}:stamps`, { config: { private: true, broadcast: { self: true } } })
   .on("broadcast", { event: "stamp" }, ({ payload }) => {
     console.log("  ← broadcast stamp:", payload.emoji, "x", payload.count);
     results.broadcast = true;
@@ -102,6 +110,18 @@ const subscribe = (channel, label) =>
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 try {
+  const { error: authError } = await tx.auth.signInAnonymously({
+    options: CAPTCHA_TOKEN ? { captchaToken: CAPTCHA_TOKEN } : undefined,
+  });
+  if (authError) throw new Error("anonymous auth: " + authError.message);
+  const { data: joined, error: joinError } = await tx.rpc("join_room", {
+    p_code: ROOM_CODE,
+    p_passcode: null,
+  });
+  if (joinError || !joined?.[0] || joined[0].id !== ROOM) {
+    throw new Error("join_room: " + (joinError?.message ?? "room mismatch"));
+  }
+
   console.log("購読を開始…");
   await Promise.all([subscribe(commentChannel, "comments"), subscribe(stampChannel, "stamps")]);
 
@@ -113,9 +133,12 @@ try {
 
   console.log("1) コメントを INSERT");
   const id = crypto.randomUUID();
-  const { error: insErr } = await tx
-    .from("comments")
-    .insert({ id, room_id: ROOM, content: "Realtime スモークテスト", is_question: true });
+  const { error: insErr } = await tx.rpc("post_comment", {
+    p_id: id,
+    p_room_id: ROOM,
+    p_content: "Realtime スモークテスト",
+    p_is_question: true,
+  });
   if (insErr) throw new Error("insert: " + insErr.message);
   await sleep(2500);
 
@@ -127,20 +150,17 @@ try {
   if (rpcErr) throw new Error("rpc: " + rpcErr.message);
   await sleep(2500);
 
-  console.log("3) スタンプを Broadcast");
-  console.log(
-    "  send() =>",
-    await stampChannel.send({
-      type: "broadcast",
-      event: "stamp",
-      payload: { emoji: "🔥", count: 5, clientId: "realtime-smoke-client-01", at: Date.now() },
-    }),
-  );
+  console.log("3) スタンプを private Broadcast");
+  const { error: stampError } = await tx.rpc("send_stamp", {
+    p_room_id: ROOM,
+    p_stamp_key: "🔥",
+    p_count: 5,
+  });
+  if (stampError) throw new Error("send_stamp: " + stampError.message);
   await sleep(2500);
 
-  // 後片付け（comments の DELETE は anon では通らないので残るが、
-  // ルームごと消せば cascade で消える）
-  await tx.from("comments").delete().eq("id", id);
+  // コメントと集計イベントは保持ジョブが削除する。クライアントからの直接
+  // DELETEは意図的に許可していない。
 } catch (err) {
   console.error("\n❌", err.message);
 } finally {
@@ -148,7 +168,7 @@ try {
   console.log("postgres_changes INSERT:", results.pgInsert ? "✅" : "❌");
   console.log("question flag payload:     ", results.questionFlag ? "✅" : "❌");
   console.log("postgres_changes UPDATE:", results.pgUpdate ? "✅" : "❌");
-  console.log("broadcast (anon):       ", results.broadcast ? "✅" : "❌");
+  console.log("private broadcast:         ", results.broadcast ? "✅" : "❌");
   await rx.removeAllChannels();
   process.exit(Object.values(results).every(Boolean) ? 0 : 1);
 }

@@ -1,5 +1,7 @@
+"use client";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fetchRoomStamps } from "./api";
+import { fetchRoomStamps, fetchRoomStampUrl } from "./api";
 import type { LayerTalkClient } from "./client";
 import { roomStampChannelName } from "./constants";
 import { LayerTalkError } from "./errors";
@@ -127,7 +129,9 @@ export function useRoomStamps({ client, roomId }: UseRoomStampsOptions): UseRoom
           const stamp = row as RoomStamp;
           if (seenIdsRef.current.has(stamp.id) || deletedIdsRef.current.has(stamp.id)) return;
           seenIdsRef.current.add(stamp.id);
-          setStamps((prev) => [...prev, stamp].sort(oldestFirst));
+          void fetchRoomStampUrl(client, stamp.path).then(() => {
+            if (!cancelled) setStamps((prev) => [...prev, stamp].sort(oldestFirst));
+          });
         },
       )
       .on(

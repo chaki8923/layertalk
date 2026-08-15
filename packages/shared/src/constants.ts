@@ -15,7 +15,7 @@ export const STAMP_MAX_BATCH = 20;
 export const INITIAL_COMMENT_LIMIT = 200;
 
 /** Broadcast のチャンネル名。postgres_changes とは別チャンネルにする。 */
-export const stampChannelName = (roomId: string) => `stamps:${roomId}`;
+export const stampChannelName = (roomId: string) => `room:${roomId}:stamps`;
 
 /** コメントの postgres_changes を購読するチャンネル名 */
 export const commentChannelName = (roomId: string) => `comments:${roomId}`;
@@ -27,7 +27,7 @@ export const STAMP_EVENT = "stamp";
 
 // ------------------------------------------------- カスタムスタンプ（ルーム固有）
 
-/** 画像の実体を置く Storage バケット。public なので署名なしで読める。 */
+/** 画像の実体を置くprivate Storageバケット。参加権を持つセッションだけが読める。 */
 export const ROOM_STAMP_BUCKET = "room-stamps";
 
 /** アップロード時に正規化する一辺の px。会場の Wi-Fi に数MBを流させないため。 */

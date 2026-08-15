@@ -2,20 +2,41 @@ import type { LayerTalkClient } from "./client";
 import { COMMENT_MAX_LENGTH, ROOM_STAMP_BUCKET, normalizeRoomCode } from "./constants";
 import { LayerTalkError } from "./errors";
 import type { Locale } from "./i18n";
-import type { Comment, Room, RoomStamp } from "./types";
+import type {
+  Comment,
+  Entitlement,
+  ModerationRules,
+  PresentationReport,
+  PresentationSession,
+  PublicRoom,
+  Room,
+  RoomStamp,
+} from "./types";
 
 export async function findRoomByCode(
   client: LayerTalkClient,
   code: string,
-): Promise<Room | null> {
-  const { data, error } = await client
-    .from("rooms")
-    .select("*")
-    .eq("code", normalizeRoomCode(code))
-    .maybeSingle();
+): Promise<PublicRoom | null> {
+  const { data, error } = await client.rpc("find_public_room_by_code", {
+    p_code: normalizeRoomCode(code),
+  });
 
   if (error) throw new LayerTalkError("room_fetch_failed", error.message);
-  return data;
+  return data?.[0] ?? null;
+}
+
+export async function joinRoom(
+  client: LayerTalkClient,
+  code: string,
+  passcode?: string,
+): Promise<PublicRoom | null> {
+  const { data, error } = await client.rpc("join_room", {
+    p_code: normalizeRoomCode(code),
+    p_passcode: passcode || null,
+  });
+  if (error) throw new LayerTalkError("room_join_failed", error.message);
+  const room = data?.[0];
+  return room ? ({ ...room, requires_passcode: Boolean(passcode) } as PublicRoom) : null;
 }
 
 export type CreateRoomInput = {
@@ -28,13 +49,18 @@ export async function createRoom(
   client: LayerTalkClient,
   { title, language = "ja" }: CreateRoomInput = {},
 ): Promise<Room> {
-  const { data, error } = await client
-    .from("rooms")
-    .insert({ title: title?.trim() || null, language })
-    .select()
-    .single();
+  const { data, error } = await client.rpc("create_room", {
+    p_title: title?.trim() || null,
+    p_language: language,
+  });
 
   if (error) throw new LayerTalkError("room_create_failed", error.message);
+  return data;
+}
+
+export async function resumeRoom(client: LayerTalkClient, code: string): Promise<Room> {
+  const { data, error } = await client.rpc("resume_room", { p_code: normalizeRoomCode(code) });
+  if (error) throw new LayerTalkError("room_fetch_failed", error.message);
   return data;
 }
 
@@ -78,21 +104,27 @@ export function buildComment(roomId: string, content: string, isQuestion = false
     is_question: isQuestion,
     likes_count: 0,
     created_at: new Date().toISOString(),
+    status: "approved",
+    question_status: isQuestion ? "open" : null,
+    presentation_session_id: null,
+    moderated_by: null,
+    moderated_at: null,
   };
 }
 
 export async function insertComment(
   client: LayerTalkClient,
   comment: Comment,
-): Promise<void> {
-  const { error } = await client.from("comments").insert({
-    id: comment.id,
-    room_id: comment.room_id,
-    content: comment.content,
-    is_question: comment.is_question,
+): Promise<Comment> {
+  const { data, error } = await client.rpc("post_comment", {
+    p_id: comment.id,
+    p_room_id: comment.room_id,
+    p_content: comment.content,
+    p_is_question: comment.is_question,
   });
 
   if (error) throw new LayerTalkError("comment_insert_failed", error.message);
+  return data;
 }
 
 /** いいねのトグル。戻り値は更新後の likes_count。 */
@@ -110,7 +142,7 @@ export async function toggleLike(
   return data as number;
 }
 
-/** この端末が既にいいね済みのコメント id 群。localStorage を信用せずサーバに問い合わせる。 */
+/** この匿名Authユーザーがいいね済みのコメント id 群。clientId引数は旧API互換用。 */
 export async function fetchLikedIds(
   client: LayerTalkClient,
   roomId: string,
@@ -127,9 +159,21 @@ export async function fetchLikedIds(
 
 // ------------------------------------------------- カスタムスタンプ（ルーム固有）
 
-/** Storage のパスから公開 URL を作る。バケットが public なので署名は要らない。 */
+const roomStampUrls = new Map<string, string>();
+
+/** private Storageの署名URLキャッシュを返す。fetchRoomStamps/uploadRoomStampが事前に温める。 */
 export function roomStampUrl(client: LayerTalkClient, path: string): string {
-  return client.storage.from(ROOM_STAMP_BUCKET).getPublicUrl(path).data.publicUrl;
+  void client;
+  return roomStampUrls.get(path) ?? "";
+}
+
+export async function fetchRoomStampUrl(client: LayerTalkClient, path: string): Promise<string> {
+  const cached = roomStampUrls.get(path);
+  if (cached) return cached;
+  const { data, error } = await client.storage.from(ROOM_STAMP_BUCKET).createSignedUrl(path, 3600);
+  if (error) throw new LayerTalkError("stamp_fetch_failed", error.message);
+  roomStampUrls.set(path, data.signedUrl);
+  return data.signedUrl;
 }
 
 export async function fetchRoomStamps(
@@ -143,6 +187,7 @@ export async function fetchRoomStamps(
     .order("created_at", { ascending: true });
 
   if (error) throw new LayerTalkError("stamp_fetch_failed", error.message);
+  await Promise.all((data ?? []).map((stamp) => fetchRoomStampUrl(client, stamp.path)));
   return data ?? [];
 }
 
@@ -174,7 +219,12 @@ export async function uploadRoomStamp(
   client: LayerTalkClient,
   { roomId, clientId, blob }: UploadRoomStampInput,
 ): Promise<RoomStamp> {
-  const path = `${roomId}/${crypto.randomUUID()}.png`;
+  const { data: reserved, error: reserveError } = await client.rpc("reserve_room_stamp", {
+    p_room_id: roomId,
+    p_client_id: clientId,
+  });
+  if (reserveError) throw roomStampInsertError(reserveError.message);
+  const path = reserved.path;
 
   const { error: uploadError } = await client.storage
     .from(ROOM_STAMP_BUCKET)
@@ -187,20 +237,12 @@ export async function uploadRoomStamp(
       upsert: false,
     });
 
-  if (uploadError) throw new LayerTalkError("stamp_upload_failed", uploadError.message);
-
-  const { data, error } = await client
-    .from("room_stamps")
-    .insert({ room_id: roomId, client_id: clientId, path })
-    .select()
-    .single();
-
-  if (error) {
-    await client.storage.from(ROOM_STAMP_BUCKET).remove([path]);
-    throw roomStampInsertError(error.message);
+  if (uploadError) {
+    await client.rpc("delete_room_stamp", { p_stamp_id: reserved.id });
+    throw new LayerTalkError("stamp_upload_failed", uploadError.message);
   }
-
-  return data;
+  await fetchRoomStampUrl(client, path);
+  return reserved;
 }
 
 /**
@@ -213,8 +255,101 @@ export async function deleteRoomStamp(
   client: LayerTalkClient,
   stamp: Pick<RoomStamp, "id" | "path">,
 ): Promise<void> {
-  const { error } = await client.from("room_stamps").delete().eq("id", stamp.id);
+  const { data: path, error } = await client.rpc("delete_room_stamp", { p_stamp_id: stamp.id });
   if (error) throw new LayerTalkError("stamp_delete_failed", error.message);
+  await client.storage.from(ROOM_STAMP_BUCKET).remove([path || stamp.path]);
+  roomStampUrls.delete(stamp.path);
+}
 
-  await client.storage.from(ROOM_STAMP_BUCKET).remove([stamp.path]);
+export async function fetchActiveEntitlement(
+  client: LayerTalkClient,
+  roomId: string,
+): Promise<Entitlement | null> {
+  const { data, error } = await client.from("entitlements").select("*")
+    .eq("room_id", roomId).eq("status", "active").gt("expires_at", new Date().toISOString())
+    .order("expires_at", { ascending: false }).limit(1).maybeSingle();
+  if (error) throw new LayerTalkError("entitlement_fetch_failed", error.message);
+  return data;
+}
+
+export async function fetchModerationRules(
+  client: LayerTalkClient,
+  roomId: string,
+): Promise<ModerationRules> {
+  const { data, error } = await client.from("moderation_rules").select("*").eq("room_id", roomId).single();
+  if (error) throw new LayerTalkError("moderation_failed", error.message);
+  return data;
+}
+
+export async function updateModerationRules(
+  client: LayerTalkClient,
+  roomId: string,
+  patch: Partial<Pick<ModerationRules, "comments_paused" | "reactions_paused" | "question_only" | "approval_mode" | "display_delay_seconds" | "custom_stamps_enabled">>,
+): Promise<ModerationRules> {
+  const { data, error } = await client.from("moderation_rules").update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("room_id", roomId).select().single();
+  if (error) throw new LayerTalkError("moderation_failed", error.message);
+  return data;
+}
+
+export async function setRoomPasscode(client: LayerTalkClient, roomId: string, passcode?: string) {
+  const { error } = await client.rpc("set_room_passcode", { p_room_id: roomId, p_passcode: passcode || null });
+  if (error) throw new LayerTalkError("moderation_failed", error.message);
+}
+
+export async function moderateComment(
+  client: LayerTalkClient,
+  commentId: string,
+  action: "approve" | "hide" | "restore" | "mark_answered" | "mark_open",
+): Promise<Comment> {
+  const { data, error } = await client.rpc("moderate_comment", { p_comment_id: commentId, p_action: action });
+  if (error) throw new LayerTalkError("moderation_failed", error.message);
+  return data;
+}
+
+export async function startPresentationSession(client: LayerTalkClient, roomId: string) {
+  const { data, error } = await client.rpc("start_presentation", { p_room_id: roomId });
+  if (error) throw new LayerTalkError("session_failed", error.message);
+  return data;
+}
+
+export async function endPresentationSession(client: LayerTalkClient, sessionId: string) {
+  const { data, error } = await client.rpc("end_presentation", { p_session_id: sessionId });
+  if (error) throw new LayerTalkError("session_failed", error.message);
+  return data;
+}
+
+export async function fetchPresentationReport(
+  client: LayerTalkClient,
+  session: PresentationSession,
+): Promise<PresentationReport> {
+  const [{ data: comments, error: commentsError }, { data: stamps, error: stampsError }] = await Promise.all([
+    client.from("comments").select("*").eq("presentation_session_id", session.id).order("created_at"),
+    client.from("stamp_events").select("*").eq("presentation_session_id", session.id).order("created_at"),
+  ]);
+  if (commentsError || stampsError) throw new LayerTalkError("report_failed", commentsError?.message ?? stampsError?.message);
+  const minuteCounts = new Map<number, number>();
+  const start = new Date(session.started_at).getTime();
+  for (const comment of comments ?? []) {
+    const minute = Math.max(0, Math.floor((new Date(comment.created_at).getTime() - start) / 60000));
+    minuteCounts.set(minute, (minuteCounts.get(minute) ?? 0) + 1);
+  }
+  for (const stamp of stamps ?? []) {
+    const minute = Math.max(0, Math.floor((new Date(stamp.created_at).getTime() - start) / 60000));
+    minuteCounts.set(minute, (minuteCounts.get(minute) ?? 0) + stamp.count);
+  }
+  const peakMinute = [...minuteCounts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0] ?? null;
+  const questions = (comments ?? []).filter((comment) => comment.is_question);
+  return {
+    session,
+    comments: comments ?? [],
+    stampEvents: stamps ?? [],
+    peakMinute,
+    totals: {
+      comments: comments?.length ?? 0,
+      questions: questions.length,
+      openQuestions: questions.filter((question) => question.question_status === "open").length,
+      stamps: (stamps ?? []).reduce((sum, stamp) => sum + stamp.count, 0),
+    },
+  };
 }

@@ -2,13 +2,15 @@ import {
   createRoom,
   customStampKey,
   deleteRoomStamp,
-  findRoomByCode,
+  endPresentationSession,
   LOCALES,
   normalizeRoomCode,
   resolveErrorMessage,
   ROOM_CODE_PATTERN,
   roomStampUrl,
+  resumeRoom,
   setRoomLanguage,
+  startPresentationSession,
   useComments,
   useRoomStamps,
   type Locale,
@@ -19,10 +21,12 @@ import {
   Check,
   Copy,
   Loader2,
+  LogOut,
   MessageSquareText,
   Monitor,
   MousePointerClick,
   Play,
+  PauseCircle,
   Repeat,
   Sparkles,
   Square,
@@ -30,9 +34,11 @@ import {
   X,
 } from "lucide-react";
 import { STAMP_EMOJIS } from "@layertalk/shared";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { JoinQrCard } from "../components/JoinQrCard";
+import { EventPassPanel } from "../components/EventPassPanel";
+import { PresenterAuth } from "../components/PresenterAuth";
 import { useDocumentLang, useMessages, type Messages } from "../i18n";
 import { audienceUrl as buildAudienceUrl } from "../lib/audience";
 import {
@@ -69,13 +75,28 @@ export function ControlWindow() {
   const [confirmSwitch, setConfirmSwitch] = useState(false);
   const [live, setLive] = useState(false);
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
+  const [authReady, setAuthReady] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
 
   const t = useMessages(settings.language);
   useDocumentLang(settings.language);
 
+  useEffect(() => {
+    void supabase.auth.getSession().then(({ data }) => {
+      setSignedIn(Boolean(data.session && !data.session.user.is_anonymous));
+      setAuthReady(true);
+    });
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSignedIn(Boolean(session && !session.user.is_anonymous));
+      setAuthReady(true);
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+
   const { comments, status } = useComments({
     client: settings.roomId ? supabase : null,
     roomId: settings.roomId,
+    includeModerated: true,
   });
 
   const { stamps, removeLocal: removeStampLocal, addLocal: addStampLocal } = useRoomStamps({
@@ -119,6 +140,18 @@ export function ControlWindow() {
     });
   }, []);
 
+  // The tray can stop a presentation without going through the main button.
+  // Close the database session as the native state transitions to stopped so
+  // report windows and paid-feature snapshots do not remain open indefinitely.
+  const previousLive = useRef(false);
+  useEffect(() => {
+    if (previousLive.current && !live && settings.presentationSessionId) {
+      void endPresentationSession(supabase, settings.presentationSessionId).catch(() => undefined);
+      update({ presentationSessionId: null, emergencyPaused: false });
+    }
+    previousLive.current = live;
+  }, [live, settings.presentationSessionId, update]);
+
   const handlePickMonitor = (name: string | null) => {
     update({ monitorName: name });
     void setOverlayMonitor(name);
@@ -126,11 +159,24 @@ export function ControlWindow() {
     void peekOverlay(name, PEEK_MS);
   };
 
-  const handleToggleLive = () => {
+  const handleToggleLive = async () => {
     if (live) {
-      void stopPresentation();
+      await stopPresentation();
+      if (settings.presentationSessionId) {
+        void endPresentationSession(supabase, settings.presentationSessionId).catch(() => undefined);
+      }
+      update({ presentationSessionId: null, emergencyPaused: false });
     } else {
-      void startPresentation(settings.monitorName);
+      if (settings.roomId) {
+        try {
+          const session = await startPresentationSession(supabase, settings.roomId);
+          update({ presentationSessionId: session.id, emergencyPaused: false });
+        } catch {
+          // 通信障害で本番開始そのものを止めない。ローカルオーバーレイは開始できる。
+          update({ presentationSessionId: crypto.randomUUID(), emergencyPaused: false });
+        }
+      }
+      await startPresentation(settings.monitorName);
     }
   };
 
@@ -161,11 +207,7 @@ export function ControlWindow() {
     setBusy(true);
     setError(null);
     try {
-      const room = await findRoomByCode(supabase, code);
-      if (!room) {
-        setError(t.room.notFound);
-        return;
-      }
+      const room = await resumeRoom(supabase, code);
       update({ roomId: room.id, roomCode: room.code, roomTitle: room.title });
       setJoinCode("");
       // 発表者の設定を正とする。ルーム側の値を読み込むと、ルームを繋ぎ直すたびに
@@ -257,6 +299,18 @@ export function ControlWindow() {
     }
   };
 
+  if (!authReady) {
+    return <div className="bg-bg text-text flex h-screen items-center justify-center"><Loader2 size={20} className="animate-spin" /></div>;
+  }
+
+  if (!signedIn) {
+    return (
+      <div className="bg-bg text-text h-screen overflow-y-auto">
+        <PresenterAuth locale={settings.language} onSignedIn={() => setSignedIn(true)} />
+      </div>
+    );
+  }
+
   return (
     <div className="bg-bg text-text flex h-screen flex-col overflow-hidden">
       {/* titleBarStyle: Overlay なので、信号機ボタンぶんの余白と
@@ -285,7 +339,7 @@ export function ControlWindow() {
         <section className="space-y-2">
           <motion.button
             type="button"
-            onClick={handleToggleLive}
+            onClick={() => void handleToggleLive()}
             disabled={!settings.roomId}
             whileTap={settings.roomId ? { scale: 0.98 } : undefined}
             transition={{ type: "spring", stiffness: 500, damping: 32, mass: 0.6 }}
@@ -307,6 +361,21 @@ export function ControlWindow() {
                 : t.live.hidden}
           </p>
         </section>
+
+        {live && (
+          <section>
+            <button
+              type="button"
+              onClick={() => update({ emergencyPaused: !settings.emergencyPaused })}
+              className={`lt-tap flex w-full items-center justify-center gap-2 rounded-[14px] border px-3 py-3 text-[13px] font-bold ${
+                settings.emergencyPaused ? "border-online/40 bg-online/10 text-online" : "border-like/35 bg-like/8 text-like"
+              }`}
+            >
+              <PauseCircle size={16} />
+              {settings.emergencyPaused ? (settings.language === "ja" ? "リアクションを再開" : "Resume reactions") : (settings.language === "ja" ? "リアクションを緊急停止" : "Stop all reactions")}
+            </button>
+          </section>
+        )}
 
         {/* ---------------------------------------------------------- ルーム */}
         <section className="space-y-3">
@@ -491,6 +560,21 @@ export function ControlWindow() {
           {error && <p className="text-like text-[12px]">{error}</p>}
         </section>
 
+        {settings.roomId && (
+          <EventPassPanel
+            roomId={settings.roomId}
+            locale={settings.language}
+            live={live}
+            comments={comments}
+            display={{ displayMode: settings.displayMode, showJoinQr: settings.showJoinQr, allowCustomStamps: settings.allowCustomStamps }}
+            onApplyPreset={(preset) => update({
+              displayMode: preset.display_mode,
+              showJoinQr: preset.show_join_qr,
+              allowCustomStamps: preset.allow_custom_stamps,
+            })}
+          />
+        )}
+
         {/* ------------------------------------------------------ 表示モニター */}
         <section className="space-y-3">
           <SectionLabel>{t.monitor.section}</SectionLabel>
@@ -518,6 +602,12 @@ export function ControlWindow() {
             {monitors.length <= 1 && t.monitor.hintSingle}
           </p>
         </section>
+
+        {!live && (
+          <button type="button" onClick={() => void supabase.auth.signOut()} className="text-text-faint hover:text-text flex w-full items-center justify-center gap-1.5 py-2 text-[11px]">
+            <LogOut size={12} />{settings.language === "ja" ? "ログアウト" : "Sign out"}
+          </button>
+        )}
 
         {/* ------------------------------------------------------ 表示スタイル */}
         <section className="space-y-3">

@@ -6,6 +6,7 @@ import {
   findRoomByCode,
   getClientId,
   insertComment,
+  joinRoom,
   motionPresets,
   normalizeRoomCode,
   resolveErrorMessage,
@@ -16,7 +17,7 @@ import {
   useRoomStamps,
   useStampChannel,
   type Locale,
-  type Room,
+  type PublicRoom,
   type SortMode,
 } from "@layertalk/shared";
 import { AnimatePresence, motion } from "motion/react";
@@ -29,13 +30,15 @@ import { CommentCard } from "@/components/comment-card";
 import { Composer } from "@/components/composer";
 import { SortTabs } from "@/components/sort-tabs";
 import { StampBar } from "@/components/stamp-bar";
+import { Turnstile } from "@/components/turnstile";
 import { localeFromRoom, messages, type Messages } from "@/i18n";
 import { LocaleProvider } from "@/i18n/locale-context";
 import { supabase } from "@/lib/supabase";
 
 type RoomState =
   | { kind: "loading" }
-  | { kind: "ready"; room: Room }
+  | { kind: "gate"; room: PublicRoom }
+  | { kind: "ready"; room: PublicRoom }
   | { kind: "notfound" }
   | { kind: "error"; error: unknown };
 
@@ -44,6 +47,10 @@ export function RoomClient({ code, fallbackLocale }: { code: string; fallbackLoc
   const [sortMode, setSortMode] = useState<SortMode>("popular");
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [myIds, setMyIds] = useState<Set<string>>(new Set());
+  const [passcode, setPasscode] = useState("");
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState("");
   // localStorage はサーバでは読めないので遅延初期化する。
   // SSR 時は空文字、クライアントの初回レンダーで実際の id になる。
   // 画面に出す値ではないのでハイドレーションの不一致にはならず、
@@ -51,11 +58,12 @@ export function RoomClient({ code, fallbackLocale }: { code: string; fallbackLoc
   const [clientId] = useState(getClientId);
 
   const room = roomState.kind === "ready" ? roomState.room : null;
+  const localizedRoom = roomState.kind === "ready" || roomState.kind === "gate" ? roomState.room : null;
   const roomId = room?.id ?? null;
 
   // 表示言語はルームが持つ。取得できるまでは Accept-Language 由来の推測を使うが、
   // その間に読める文言は出さない（下の loading は文字を持たない）ので入れ替わりは見えない。
-  const locale = room ? localeFromRoom(room.language) : fallbackLocale;
+  const locale = localizedRoom ? localeFromRoom(localizedRoom.language) : fallbackLocale;
   const t = messages[locale];
 
   // コードからルームを解決する
@@ -66,7 +74,22 @@ export function RoomClient({ code, fallbackLocale }: { code: string; fallbackLoc
       try {
         const found = await findRoomByCode(supabase, code);
         if (cancelled) return;
-        setRoomState(found ? { kind: "ready", room: found } : { kind: "notfound" });
+        if (!found) {
+          setRoomState({ kind: "notfound" });
+          return;
+        }
+        if (found.requires_passcode || process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) {
+          setRoomState({ kind: "gate", room: found });
+          return;
+        }
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!sessionData.session) {
+          const { error: authError } = await supabase.auth.signInAnonymously();
+          if (authError) throw authError;
+        }
+        const joined = await joinRoom(supabase, code);
+        if (cancelled) return;
+        setRoomState(joined ? { kind: "ready", room: { ...found, ...joined } } : { kind: "notfound" });
       } catch (err) {
         if (cancelled) return;
         setRoomState({ kind: "error", error: err });
@@ -77,6 +100,29 @@ export function RoomClient({ code, fallbackLocale }: { code: string; fallbackLoc
       cancelled = true;
     };
   }, [code]);
+
+  const handleJoinRoom = async () => {
+    if (roomState.kind !== "gate") return;
+    setJoining(true);
+    setJoinError(null);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        const { error: authError } = await supabase.auth.signInAnonymously({ options: captchaToken ? { captchaToken } : undefined });
+        if (authError) throw authError;
+      }
+      const joined = await joinRoom(supabase, code, passcode);
+      if (!joined) {
+        setJoinError(locale === "ja" ? "ルームが見つかりません" : "Room not found");
+        return;
+      }
+      setRoomState({ kind: "ready", room: { ...roomState.room, ...joined } });
+    } catch {
+      setJoinError(locale === "ja" ? "パスコードが違います" : "Incorrect passcode");
+    } finally {
+      setJoining(false);
+    }
+  };
 
   const { comments, status, loading, upsertLocal, removeLocal, patchLikes } = useComments({
     client: supabase,
@@ -146,10 +192,17 @@ export function RoomClient({ code, fallbackLocale }: { code: string; fallbackLoc
       upsertLocal(optimistic);
       setMyIds((prev) => new Set(prev).add(optimistic.id));
 
-      void insertComment(supabase, optimistic).catch((err) => {
-        removeLocal(optimistic.id);
-        toast.error(resolveErrorMessage(err, locale));
-      });
+      void insertComment(supabase, optimistic)
+        .then((saved) => {
+          if (saved.status === "pending") {
+            removeLocal(saved.id);
+            toast.success(locale === "ja" ? "承認待ちとして送信しました" : "Sent for approval");
+          }
+        })
+        .catch((err) => {
+          removeLocal(optimistic.id);
+          toast.error(resolveErrorMessage(err, locale));
+        });
     },
     [roomId, upsertLocal, removeLocal, locale],
   );
@@ -213,6 +266,50 @@ export function RoomClient({ code, fallbackLocale }: { code: string; fallbackLoc
           </Link>
         }
       />
+    );
+  }
+
+  if (roomState.kind === "gate") {
+    return (
+      <div className="flex min-h-dvh items-center justify-center px-5">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleJoinRoom();
+          }}
+          className="lt-glass w-full max-w-sm rounded-[28px] p-6"
+        >
+          <p className="text-text-faint text-[11px] font-bold tracking-[0.16em] uppercase">
+            {roomState.room.code}
+          </p>
+          <h1 className="mt-2 text-[22px] font-bold tracking-[-0.02em]">
+            {roomState.room.title ?? "LayerTalk"}
+          </h1>
+          <p className="text-text-muted mt-2 text-[13px] leading-relaxed">
+            {roomState.room.requires_passcode
+              ? locale === "ja" ? "主催者から共有されたパスコードを入力してください。" : "Enter the passcode shared by the host."
+              : locale === "ja" ? "確認が完了すると入室できます。" : "Complete the quick check to join."}
+          </p>
+          {roomState.room.requires_passcode && <input
+            autoFocus
+            type="password"
+            value={passcode}
+            onChange={(event) => setPasscode(event.target.value)}
+            minLength={4}
+            maxLength={12}
+            className="border-border focus:border-brand mt-5 w-full rounded-[14px] border bg-transparent px-4 py-3 text-[16px] outline-none"
+          />}
+          <Turnstile onToken={setCaptchaToken} />
+          {joinError && <p className="text-like mt-2 text-[12px]">{joinError}</p>}
+          <button
+            type="submit"
+            disabled={joining || (roomState.room.requires_passcode && passcode.length < 4) || (Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) && !captchaToken)}
+            className="lt-tap mt-4 flex w-full items-center justify-center rounded-[14px] bg-[linear-gradient(135deg,#6b8aff,#b47cff)] px-4 py-3 text-[14px] font-bold text-white disabled:opacity-40"
+          >
+            {joining ? <Loader2 size={16} className="animate-spin" /> : locale === "ja" ? "入室する" : "Join room"}
+          </button>
+        </form>
+      </div>
     );
   }
 
