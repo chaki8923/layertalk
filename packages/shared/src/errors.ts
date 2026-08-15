@@ -23,6 +23,7 @@ export type LayerTalkErrorCode =
   | "like_failed"
   | "liked_ids_failed"
   | "stamp_fetch_failed"
+  | "stamp_send_failed"
   | "stamp_upload_failed"
   | "stamp_delete_failed"
   | "stamp_limit_client"
@@ -47,6 +48,7 @@ const ja: Record<LayerTalkErrorCode, string> = {
   like_failed: "いいねを反映できませんでした",
   liked_ids_failed: "いいねの状態を取得できませんでした",
   stamp_fetch_failed: "スタンプの取得に失敗しました",
+  stamp_send_failed: "スタンプを送信できませんでした。接続を確認してもう一度お試しください",
   stamp_upload_failed: "スタンプを追加できませんでした",
   stamp_delete_failed: "スタンプを削除できませんでした",
   stamp_limit_client: `ひとつの端末から追加できるのは${ROOM_STAMP_MAX_PER_CLIENT}個までです`,
@@ -72,6 +74,7 @@ const en: Record<LayerTalkErrorCode, string> = {
   like_failed: "Could not register your like",
   liked_ids_failed: "Could not load your likes",
   stamp_fetch_failed: "Could not load the stamps",
+  stamp_send_failed: "Could not send the stamp. Check your connection and try again",
   stamp_upload_failed: "Could not add the stamp",
   stamp_delete_failed: "Could not delete the stamp",
   stamp_limit_client: `You can add up to ${ROOM_STAMP_MAX_PER_CLIENT} stamps from one device`,

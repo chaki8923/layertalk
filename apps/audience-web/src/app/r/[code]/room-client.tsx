@@ -135,6 +135,7 @@ export function RoomClient({ code, fallbackLocale }: { code: string; fallbackLoc
     clientId,
     // 観客側は他人のスタンプを描画しないので、受信ハンドラは持たない
     ignoreSelf: true,
+    onError: (err) => toast.error(resolveErrorMessage(err, locale)),
   });
 
   // このルームだけで押せる画像スタンプ。誰かが追加すると全員のバーに並ぶ。

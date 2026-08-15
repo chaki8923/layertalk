@@ -36,6 +36,7 @@ async function authConfig(method = "GET", body) {
 }
 
 await authConfig("PATCH", {
+  external_anonymous_users_enabled: true,
   mailer_subjects_confirmation: "LayerTalk ログインコード / Sign-in code",
   mailer_templates_confirmation_content: confirmation,
   mailer_subjects_magic_link: "LayerTalk ログインコード / Sign-in code",
@@ -47,6 +48,7 @@ await authConfig("PATCH", {
 
 const saved = await authConfig();
 const checks = {
+  anonymous_sign_ins: saved.external_anonymous_users_enabled === true,
   confirmation_template: saved.mailer_templates_confirmation_content === confirmation,
   magic_link_template: saved.mailer_templates_magic_link_content === magicLink,
   otp_expiration: saved.mailer_otp_exp === 600,

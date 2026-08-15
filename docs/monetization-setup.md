@@ -22,7 +22,8 @@ In Authentication settings:
 1. Enable email OTP for presenters.
 2. Configure custom SMTP before production. The default mailer is intended for
    development and has strict rate limits.
-3. Enable anonymous sign-ins for audience members.
+3. Enable anonymous sign-ins for audience members. This is applied and verified
+   by `npm run configure:supabase-auth` below.
 4. Configure Cloudflare Turnstile as Auth CAPTCHA and set the matching site key
    in `NEXT_PUBLIC_TURNSTILE_SITE_KEY`.
 5. Keep leaked-password protection enabled for any password-based sign-in added
@@ -36,8 +37,9 @@ Magic Link redirect. Both hosted Auth templates must therefore use `{{ .Token }}
 - `supabase/templates/confirmation.html` for a presenter's first sign-in
 - `supabase/templates/magic_link.html` for subsequent sign-ins
 
-Apply the checked-in bilingual templates, six-digit length, ten-minute expiry,
-and 60-second resend interval through the Supabase Management API:
+Apply anonymous audience sign-in together with the checked-in bilingual
+templates, six-digit length, ten-minute expiry, and 60-second resend interval
+through the Supabase Management API:
 
 ```sh
 export SUPABASE_ACCESS_TOKEN=<personal-access-token>
@@ -48,7 +50,8 @@ unset SUPABASE_ACCESS_TOKEN
 Create the personal access token from the Supabase account page and set it only
 in the local shell or a secret manager. Never add it to an `.env` file or commit
 it. The script updates project `xnqduwlagmfaxzsaaicj`, reads the configuration
-back, and fails unless both templates and all OTP settings match.
+back, and fails unless anonymous sign-in, both templates, and all OTP settings
+match.
 
 The database does not expose rooms to unjoined anonymous users. Audience access
 is granted for 12 hours by `join_room`, after CAPTCHA and optional room-passcode
