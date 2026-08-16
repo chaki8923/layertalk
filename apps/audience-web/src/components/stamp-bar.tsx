@@ -60,6 +60,11 @@ export function StampBar({ onSend, stamps, onUpload, disabled = false }: Props) 
   // そのまま全員に公開してしまわないための一段。native の confirm() は使わない。
   const [pending, setPending] = useState<{ blob: Blob; previewUrl: string } | null>(null);
   const [uploading, setUploading] = useState(false);
+  // ⚠️ 締めるのはこっち。setUploading がボタンの disabled に届くのは次のレンダなので、
+  // 二度押し（モバイルのゴーストクリック）だと二回目も同じハンドラに入れてしまう。
+  // 通すと reserve_room_stamp が2回走り、別 path の行が2件できる（path は unique
+  // なので DB では潰せない＝リロードしても消えない重複になる）。
+  const uploadingRef = useRef(false);
 
   const items = useMemo<BarItem[]>(
     () => [
@@ -113,7 +118,8 @@ export function StampBar({ onSend, stamps, onUpload, disabled = false }: Props) 
   }, [locale]);
 
   const handleConfirmUpload = useCallback(async () => {
-    if (!pending) return;
+    if (!pending || uploadingRef.current) return;
+    uploadingRef.current = true;
     setUploading(true);
     try {
       await onUpload(pending.blob);
@@ -121,6 +127,7 @@ export function StampBar({ onSend, stamps, onUpload, disabled = false }: Props) 
     } catch (err) {
       toast.error(resolveErrorMessage(err, locale));
     } finally {
+      uploadingRef.current = false;
       setUploading(false);
     }
   }, [pending, onUpload, locale]);

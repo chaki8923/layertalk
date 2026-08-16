@@ -56,13 +56,28 @@ export function useRoomStamps({ client, roomId }: UseRoomStampsOptions): UseRoom
   const seenIdsRef = useRef<Set<string>>(new Set());
   const deletedIdsRef = useRef<Set<string>>(new Set());
 
-  const addLocal = useCallback((stamp: RoomStamp) => {
-    seenIdsRef.current.add(stamp.id);
-    deletedIdsRef.current.delete(stamp.id);
+  /**
+   * 同じ id が既に居たら何もしない append。
+   *
+   * ⚠️ 判定を「更新関数の中」でやるのが肝。seenIdsRef は同期的に立つので
+   * await をまたぐ取り込みの根拠には使えない（await 中に addLocal / hydrate が
+   * 同じ行を入れていても seenIds はもう立っていて、素通りしてしまう）。
+   * 実際にこれで、追加した直後だけ同じスタンプが2枚並んでいた。
+   */
+  const appendUnlessPresent = useCallback((stamp: RoomStamp) => {
     setStamps((prev) =>
       prev.some((s) => s.id === stamp.id) ? prev : [...prev, stamp].sort(oldestFirst),
     );
   }, []);
+
+  const addLocal = useCallback(
+    (stamp: RoomStamp) => {
+      seenIdsRef.current.add(stamp.id);
+      deletedIdsRef.current.delete(stamp.id);
+      appendUnlessPresent(stamp);
+    },
+    [appendUnlessPresent],
+  );
 
   const removeLocal = useCallback((id: string) => {
     seenIdsRef.current.delete(id);
@@ -127,11 +142,25 @@ export function useRoomStamps({ client, roomId }: UseRoomStampsOptions): UseRoom
         },
         ({ new: row }) => {
           const stamp = row as RoomStamp;
+          // 無駄な署名URLの発行を減らすための早期 return。
+          // 取り込んでよいかの最終判断は下（await のあと）でやり直す。
           if (seenIdsRef.current.has(stamp.id) || deletedIdsRef.current.has(stamp.id)) return;
           seenIdsRef.current.add(stamp.id);
-          void fetchRoomStampUrl(client, stamp.path).then(() => {
-            if (!cancelled) setStamps((prev) => [...prev, stamp].sort(oldestFirst));
-          });
+          void fetchRoomStampUrl(client, stamp.path)
+            .then(() => {
+              if (cancelled || deletedIdsRef.current.has(stamp.id)) return;
+              appendUnlessPresent(stamp);
+            })
+            .catch(() => {
+              // 行だけ先にできて画像がまだ無い（reserve_room_stamp が commit した時点で
+              // この INSERT は飛ぶが、Storage の upload はまだ終わっていない。private
+              // バケットなので createSignedUrl は確実に 404 する）。
+              // seenIds に入れたままだと二度と取り込まれないので戻し、再取得に拾わせる。
+              if (cancelled) return;
+              seenIdsRef.current.delete(stamp.id);
+              clearTimeout(reconcileTimer);
+              reconcileTimer = setTimeout(() => void hydrate(), RECONCILE_DELAY_MS);
+            });
         },
       )
       .on(
@@ -165,7 +194,7 @@ export function useRoomStamps({ client, roomId }: UseRoomStampsOptions): UseRoom
       clearTimeout(reconcileTimer);
       void client.removeChannel(channel);
     };
-  }, [client, roomId]);
+  }, [client, roomId, appendUnlessPresent]);
 
   const byId = useMemo(() => new Map(stamps.map((s) => [s.id, s])), [stamps]);
 

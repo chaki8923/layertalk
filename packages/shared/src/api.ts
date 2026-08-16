@@ -187,7 +187,11 @@ export async function fetchRoomStamps(
     .order("created_at", { ascending: true });
 
   if (error) throw new LayerTalkError("stamp_fetch_failed", error.message);
-  await Promise.all((data ?? []).map((stamp) => fetchRoomStampUrl(client, stamp.path)));
+  // ⚠️ allSettled。reserve_room_stamp は commit してから upload するので、
+  // 「行はあるが画像はまだ無い」行が一瞬できる。private バケットなのでその1件の
+  // createSignedUrl は 404 し、Promise.all だと一覧まるごと throw して
+  // バーが空になる。1件を諦めて残りを返し、次の取得で埋める。
+  await Promise.allSettled((data ?? []).map((stamp) => fetchRoomStampUrl(client, stamp.path)));
   return data ?? [];
 }
 

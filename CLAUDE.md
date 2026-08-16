@@ -47,6 +47,16 @@ if (isNew) callback();   // ← 常に false
 これで `onInsert` が一度も呼ばれず「スタンプは流れるのにコメントだけ流れない」バグになった。
 `useComments` は `seenIdsRef`（ref の Set）で判定している。ここを state に戻さないこと。
 
+**2b. その `seenIdsRef` は await をまたいだ取り込みの根拠にはならない**
+`seenIds` は同期的に立つので、「見た → 立てる → await → 入れる」と書くと、await のあいだに
+`addLocal` や再取得が同じ行を入れていても素通りする。`useRoomStamps` の INSERT ハンドラが
+署名 URL の取得を挟んでこれをやっていて、**自分で追加した直後だけ同じスタンプが2枚並んだ**
+（リロードすると `hydrate` が Map で組み直すので1枚に戻る＝DB は1行）。
+**await をまたぐ append は必ず更新関数の中で `prev` を見て弾く**こと（`appendUnlessPresent`）。
+`useComments` が無事なのは INSERT ハンドラが最後まで同期だから。
+ついでに、await が失敗する経路では `seenIds` から id を戻すこと。戻さないと
+「取り込み済みだが一覧にいない」行ができて、二度と表示されない。
+
 **3. Realtime の `SUBSCRIBED` は「まだ流れてこない」**
 購読確立からレプリケーションのフィルタが効くまで 1〜2 秒のズレがある。
 `useComments` は購読直後と 2.5 秒後の 2 回取得し直して回収している。`smoke:realtime` で再現可能。
