@@ -4,9 +4,13 @@ import {
   ArrowRight,
   BadgeHelp,
   Check,
+  Import,
+  Layers,
   MessageCircleMore,
+  MonitorPlay,
   MonitorUp,
   PartyPopper,
+  Puzzle,
   QrCode,
   Radio,
   ShieldCheck,
@@ -20,6 +24,7 @@ import { localeFromAcceptLanguage, messages } from "@/i18n";
 import { createHomeStructuredData, createPageMetadata, serializeJsonLd } from "@/lib/seo";
 
 const featureIcons = [MessageCircleMore, BadgeHelp, PartyPopper] as const;
+const worksWithIcons = [Import, Puzzle, MonitorPlay] as const;
 const stepIcons = [MonitorUp, QrCode, Radio] as const;
 
 export async function generateMetadata() {
@@ -41,7 +46,7 @@ export default async function HomePage() {
   const structuredData = createHomeStructuredData({
     locale,
     description: messages[locale].meta.description,
-    featureNames: t.features.items.map(({ title }) => title),
+    featureNames: [...t.features.items.map(({ title }) => title), t.worksWith.featureName],
   });
 
   return (
@@ -114,6 +119,42 @@ export default async function HomePage() {
                     <div className="bg-brand/10 text-brand flex h-10 w-10 items-center justify-center rounded-control"><Icon size={19} aria-hidden="true" /></div>
                     <h3 className="mt-6 text-[16px] font-bold"><ProtectedText text={feature.title} terms={[feature.title]} /></h3>
                     <p className="text-text-muted mt-3 text-[13px] leading-6"><ProtectedText text={feature.description} /></p>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        {/* 上の罫線は #features の border-y に任せる。border-t を足すと 2px になる。 */}
+        <section id="works-with" className="border-border scroll-mt-16 border-b">
+          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+            <div className="max-w-2xl">
+              <div className="text-brand flex items-center gap-2">
+                <Layers size={18} aria-hidden="true" />
+                <p className="text-[11px] font-bold tracking-[.18em] uppercase">{t.worksWith.eyebrow}</p>
+              </div>
+              <h2 className="mt-4 text-[clamp(2rem,5vw,3.2rem)] leading-[1.07] font-bold tracking-[-.05em]">
+                {locale === "ja" ? <PhraseText phrases={["重ねるだけだから、", "ツールは選ばない"]} /> : t.worksWith.title}
+              </h2>
+              <p className="text-text-muted mt-5 text-[13px] leading-7"><ProtectedText text={t.worksWith.description} terms={t.worksWith.tools} /></p>
+            </div>
+
+            <ul className="mt-9 flex flex-wrap gap-2" aria-label={t.worksWith.toolsLabel}>
+              {t.worksWith.tools.map((tool) => (
+                <li key={tool} className="lt-nowrap border-border bg-surface rounded-chip border px-3 py-2 text-[12px] font-semibold">{tool}</li>
+              ))}
+            </ul>
+            <p className="text-text-faint mt-3 text-[11px]">{t.worksWith.trademark}</p>
+
+            <div className="mt-10 grid gap-2.5 md:grid-cols-3">
+              {t.worksWith.points.map((point, index) => {
+                const Icon = worksWithIcons[index]!;
+                return (
+                  <article key={point.title} className="border-border rounded-card border p-6">
+                    <Icon className="text-brand" size={19} aria-hidden="true" />
+                    <h3 className="mt-5 text-[15px] font-bold"><ProtectedText text={point.title} terms={[point.title]} /></h3>
+                    <p className="text-text-muted mt-2 text-[13px] leading-6"><ProtectedText text={point.description} terms={t.worksWith.tools} /></p>
                   </article>
                 );
               })}

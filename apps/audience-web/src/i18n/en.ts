@@ -8,7 +8,7 @@ export const en: Messages = {
   meta: {
     title: "LayerTalk | Bring the room onto your slides.",
     description: "Bring audience comments, questions, and reactions onto presentation slides in real time",
-    keywords: ["presentation software", "live audience engagement", "Q&A", "real-time comments", "event presentation"],
+    keywords: ["presentation software", "live audience engagement", "Q&A", "real-time comments", "event presentation", "slide overlay"],
   },
 
   public: {
@@ -60,6 +60,20 @@ export const en: Messages = {
         { title: "Questions stay visible", description: "Separate questions from general comments so useful prompts are ready for the next conversation." },
         { title: "Reactions take one tap", description: "Emoji and custom stamps let people respond in moments when a full comment would be too much." },
       ],
+    },
+    worksWith: {
+      eyebrow: "Works with anything",
+      title: "It only overlays, so any slide tool works",
+      description: "LayerTalk does not import your slides. It only lays a transparent layer over the screen, so it works the same whether PowerPoint, Keynote, or a browser tab with Canva or Notion is underneath.",
+      toolsLabel: "Presentation tools you can layer over",
+      tools: ["PowerPoint", "Keynote", "Google Slides", "Canva", "Notion"],
+      trademark: "Product names are trademarks of their respective owners.",
+      points: [
+        { title: "No import", description: "There is no step where you export or convert your slides." },
+        { title: "No plugin", description: "Nothing gets installed into the presentation tool itself." },
+        { title: "Full screen is fine", description: "It layers over a slideshow or a browser presentation mode." },
+      ],
+      featureName: "Overlays on any presentation tool, including PowerPoint, Keynote, Google Slides, Canva, and Notion",
     },
     howItWorks: {
       eyebrow: "How it works",

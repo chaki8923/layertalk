@@ -9,7 +9,7 @@ export const ja = {
   meta: {
     title: "LayerTalk | 会場の声を、スライドの上へ。",
     description: "観客のコメント、質問、スタンプを発表中のスライドへリアルタイムに届ける",
-    keywords: ["プレゼンテーション", "リアルタイムコメント", "質疑応答", "観客参加", "イベント運営"],
+    keywords: ["プレゼンテーション", "リアルタイムコメント", "質疑応答", "観客参加", "イベント運営", "スライドオーバーレイ"],
   },
 
   public: {
@@ -61,6 +61,21 @@ export const ja = {
         { title: "質問が残る", description: "質問として投稿された声を分けて表示。見逃さず、次の対話につなげられます。" },
         { title: "スタンプで応える", description: "言葉にしにくい瞬間も、絵文字やカスタムスタンプなら気軽に反応できます。" },
       ],
+    },
+    worksWith: {
+      eyebrow: "Works with anything",
+      title: "重ねるだけだから、ツールは選ばない",
+      description: "LayerTalkはスライドを読み込みません。画面の一番上に透明な層を重ねるだけなので、下がPowerPointでもKeynoteでも、ブラウザで開いたCanvaやNotionでも同じように使えます。",
+      toolsLabel: "重ねて使える発表ツールの例",
+      tools: ["PowerPoint", "Keynote", "Google スライド", "Canva", "Notion"],
+      trademark: "※ 各製品名は各社の商標です。",
+      points: [
+        { title: "取り込みは不要", description: "スライドを書き出したり、変換したりする手順はありません。" },
+        { title: "プラグインは不要", description: "発表ツール側にインストールするものはありません。" },
+        { title: "全画面のままでいい", description: "スライドショーでも、ブラウザのプレゼンモードでも重なります。" },
+      ],
+      /** JSON-LD の `featureList` 専用。画面には出ない。 */
+      featureName: "PowerPoint、Keynote、Google スライド、Canva、Notionなど、どの発表ツールの画面にも重ねて表示",
     },
     howItWorks: {
       eyebrow: "How it works",

@@ -88,26 +88,36 @@ tao の実装は `makeKeyAndOrderFront` ＋ **非推奨の** `activateIgnoringOt
 `setCollectionBehavior`（Space を切り替えさせない）→ `setLevel(1000)` →
 `orderFrontRegardless` → `NSApplication activate` を自前で叩いている。
 
-**9. ブラウザの全画面プレゼン（Canva 等）にはオーバーレイが出ない — 調査中**
+**9. ブラウザの全画面プレゼン（Canva 等）に出すには、tao の窓を捨てるしかなかった — 解決済み**
 Keynote / PowerPoint は**同じ Space** に高レベル窓を出すので罠 #5 で勝てるが、**Canva を Chrome の
-プレゼンテーションモードにするとコメント／スタンプが完全に見えない**。確定している事実:
-- **レベルの問題ではない。** ⇧⌘L のコントロール窓（同じ level 1000 / 同じ collectionBehavior）は
-  Canva の全画面に**重なって出る**。オーバーレイとの差は `NSApplication activate` の有無だけ
-- **順序の問題でもない。** tao の `show()` は既に `makeKeyAndOrderFront`（`window.rs:668`）を
+プレゼンテーションモードにすると、tao が作った窓は何をしても入れなかった**。潰した候補:
+- **レベルではない。** level 1000 / collectionBehavior 337 に揃えても入れない
+- **順序でもない。** tao の `show()` は既に `makeKeyAndOrderFront`（`window.rs:668`）を
   呼んでいて、`orderFrontRegardless` を後から足しても症状は変わらなかった
-- 残る候補は「別 Space に置き去り」か「前に居るが WKWebView が描画を止めている」。
-  `lib.rs` の `log_window_state` に計測を入れた。`LAYERTALK_DEBUG_OVERLAY=1` で起動すると
-  `isVisible` / `isOnActiveSpace` / `occlusionState` が 1 秒ごとに出るので、これで切り分ける
-  （`onActiveSpace=false` → Space、`occluded=true` → 描画停止）
+- 計測すると `isOnActiveSpace` が false のまま（＝別 Space に置き去り。描画停止ではない）。
+  一方で**同じプロセス内で作った素の NSWindow は、画面ぴったりのサイズでも入れる**
 
-ここまでで分かった副産物:
+結論: **原因は tao の窓そのもの**。`lib.rs` の `native_overlay` で、wry が
+`ns_window.setContentView(...)` で貼った WKWebView（`wry-0.55.1/src/wkwebview/mod.rs:685`）を
+自前で作った NSWindow / NSPanel へ**丸ごと載せ替えている**。webview は生きたままなので IPC も描画も無傷。
+tao の窓は表示しないまま残す。オーバーレイは素の `NSWindow`、右端の質問窓は
+`NonactivatingPanel` ＋ `setBecomesKeyOnlyIfNeeded(true)`（触ってもスライドショーからフォーカスを奪わない）。
+**LP がこの対応を前提に「PowerPoint / Keynote / Google スライド / Canva / Notion」をうたっている**
+（`apps/audience-web/src/i18n/ja.ts` の `landing.worksWith`）ので、ここを壊すと表の約束が嘘になる。
+
+同時に分かった、今も有効な制約:
 - **`isVisible()` を前面化のガードに使うな。** macOS は別 Space の窓や隠れている窓を false と
   報告することがあり、「一度負けたら二度と復帰できない」状態を作る。判断は Rust 側の
   `live` / `panel_shown`（`SessionState`）に寄せてある
+- **`setHidesOnDeactivate(false)` は NSPanel では必須。** NSWindow の既定は false だが
+  **NSPanel の既定は true** で、立っているとアプリが非アクティブになった瞬間に消える
 - **tao のサイズ・位置の setter は `*_async`。** 当てた直後に `frame` を読むと反映前の値が出る
 - 発表**開始後**に全画面にされると新しい Space が後から生まれるので、発表中だけ 1 秒ごとに
   当て直すウォッチドッグ（`start_front_watchdog`）を回している。本筋は
   `NSWorkspace.activeSpaceDidChangeNotification` だが `block2` の依存追加が要るので採らなかった
+- 切り分けの計測は残してある。`LAYERTALK_DEBUG_OVERLAY=1` で起動すると `log_window_state` が
+  `isVisible` / `isOnActiveSpace` / `occlusionState` を 1 秒ごとに出す
+  （`onActiveSpace=false` → Space、`occluded=true` → 描画停止）
 
 **10. `postgres_changes` の DELETE は old に主キーしか載せない**
 `replica identity full` にしても実測で `{"id": "…"}` だけだった（`comments` の UPDATE で
