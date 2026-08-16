@@ -38,59 +38,53 @@ export function JoinForm({ locale }: { locale: Locale }) {
   };
 
   return (
-    <main className="flex h-dvh flex-col items-center justify-center px-6">
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={motionPresets.entrance}
-        className="w-full max-w-sm"
-      >
-        <div className="mb-8 text-center">
-          <h1 className="bg-gradient-brand bg-clip-text text-[30px] leading-tight font-bold tracking-[-0.02em] text-transparent">
-            LayerTalk
-          </h1>
-          <p className="text-text-muted mt-2 text-[14px] leading-relaxed">{t.join.prompt}</p>
-        </div>
-
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit();
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+      className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]"
+    >
+      <div>
+        <label htmlFor="room-code" className="sr-only">{t.join.codeLabel}</label>
+        <input
+          id="room-code"
+          value={code}
+          onChange={(event) => {
+            setCode(event.target.value.toUpperCase());
+            setError(null);
           }}
-          className="flex flex-col gap-3"
-        >
-          <input
-            value={code}
-            onChange={(event) => {
-              setCode(event.target.value.toUpperCase());
-              setError(null);
-            }}
-            inputMode="text"
-            autoCapitalize="characters"
-            autoComplete="off"
-            autoCorrect="off"
-            spellCheck={false}
-            maxLength={ROOM_CODE_LENGTH}
-            placeholder="ABC123"
-            aria-label={t.join.codeLabel}
-            className="lt-glass rounded-card lt-num placeholder:text-text-faint w-full py-4 text-center text-[26px] font-bold tracking-[0.28em] outline-none"
-          />
+          inputMode="text"
+          autoCapitalize="characters"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          maxLength={ROOM_CODE_LENGTH}
+          placeholder="ABC123"
+          aria-label={t.join.codeLabel}
+          aria-describedby={error ? "room-code-error" : undefined}
+          aria-invalid={Boolean(error)}
+          className="border-border bg-bg-elev lt-num placeholder:text-text-faint focus:border-brand h-14 w-full rounded-control border px-4 text-center text-[22px] font-bold tracking-[0.24em] outline-none transition-colors"
+        />
+      </div>
 
-          {error && <p className="text-like text-center text-[12px]">{error}</p>}
+      <motion.button
+        type="submit"
+        disabled={!valid}
+        whileTap={valid ? { scale: 0.97 } : undefined}
+        animate={{ opacity: valid ? 1 : 0.4 }}
+        transition={motionPresets.press}
+        className="lt-tap bg-gradient-brand shadow-glow flex h-14 items-center justify-center gap-2 rounded-control px-6 text-[14px] font-semibold text-white disabled:cursor-not-allowed sm:min-w-32"
+      >
+        {t.join.submit}
+        <ArrowRight size={17} strokeWidth={2.5} />
+      </motion.button>
 
-          <motion.button
-            type="submit"
-            disabled={!valid}
-            whileTap={valid ? { scale: 0.97 } : undefined}
-            animate={{ opacity: valid ? 1 : 0.4 }}
-            transition={motionPresets.press}
-            className="lt-tap bg-gradient-brand shadow-glow rounded-control flex items-center justify-center gap-2 py-3.5 text-[15px] font-semibold text-white"
-          >
-            {t.join.submit}
-            <ArrowRight size={17} strokeWidth={2.5} />
-          </motion.button>
-        </form>
-      </motion.div>
-    </main>
+      {error && (
+        <p id="room-code-error" role="alert" className="text-like text-center text-[12px] sm:col-span-2 sm:text-left">
+          {error}
+        </p>
+      )}
+    </form>
   );
 }

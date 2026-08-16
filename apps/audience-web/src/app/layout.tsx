@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 
 import { Toaster } from "@/components/ui/sonner";
 import { localeFromAcceptLanguage, messages } from "@/i18n";
+import { createRobotsMetadata, getSiteUrl, SITE_NAME } from "@/lib/seo";
 
 import "./globals.css";
 
@@ -10,8 +11,22 @@ import "./globals.css";
 export async function generateMetadata(): Promise<Metadata> {
   const locale = localeFromAcceptLanguage((await headers()).get("accept-language"));
   return {
-    title: "LayerTalk",
+    metadataBase: new URL(getSiteUrl()),
+    applicationName: SITE_NAME,
+    title: messages[locale].meta.title,
     description: messages[locale].meta.description,
+    keywords: [...messages[locale].meta.keywords],
+    authors: [{ name: SITE_NAME, url: "/" }],
+    creator: SITE_NAME,
+    publisher: SITE_NAME,
+    category: "technology",
+    referrer: "origin-when-cross-origin",
+    formatDetection: {
+      telephone: false,
+      address: false,
+      email: false,
+    },
+    robots: createRobotsMetadata(),
   };
 }
 

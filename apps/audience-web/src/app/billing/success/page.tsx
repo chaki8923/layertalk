@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 
 import { PublicShell } from "@/components/public/public-shell";
 import { resolveCheckoutLandingState } from "@/lib/server/fulfillment";
+import { privatePageRobots } from "@/lib/seo";
 
 import { SuccessStatus } from "./success-status";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "購入状態 | LayerTalk" };
+export const metadata: Metadata = { title: "購入状態 | LayerTalk", robots: privatePageRobots };
 
 export default async function BillingSuccess({ searchParams }: { searchParams: Promise<{ session_id?: string }> }) {
   const { session_id: sessionId } = await searchParams;

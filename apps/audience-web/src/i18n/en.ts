@@ -6,7 +6,85 @@ import type { Messages } from "./index";
  */
 export const en: Messages = {
   meta: {
-    description: "Send your comments and stamps to the slides on screen",
+    title: "LayerTalk | Bring the room onto your slides.",
+    description: "Bring audience comments, questions, and reactions onto presentation slides in real time",
+    keywords: ["presentation software", "live audience engagement", "Q&A", "real-time comments", "event presentation"],
+  },
+
+  public: {
+    nav: {
+      label: "Public pages",
+      features: "Features",
+      howItWorks: "How it works",
+      eventPass: "Event Pass",
+      join: "Join",
+    },
+    footer: {
+      home: "About LayerTalk",
+      eventPass: "Event Pass",
+      terms: "Terms",
+      privacy: "Privacy",
+      commerce: "Seller information",
+      support: "Support",
+      label: "Site information, legal, and support",
+      copyright: "© 2026 LayerTalk",
+    },
+  },
+
+  landing: {
+    eyebrow: "Live audience, on your slides",
+    titleLead: "Bring the room ",
+    titleHighlight: "onto your slides.",
+    description: "LayerTalk is a participatory presentation tool for macOS that puts audience comments, questions, and reactions directly over your slides in real time.",
+    primaryCta: "Explore Event Pass",
+    secondaryCta: "Enter a join code",
+    signals: ["No audience app", "Join by QR or 6-digit code", "No audience limit"],
+    stage: {
+      label: "LIVE SLIDE",
+      status: "Open for joining",
+      slideTitle: "Ideas grow in the room.",
+      slideBody: "Keep presenting while comments and questions arrive.",
+      comments: ["That is a great point!", "I have a question", "👏👏👏"],
+      audience: "128 joined",
+    },
+    join: {
+      eyebrow: "Join a room",
+      title: "Join as an audience member",
+      description: "Enter the 6-digit code shared by the presenter. If you opened a QR link, there is nothing else to enter.",
+    },
+    features: {
+      eyebrow: "In the room",
+      title: "When reactions are visible, a talk stops being one-way",
+      items: [
+        { title: "Comments move with the talk", description: "Put quick audience thoughts over the slides without interrupting the presenter or changing windows." },
+        { title: "Questions stay visible", description: "Separate questions from general comments so useful prompts are ready for the next conversation." },
+        { title: "Reactions take one tap", description: "Emoji and custom stamps let people respond in moments when a full comment would be too much." },
+      ],
+    },
+    howItWorks: {
+      eyebrow: "How it works",
+      title: "All you share is one room code",
+      steps: [
+        { title: "Create a room", description: "Start a presentation room in the Presenter app." },
+        { title: "Share a QR or code", description: "Show the QR on your slides or share the 6-digit code." },
+        { title: "Bring reactions on screen", description: "Comments, questions, and stamps appear over your slides." },
+      ],
+    },
+    eventPass: {
+      eyebrow: "For the main event",
+      title: "Event Pass keeps the live room under control",
+      description: "Add approval, blocked words, an entry passcode, presentation reports, and branding to one purchased room for seven days.",
+      price: "¥2,980",
+      tax: "tax included",
+      duration: "1 room · 7 days",
+      cta: "View Event Pass details",
+      note: "Purchases start in the Presenter app.",
+    },
+    finalCta: {
+      title: "Turn your next presentation into a conversation.",
+      presenter: "Explore Event Pass",
+      audience: "Join as audience",
+    },
   },
 
   join: {

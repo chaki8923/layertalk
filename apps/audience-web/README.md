@@ -1,5 +1,14 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Search indexing
+
+Search indexing is disabled by default. The app emits both `robots`/`googlebot`
+metadata and an `X-Robots-Tag: noindex, nofollow, noarchive` response header.
+
+Set `SEARCH_INDEXING_ENABLED=true` in the deployment environment only when the
+public pages are ready to be indexed. Billing result pages, audience room pages,
+and the realtime probe remain `noindex` regardless of this flag.
+
 ## Getting Started
 
 First, run the development server:

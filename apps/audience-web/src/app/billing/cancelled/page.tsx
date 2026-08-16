@@ -3,8 +3,9 @@ import Link from "next/link";
 import { CircleSlash2 } from "lucide-react";
 
 import { PublicShell } from "@/components/public/public-shell";
+import { privatePageRobots } from "@/lib/seo";
 
-export const metadata: Metadata = { title: "購入は完了していません | LayerTalk" };
+export const metadata: Metadata = { title: "購入は完了していません | LayerTalk", robots: privatePageRobots };
 
 export default function BillingCancelled() {
   return (

@@ -3,8 +3,13 @@ import Link from "next/link";
 
 import { PublicShell } from "@/components/public/public-shell";
 import { legalConfig } from "@/content/legal/config";
+import { createPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = { title: "特定商取引法に基づく表記 | LayerTalk" };
+export const metadata: Metadata = createPageMetadata({
+  title: "特定商取引法に基づく表記 | LayerTalk",
+  description: "LayerTalk Event Passの販売事業者、価格、支払方法、提供時期、返金条件などを掲載しています。",
+  path: "/legal/tokusho",
+});
 
 const staticRows = [
   ["販売価格", "LayerTalk Event Pass 2,980円（税込）"],

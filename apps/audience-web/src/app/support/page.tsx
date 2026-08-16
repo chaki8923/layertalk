@@ -4,8 +4,13 @@ import { AlertTriangle, Mail, ShieldAlert } from "lucide-react";
 
 import { PublicShell } from "@/components/public/public-shell";
 import { legalConfig, supportMailto } from "@/content/legal/config";
+import { createPageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = { title: "お問い合わせ・返金案内 | LayerTalk" };
+export const metadata: Metadata = createPageMetadata({
+  title: "お問い合わせ・返金案内 | LayerTalk",
+  description: "LayerTalkの購入トラブル、Event Passの返金・キャンセル、その他のお問い合わせ窓口です。",
+  path: "/support",
+});
 
 export default function SupportPage() {
   const mailto = supportMailto();

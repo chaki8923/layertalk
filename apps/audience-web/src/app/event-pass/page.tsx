@@ -3,11 +3,14 @@ import Link from "next/link";
 import { ArrowDown, Check, Clock3, FileDown, KeyRound, ShieldCheck, Sparkles } from "lucide-react";
 
 import { PublicShell } from "@/components/public/public-shell";
+import { createEventPassStructuredData, createPageMetadata, serializeJsonLd } from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = createPageMetadata({
   title: "Event Pass | LayerTalk",
   description: "1ルームで7日間使えるLayerTalk Event Passの機能、価格、購入方法をご案内します。",
-};
+  path: "/event-pass",
+  keywords: ["LayerTalk Event Pass", "イベント運営", "プレゼンテーション", "コメント承認", "発表レポート"],
+});
 
 const features = [
   [ShieldCheck, "コメント承認制", "表示前に内容を確認し、本番の進行を守ります。"],
@@ -26,8 +29,14 @@ const steps = [
 ];
 
 export default function EventPassPage() {
+  const structuredData = createEventPassStructuredData();
+
   return (
     <PublicShell>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }}
+      />
       <main>
         <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[1.08fr_.92fr] lg:py-28">
           <div>

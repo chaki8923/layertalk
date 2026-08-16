@@ -7,7 +7,85 @@
  */
 export const ja = {
   meta: {
-    description: "発表中のスライドに、あなたのコメントとスタンプを届ける",
+    title: "LayerTalk | 会場の声を、スライドの上へ。",
+    description: "観客のコメント、質問、スタンプを発表中のスライドへリアルタイムに届ける",
+    keywords: ["プレゼンテーション", "リアルタイムコメント", "質疑応答", "観客参加", "イベント運営"],
+  },
+
+  public: {
+    nav: {
+      label: "公開ページ",
+      features: "機能",
+      howItWorks: "使い方",
+      eventPass: "Event Pass",
+      join: "参加する",
+    },
+    footer: {
+      home: "LayerTalkについて",
+      eventPass: "Event Pass",
+      terms: "利用規約",
+      privacy: "プライバシー",
+      commerce: "特定商取引法に基づく表記",
+      support: "お問い合わせ",
+      label: "サイト情報・法務・サポート",
+      copyright: "© 2026 LayerTalk",
+    },
+  },
+
+  landing: {
+    eyebrow: "Live audience, on your slides",
+    titleLead: "会場の声を、",
+    titleHighlight: "スライドの上へ。",
+    description: "LayerTalkは、観客のコメント・質問・スタンプをプレゼン画面へリアルタイムに重ねる、macOS向けの参加型プレゼンツールです。",
+    primaryCta: "Event Passを見る",
+    secondaryCta: "参加コードを入力",
+    signals: ["観客アプリ不要", "QR・6桁コード参加", "観客数の制限なし"],
+    stage: {
+      label: "LIVE SLIDE",
+      status: "参加受付中",
+      slideTitle: "アイデアは、会場で育つ。",
+      slideBody: "コメントも質問も、プレゼンを止めずに。",
+      comments: ["その視点、面白い！", "質問があります", "👏👏👏"],
+      audience: "128 joined",
+    },
+    join: {
+      eyebrow: "Join a room",
+      title: "観客として参加する",
+      description: "発表者から共有された6桁の参加コードを入力してください。QRコードから開いた場合は入力不要です。",
+    },
+    features: {
+      eyebrow: "In the room",
+      title: "反応が見えると、発表は一方通行ではなくなる",
+      items: [
+        { title: "コメントが流れる", description: "観客のひとことをスライドの最前面へ。発表を止めずに、その場の温度が伝わります。" },
+        { title: "質問が残る", description: "質問として投稿された声を分けて表示。見逃さず、次の対話につなげられます。" },
+        { title: "スタンプで応える", description: "言葉にしにくい瞬間も、絵文字やカスタムスタンプなら気軽に反応できます。" },
+      ],
+    },
+    howItWorks: {
+      eyebrow: "How it works",
+      title: "共有するのは、ひとつのコードだけ",
+      steps: [
+        { title: "ルームをつくる", description: "Presenterアプリで発表用ルームを作成します。" },
+        { title: "QRかコードを共有", description: "スライド上のQR、または6桁コードを観客へ案内します。" },
+        { title: "会場の反応を映す", description: "コメント、質問、スタンプがスライドの上へ届きます。" },
+      ],
+    },
+    eventPass: {
+      eyebrow: "For the main event",
+      title: "本番を安全に運営するためのEvent Pass",
+      description: "承認制、NGワード、入室パスコード、発表レポート、ブランド設定を、購入した1ルームで7日間利用できます。",
+      price: "2,980円",
+      tax: "税込",
+      duration: "1ルーム・7日間",
+      cta: "Event Passの詳細を見る",
+      note: "購入はPresenterアプリから開始します。",
+    },
+    finalCta: {
+      title: "次の発表を、会場との対話に変える。",
+      presenter: "Event Passを見る",
+      audience: "観客として参加",
+    },
   },
 
   join: {
