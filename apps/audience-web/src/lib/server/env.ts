@@ -15,4 +15,5 @@ export const serverEnv = {
   appUrl: () => required("NEXT_PUBLIC_APP_URL"),
   entitlementPrivateKey: () => required("ENTITLEMENT_SIGNING_PRIVATE_KEY").replace(/\\n/g, "\n"),
   entitlementKeyId: () => process.env.ENTITLEMENT_SIGNING_KEY_ID ?? "event-pass-v1",
+  billingPublicationEnabled: () => process.env.BILLING_PUBLICATION_ENABLED === "true",
 };

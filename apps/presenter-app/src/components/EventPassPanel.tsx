@@ -1,10 +1,11 @@
 import {
   CheckCircle2,
   Download,
+  ExternalLink,
   EyeOff,
   KeyRound,
-  Loader2,
   Plus,
+  ReceiptText,
   ShieldCheck,
   Sparkles,
   Trash2,
@@ -29,11 +30,14 @@ import {
   type RoomBranding,
 } from "@layertalk/shared";
 
-import { loadCachedEntitlementLease, refreshEntitlementLease, startEventPassCheckout } from "../lib/billing";
+import { EventPassPurchaseSheet } from "./EventPassPurchaseSheet";
+import { loadCachedEntitlementLease, openAudiencePage, openEntitlementReceipt, refreshEntitlementLease } from "../lib/billing";
 import { supabase } from "../lib/supabase";
 
 type Props = {
   roomId: string;
+  roomCode: string | null;
+  roomTitle: string | null;
   locale: Locale;
   live: boolean;
   comments: Comment[];
@@ -41,7 +45,7 @@ type Props = {
   onApplyPreset: (preset: DisplayPreset) => void;
 };
 
-export function EventPassPanel({ roomId, locale, live, comments, display, onApplyPreset }: Props) {
+export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comments, display, onApplyPreset }: Props) {
   const ja = locale === "ja";
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
   const [historyEntitlement, setHistoryEntitlement] = useState<Entitlement | null>(null);
@@ -54,7 +58,7 @@ export function EventPassPanel({ roomId, locale, live, comments, display, onAppl
   const [branding, setBranding] = useState<RoomBranding | null>(null);
   const [presets, setPresets] = useState<DisplayPreset[]>([]);
   const [sessions, setSessions] = useState<PresentationSession[]>([]);
-  const [busy, setBusy] = useState(false);
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [passcode, setPasscode] = useState("");
   const [newTerm, setNewTerm] = useState("");
@@ -65,8 +69,8 @@ export function EventPassPanel({ roomId, locale, live, comments, display, onAppl
     try {
       const [active, historyResult, sessionResult] = await Promise.all([
         fetchActiveEntitlement(supabase, roomId),
-        supabase.from("entitlements").select("*").eq("room_id", roomId).neq("status", "revoked")
-          .gt("history_expires_at", new Date().toISOString()).order("history_expires_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("entitlements").select("*").eq("room_id", roomId)
+          .gt("history_expires_at", new Date().toISOString()).order("created_at", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("presentation_sessions").select("*").eq("room_id", roomId).order("started_at", { ascending: false }),
       ]);
       setEntitlement(active);
@@ -148,11 +152,8 @@ export function EventPassPanel({ roomId, locale, live, comments, display, onAppl
             </div>
             <div className="mt-4 flex items-end justify-between">
               <div><span className="lt-num text-[24px] font-bold">¥2,980</span><span className="text-text-faint ml-1 text-[11px]">{ja ? "税込" : "tax included"}</span></div>
-              <button type="button" disabled={busy || live} onClick={() => {
-                setBusy(true); setError(null);
-                void startEventPassCheckout(roomId).catch(() => setError(ja ? "購入画面を開けませんでした" : "Could not open checkout")).finally(() => setBusy(false));
-              }} className="lt-tap bg-brand rounded-[13px] px-4 py-2.5 text-[12px] font-bold text-white disabled:opacity-40">
-                {busy ? <Loader2 size={15} className="animate-spin" /> : ja ? "購入する" : "Buy pass"}
+              <button type="button" disabled={live} onClick={() => { setError(null); setPurchaseOpen(true); }} className="lt-tap bg-brand rounded-[13px] px-4 py-2.5 text-[12px] font-bold text-white disabled:opacity-40">
+                {ja ? "購入する" : "Buy pass"}
               </button>
             </div>
             {live && <p className="text-text-faint mt-2 text-[10px]">{ja ? "発表中は購入画面を開きません。終了後に購入できます。" : "Checkout stays out of the way while presenting."}</p>}
@@ -160,7 +161,8 @@ export function EventPassPanel({ roomId, locale, live, comments, display, onAppl
           </div>
         </div>
         <FreeSummary session={sessions.find((session) => session.ended_at) ?? null} ja={ja} />
-        {historyEntitlement && (
+        {historyEntitlement && <EntitlementDetails entitlement={historyEntitlement} roomTitle={roomTitle} roomCode={roomCode} ja={ja} onError={setError} />}
+        {historyEntitlement && historyEntitlement.status !== "revoked" && (
           <div className="border-border bg-bg-elev rounded-[22px] border p-4">
             <p className="text-[13px] font-bold">{ja ? "過去の発表レポート" : "Past presentation reports"}</p>
             <p className="text-text-faint mt-1 text-[10px]">
@@ -169,6 +171,7 @@ export function EventPassPanel({ roomId, locale, live, comments, display, onAppl
             <ReportList sessions={sessions} ja={ja} />
           </div>
         )}
+        <EventPassPurchaseSheet open={purchaseOpen} roomId={roomId} roomTitle={roomTitle} roomCode={roomCode} locale={locale} onClose={() => setPurchaseOpen(false)} />
       </section>
     );
   }
@@ -179,6 +182,7 @@ export function EventPassPanel({ roomId, locale, live, comments, display, onAppl
         <p className="text-text-faint text-[11px] font-bold tracking-wider uppercase">Event Pass</p>
         <span className="text-online flex items-center gap-1 text-[10px] font-bold"><CheckCircle2 size={12} />{ja ? "有効" : "Active"}</span>
       </div>
+      {(entitlement ?? historyEntitlement) && <EntitlementDetails entitlement={(entitlement ?? historyEntitlement)!} roomTitle={roomTitle} roomCode={roomCode} ja={ja} onError={setError} />}
       <div className="border-border bg-bg-elev space-y-4 rounded-[22px] border p-4">
         <div>
           <p className="text-[13px] font-bold">{ja ? "コメント運営" : "Comment controls"}</p>
@@ -290,6 +294,59 @@ export function EventPassPanel({ roomId, locale, live, comments, display, onAppl
       {error && <p className="text-like text-[11px]">{error}</p>}
     </section>
   );
+}
+
+function EntitlementDetails({ entitlement, roomTitle, roomCode, ja, onError }: {
+  entitlement: Entitlement;
+  roomTitle: string | null;
+  roomCode: string | null;
+  ja: boolean;
+  onError: (message: string | null) => void;
+}) {
+  const [receiptBusy, setReceiptBusy] = useState(false);
+  const expired = new Date(entitlement.expires_at).getTime() <= Date.now();
+  const status = entitlement.status === "revoked"
+    ? entitlement.revoked_reason === "full_refund" ? (ja ? "返金済み" : "Refunded") : (ja ? "取り消し済み" : "Revoked")
+    : expired ? (ja ? "期限切れ" : "Expired") : (ja ? "有効" : "Active");
+  const statusClass = entitlement.status === "revoked" ? "text-like" : expired ? "text-text-muted" : "text-online";
+  const canOpenReceipt = entitlement.source === "stripe" && Boolean(entitlement.stripe_payment_intent_id);
+  const amount = entitlement.amount_total === null || !entitlement.currency
+    ? "—"
+    : new Intl.NumberFormat(ja ? "ja-JP" : "en-US", { style: "currency", currency: entitlement.currency.toUpperCase() })
+      .format(entitlement.amount_total / (entitlement.currency.toLowerCase() === "jpy" ? 1 : 100));
+
+  const openReceipt = async () => {
+    setReceiptBusy(true);
+    onError(null);
+    try { await openEntitlementReceipt(entitlement.id); }
+    catch { onError(ja ? "領収書を開けませんでした" : "Could not open the receipt"); }
+    finally { setReceiptBusy(false); }
+  };
+
+  return (
+    <div className="border-border bg-bg-elev rounded-[22px] border p-4">
+      <div className="flex items-center justify-between gap-3"><p className="text-[13px] font-bold">{ja ? "購入情報" : "Purchase details"}</p><span className={`${statusClass} text-[10px] font-bold`}>{status}</span></div>
+      <dl className="mt-3 space-y-2 text-[10px]">
+        <div className="flex justify-between gap-3"><dt className="text-text-faint">{ja ? "対象ルーム" : "Room"}</dt><dd className="text-right font-semibold">{roomTitle || (ja ? "無題のルーム" : "Untitled room")}（{roomCode || "------"}）</dd></div>
+        <div className="flex justify-between gap-3"><dt className="text-text-faint">{ja ? "購入日時" : "Purchased"}</dt><dd className="lt-num text-right">{formatBillingDate(entitlement.starts_at, ja)}</dd></div>
+        <div className="flex justify-between gap-3"><dt className="text-text-faint">{ja ? "有効期限" : "Pass expires"}</dt><dd className="lt-num text-right">{formatBillingDate(entitlement.expires_at, ja)}</dd></div>
+        <div className="flex justify-between gap-3"><dt className="text-text-faint">{ja ? "レポート期限" : "Report access"}</dt><dd className="lt-num text-right">{formatBillingDate(entitlement.history_expires_at, ja)}</dd></div>
+        <div className="flex justify-between gap-3"><dt className="text-text-faint">{ja ? "支払額" : "Amount"}</dt><dd className="lt-num text-right font-semibold">{amount}</dd></div>
+      </dl>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {canOpenReceipt && <button type="button" disabled={receiptBusy} onClick={() => void openReceipt()} className="border-border text-text-muted flex items-center gap-1.5 rounded-control border px-3 py-2 text-[9px] font-bold disabled:opacity-40"><ReceiptText size={12} />{receiptBusy ? (ja ? "取得中" : "Loading") : (ja ? "領収書を開く" : "Open receipt")}</button>}
+        <button type="button" onClick={() => void openAudiencePage("/support").catch(() => onError(ja ? "サポートページを開けませんでした" : "Could not open support"))} className="border-border text-text-muted flex items-center gap-1.5 rounded-control border px-3 py-2 text-[9px] font-bold">{ja ? "サポート" : "Support"}<ExternalLink size={11} /></button>
+      </div>
+    </div>
+  );
+}
+
+function formatBillingDate(value: string, ja: boolean) {
+  return `${new Intl.DateTimeFormat(ja ? "ja-JP" : "en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Tokyo",
+  }).format(new Date(value))}${ja ? " JST" : " (JST)"}`;
 }
 
 function FreeSummary({ session, ja }: { session: PresentationSession | null; ja: boolean }) {

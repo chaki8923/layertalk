@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 import type Stripe from "stripe";
 
 import { serverEnv } from "./env";
@@ -8,6 +10,45 @@ import { getStripe } from "./stripe";
 
 function objectId(value: string | { id: string } | null): string | null {
   return typeof value === "string" ? value : value?.id ?? null;
+}
+
+export type CheckoutLandingState = "ready" | "processing" | "failed";
+
+export async function resolveCheckoutLandingState(sessionId: string): Promise<CheckoutLandingState> {
+  if (!/^cs_(?:test|live)_[A-Za-z0-9]+$/.test(sessionId)) return "failed";
+  try {
+    const stripe = getStripe();
+    const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["line_items"] });
+    const priceId = session.line_items?.data[0]?.price?.id;
+    if (
+      session.mode !== "payment"
+      || session.metadata?.product !== "event_pass"
+      || !session.metadata.owner_id
+      || !session.metadata.room_id
+      || priceId !== serverEnv.stripeEventPassPriceId()
+      || session.currency !== "jpy"
+      || session.amount_total !== 2980
+    ) return "failed";
+
+    if (session.payment_status === "paid") {
+      const landingEventId = `checkout_landing_${createHash("sha256").update(session.id).digest("hex").slice(0, 32)}`;
+      const entitlement = await fulfillCheckoutSession(session, {
+        id: landingEventId,
+        type: "checkout.landing.fulfillment",
+        livemode: session.livemode,
+        apiVersion: "2026-07-29.dahlia",
+      });
+      return entitlement ? "ready" : "processing";
+    }
+
+    const admin = createAdminClient();
+    const { data: attempt } = await admin.from("checkout_attempts").select("status")
+      .eq("stripe_checkout_session_id", session.id).maybeSingle();
+    if (session.status === "expired" || attempt?.status === "expired" || attempt?.status === "failed") return "failed";
+    return "processing";
+  } catch {
+    return "failed";
+  }
 }
 
 export async function fulfillCheckoutSession(

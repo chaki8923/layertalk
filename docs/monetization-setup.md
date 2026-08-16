@@ -69,8 +69,24 @@ Create a one-time Price with these exact properties:
 
 Put its `price_...` ID in `STRIPE_EVENT_PASS_PRICE_ID`. Use a restricted key in
 `STRIPE_RESTRICTED_KEY` with only the permissions needed to read/write Checkout
-Sessions and Customers and to read Prices. Do not place this key in a
+Sessions and Customers and to read Prices, PaymentIntents, and Charges. Do not place this key in a
 `NEXT_PUBLIC_...` or `VITE_...` variable.
+
+Keep `BILLING_PUBLICATION_ENABLED=false` until the legal and support details are
+final. When it is `true`, the web prebuild check requires all of the following and
+the Checkout API becomes available:
+
+- `LEGAL_SELLER_NAME`
+- `LEGAL_OPERATOR_NAME`
+- `LEGAL_ADDRESS`
+- `LEGAL_PHONE`
+- `LEGAL_SUPPORT_EMAIL`
+- `LEGAL_RESPONSE_TIME`
+- `LEGAL_REFUND_POLICY`
+
+`LEGAL_SYSTEM_REQUIREMENTS_URL` is optional. A build with publication enabled
+fails if any required value is empty, so draft placeholders cannot accidentally
+ship alongside an active purchase flow.
 
 Create a webhook endpoint at:
 

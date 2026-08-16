@@ -563,6 +563,8 @@ export function ControlWindow() {
         {settings.roomId && (
           <EventPassPanel
             roomId={settings.roomId}
+            roomCode={settings.roomCode}
+            roomTitle={settings.roomTitle}
             locale={settings.language}
             live={live}
             comments={comments}

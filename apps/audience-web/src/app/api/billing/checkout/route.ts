@@ -11,6 +11,9 @@ export function OPTIONS(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    if (!serverEnv.billingPublicationEnabled()) {
+      return corsJson(request, { error: "Event Pass sales are not available yet" }, { status: 503 });
+    }
     const { admin, user } = await requirePresenter(request);
     const input = await request.json() as { roomId?: string; attemptId?: string };
     if (!input.roomId || !input.attemptId) return corsJson(request, { error: "Invalid request" }, { status: 400 });
@@ -40,6 +43,12 @@ export async function POST(request: Request) {
         : { customer_creation: "always" as const, customer_email: user.email }),
       client_reference_id: input.attemptId,
       metadata: { owner_id: user.id, room_id: room.id, attempt_id: input.attemptId, product: "event_pass" },
+      consent_collection: { terms_of_service: "required" },
+      custom_text: {
+        submit: {
+          message: "購入完了後、このルームでEvent Passが7日間有効になります。返金条件はリンク先をご確認ください。",
+        },
+      },
       success_url: `${appUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/billing/cancelled`,
       integration_identifier: randomIntegrationIdentifier(),

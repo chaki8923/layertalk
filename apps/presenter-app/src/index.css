@@ -24,3 +24,19 @@ body {
   user-select: none;
   cursor: default;
 }
+
+.event-pass-dialog::backdrop {
+  background: rgb(0 0 0 / 0.66);
+  backdrop-filter: blur(3px);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .event-pass-dialog[open] {
+    animation: event-pass-sheet-in 220ms var(--ease-out-quint);
+  }
+
+  @keyframes event-pass-sheet-in {
+    from { transform: translateY(18px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+}

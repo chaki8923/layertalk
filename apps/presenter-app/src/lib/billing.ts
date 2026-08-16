@@ -14,14 +14,35 @@ async function bearerHeaders() {
   return { Authorization: `Bearer ${data.session.access_token}`, "Content-Type": "application/json" };
 }
 
-export async function startEventPassCheckout(roomId: string) {
+async function jsonBody(response: Response) {
+  try { return await response.json() as { url?: string; error?: string }; }
+  catch { return {} as { url?: string; error?: string }; }
+}
+
+export async function startEventPassCheckout(roomId: string, attemptId: string) {
   const response = await fetch(`${API_BASE}/api/billing/checkout`, {
     method: "POST",
     headers: await bearerHeaders(),
-    body: JSON.stringify({ roomId, attemptId: crypto.randomUUID() }),
+    body: JSON.stringify({ roomId, attemptId }),
   });
-  const body = await response.json() as { url?: string; error?: string };
+  const body = await jsonBody(response);
   if (!response.ok || !body.url) throw new Error(body.error ?? "Checkout failed");
+  await openUrl(body.url);
+}
+
+export async function openAudiencePage(path: string) {
+  if (!API_BASE) throw new Error("Audience URL is not configured");
+  await openUrl(`${API_BASE}${path.startsWith("/") ? path : `/${path}`}`);
+}
+
+export async function openEntitlementReceipt(entitlementId: string) {
+  const response = await fetch(`${API_BASE}/api/billing/receipt`, {
+    method: "POST",
+    headers: await bearerHeaders(),
+    body: JSON.stringify({ entitlementId }),
+  });
+  const body = await jsonBody(response);
+  if (!response.ok || !body.url) throw new Error(body.error ?? "Receipt failed");
   await openUrl(body.url);
 }
 
