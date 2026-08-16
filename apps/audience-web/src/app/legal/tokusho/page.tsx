@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { PhraseText, ProtectedText } from "@/components/public/phrase-text";
 import { PublicShell } from "@/components/public/public-shell";
 import { legalConfig } from "@/content/legal/config";
 import { createPageMetadata } from "@/lib/seo";
@@ -30,17 +31,17 @@ export default function TokushoPage() {
     <PublicShell>
       <main className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
         <p className="text-brand text-[11px] font-bold tracking-[.18em] uppercase">Commerce disclosure</p>
-        <h1 className="mt-3 text-[clamp(1.75rem,5vw,2.5rem)] font-bold tracking-[-.04em]">特定商取引法に基づく表記</h1>
-        <p className="text-text-muted mt-4 text-[13px]">最終更新日: {legalConfig.updatedDate}</p>
+        <h1 className="mt-3 text-[clamp(1.5rem,5vw,2.5rem)] font-bold tracking-[-.04em]"><PhraseText phrases={["特定商取引法に", "基づく表記"]} /></h1>
+        <p className="lt-nowrap text-text-muted mt-4 text-[13px]">最終更新日: {legalConfig.updatedDate}</p>
         <dl className="border-border mt-10 overflow-hidden rounded-card border">
           {rows.map(([term, description]) => (
             <div id={term === "キャンセル・返金" ? "refunds" : undefined} key={term} className="border-border grid scroll-mt-24 gap-2 border-b p-4 last:border-b-0 sm:grid-cols-[12rem_1fr] sm:p-5">
-              <dt className="text-[12px] font-bold">{term}</dt><dd className="text-text-muted text-[13px] leading-6">{description}</dd>
+              <dt className="lt-nowrap text-[12px] font-bold">{term}</dt><dd className="text-text-muted text-[13px] leading-6"><ProtectedText text={description} terms={["1ルーム", "7日間", "Checkout Session"]} /></dd>
             </div>
           ))}
-          <div className="grid gap-2 p-4 sm:grid-cols-[12rem_1fr] sm:p-5"><dt className="text-[12px] font-bold">動作環境</dt><dd className="text-text-muted text-[13px] leading-6">{legalConfig.systemRequirementsUrl ? <a href={legalConfig.systemRequirementsUrl} className="text-brand">対応環境を確認する</a> : "macOS版Presenterアプリと、最新の主要ブラウザおよび安定したインターネット接続が必要です。"}</dd></div>
+          <div className="grid gap-2 p-4 sm:grid-cols-[12rem_1fr] sm:p-5"><dt className="lt-nowrap text-[12px] font-bold">動作環境</dt><dd className="text-text-muted text-[13px] leading-6">{legalConfig.systemRequirementsUrl ? <a href={legalConfig.systemRequirementsUrl} className="lt-nowrap text-brand">対応環境を確認する</a> : <ProtectedText text="macOS版Presenterアプリと、最新の主要ブラウザおよび安定したインターネット接続が必要です。" terms={["macOS版Presenterアプリ", "主要ブラウザ", "インターネット接続"]} />}</dd></div>
         </dl>
-        <p className="text-text-muted mt-8 text-[13px]">詳しい条件は<Link href="/legal/terms" className="text-brand mx-1">利用規約</Link>と<Link href="/support#refunds" className="text-brand ml-1">返金案内</Link>をご確認ください。</p>
+        <p className="text-text-muted mt-8 text-[13px]">詳しい条件は<Link href="/legal/terms" className="lt-nowrap text-brand mx-1">利用規約</Link>と<Link href="/support#refunds" className="lt-nowrap text-brand ml-1">返金案内</Link>をご確認ください。</p>
       </main>
     </PublicShell>
   );

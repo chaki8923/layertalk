@@ -74,7 +74,7 @@ export function JoinForm({ locale }: { locale: Locale }) {
         whileTap={valid ? { scale: 0.97 } : undefined}
         animate={{ opacity: valid ? 1 : 0.4 }}
         transition={motionPresets.press}
-        className="lt-tap bg-gradient-brand shadow-glow flex h-14 items-center justify-center gap-2 rounded-control px-6 text-[14px] font-semibold text-white disabled:cursor-not-allowed sm:min-w-32"
+        className="lt-tap lt-nowrap bg-gradient-brand shadow-glow flex h-14 items-center justify-center gap-2 rounded-control px-6 text-[14px] font-semibold text-white disabled:cursor-not-allowed sm:min-w-32"
       >
         {t.join.submit}
         <ArrowRight size={17} strokeWidth={2.5} />

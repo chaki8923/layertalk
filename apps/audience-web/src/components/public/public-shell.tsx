@@ -7,7 +7,7 @@ import { PublicHeader } from "./public-header";
 
 export function PublicShell({ children, locale = "ja" }: { children: ReactNode; locale?: Locale }) {
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="lt-copy flex min-h-dvh flex-col">
       <PublicHeader locale={locale} />
       {children}
       <PublicFooter locale={locale} />

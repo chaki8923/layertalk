@@ -20,7 +20,7 @@ export function PublicFooter({ locale = "ja" }: { locale?: Locale }) {
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6">
         <nav aria-label={footer.label} className="flex flex-wrap gap-x-5 gap-y-3">
           {links.map(([label, href]) => (
-            <Link key={href} href={href} className="text-text-muted hover:text-text text-[12px] font-medium transition-colors">{label}</Link>
+            <Link key={href} href={href} className="lt-nowrap text-text-muted hover:text-text text-[12px] font-medium transition-colors">{label}</Link>
           ))}
         </nav>
         <p className="text-text-faint text-[11px]">{footer.copyright}</p>
