@@ -103,6 +103,16 @@ export const en: Messages = {
     hide: "Hide questions",
   },
 
+  approval: {
+    title: (n: number) =>
+      n === 1 ? "1 comment awaiting approval" : `${n} comments awaiting approval`,
+    approve: "Approve",
+    hide: "Hide",
+    question: "Question",
+    hint: "Comments awaiting approval appear at the top of this window.",
+    failed: "Could not apply that decision",
+  },
+
   qr: {
     scan: "SCAN TO JOIN",
   },

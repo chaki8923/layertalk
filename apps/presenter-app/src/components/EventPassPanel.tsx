@@ -1,4 +1,7 @@
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
 import {
+  Check,
   CheckCircle2,
   Download,
   ExternalLink,
@@ -13,11 +16,15 @@ import {
 import { useCallback, useEffect, useState } from "react";
 
 import {
+  LayerTalkError,
+  ROOM_LOGO_BUCKET,
   fetchActiveEntitlement,
   fetchModerationRules,
   fetchPresentationReport,
   moderateComment,
+  resolveErrorMessage,
   setRoomPasscode,
+  toLogoPng,
   updateModerationRules,
   type Comment,
   type DisplayPreset,
@@ -30,7 +37,10 @@ import {
   type RoomBranding,
 } from "@layertalk/shared";
 
+import { useMessages } from "../i18n";
+import { audienceUrl as buildAudienceUrl } from "../lib/audience";
 import { EventPassPurchaseSheet } from "./EventPassPurchaseSheet";
+import { JoinQrCard } from "./JoinQrCard";
 import { loadCachedEntitlementLease, openAudiencePage, openEntitlementReceipt, refreshEntitlementLease } from "../lib/billing";
 import { supabase } from "../lib/supabase";
 
@@ -47,6 +57,7 @@ type Props = {
 
 export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comments, display, onApplyPreset }: Props) {
   const ja = locale === "ja";
+  const t = useMessages(locale);
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
   const [historyEntitlement, setHistoryEntitlement] = useState<Entitlement | null>(null);
   const [offlineActive, setOfflineActive] = useState(() => Boolean(loadCachedEntitlementLease(roomId)));
@@ -64,6 +75,23 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
   const [newTerm, setNewTerm] = useState("");
   const [termMode, setTermMode] = useState<"contains" | "exact">("contains");
   const [presetName, setPresetName] = useState("");
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoDone, setLogoDone] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [appliedPreset, setAppliedPreset] = useState<string | null>(null);
+
+  // ブランドの見た目はここでしか確認できない（本番はスライドの参加QRカードの中）。
+  // バケットが private なので、プレビューにも署名 URL が要る。
+  const logoPath = branding?.logo_path ?? null;
+  useEffect(() => {
+    if (!logoPath) { setLogoUrl(null); return; }
+    let cancelled = false;
+    void supabase.storage.from(ROOM_LOGO_BUCKET).createSignedUrl(logoPath, 3600).then(({ data }) => {
+      // 差し替え直後に古い画像が出ないよう、署名 URL にも版を付ける
+      if (!cancelled) setLogoUrl(data?.signedUrl ? `${data.signedUrl}&v=${branding?.updated_at ?? ""}` : null);
+    });
+    return () => { cancelled = true; };
+  }, [logoPath, branding?.updated_at]);
 
   const load = useCallback(async () => {
     try {
@@ -109,6 +137,7 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
   const updateRule = async (patch: Parameters<typeof updateModerationRules>[2]) => {
     if (!rules) return;
     const previous = rules;
+    setError(null);
     setRules({ ...rules, ...patch });
     try {
       const saved = await updateModerationRules(supabase, roomId, patch);
@@ -118,21 +147,62 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
     catch { setRules(previous); setError(ja ? "設定を保存できませんでした" : "Could not save the setting"); }
   };
 
-  const pending = comments.filter((comment) => comment.status === "pending");
-
-  const uploadLogo = async (file: File) => {
-    if (!branding || file.type !== "image/png" || file.size > 1024 * 1024) {
-      setError(ja ? "ロゴは1MB以下のPNGを選んでください" : "Choose a PNG logo under 1 MB");
-      return;
+  /**
+   * ブランド設定の 1 列だけを書き換える。
+   *
+   * `room_branding` の UPDATE は `has_paid_room_features` を要求するので、パスが切れると
+   * **RLS が 0 行更新で黙って弾く**（PostgREST はエラーを返さない）。error を握りつぶすと
+   * 画面上は成功に見えたままオーバーレイに反映されないので、必ず結果を見る。
+   */
+  const patchBranding = async (patch: Partial<RoomBranding>) => {
+    if (!branding) return;
+    const previous = branding;
+    setError(null);
+    setBranding({ ...branding, ...patch });
+    const { error: dbError } = await supabase.from("room_branding")
+      .update({ ...patch, updated_at: new Date().toISOString() }).eq("room_id", roomId);
+    if (dbError) {
+      setBranding(previous);
+      setError(resolveErrorMessage(new LayerTalkError("logo_upload_failed", dbError.message), locale));
     }
-    const path = `${roomId}/logo.png`;
-    const { error: uploadError } = await supabase.storage.from("room-branding").upload(path, file, {
-      contentType: "image/png", cacheControl: "3600", upsert: true,
-    });
-    if (uploadError) { setError(ja ? "ロゴを保存できませんでした" : "Could not save the logo"); return; }
-    const next = { ...branding, logo_path: path };
-    setBranding(next);
-    await supabase.from("room_branding").update({ logo_path: path, updated_at: new Date().toISOString() }).eq("room_id", roomId);
+  };
+
+  /**
+   * ロゴを上げる。
+   *
+   * **必ず `toLogoPng` を通してから上げる。** 生ファイルをそのまま渡すと
+   * `room-branding` バケットの image/png・1MB 制限にユーザーが自分で合わせる羽目になり、
+   * 「1MB以下のPNGを選べ」としか言えない行き止まりを作ってしまう。
+   * 再エンコードすれば JPEG も HEIC も 5MB の PNG も数十KB の PNG になって必ず通る。
+   */
+  const uploadLogo = async (file: File) => {
+    if (!branding) return;
+    // ここで消さないと、一度出したエラーがこの画面から二度と消えない
+    setError(null);
+    setLogoDone(false);
+    setLogoBusy(true);
+    try {
+      const png = await toLogoPng(file);
+      const path = `${roomId}/logo.png`;
+      const { error: uploadError } = await supabase.storage.from(ROOM_LOGO_BUCKET).upload(path, png, {
+        // パスが固定で upsert するので、CDN に抱えさせない。
+        // 版付きの名前にすると display_presets が指す旧ファイルを retention が消してしまう。
+        contentType: "image/png", cacheControl: "0", upsert: true,
+      });
+      if (uploadError) throw new LayerTalkError("logo_upload_failed", uploadError.message);
+      const updatedAt = new Date().toISOString();
+      const { error: dbError } = await supabase.from("room_branding")
+        .update({ logo_path: path, updated_at: updatedAt }).eq("room_id", roomId);
+      if (dbError) throw new LayerTalkError("logo_upload_failed", dbError.message);
+      // updated_at も進めること。差し替えではパスが変わらないので、これが無いと
+      // プレビューの <img src> が同一のままで古いロゴが残る。
+      setBranding({ ...branding, logo_path: path, updated_at: updatedAt });
+      setLogoDone(true);
+    } catch (err) {
+      setError(resolveErrorMessage(err, locale));
+    } finally {
+      setLogoBusy(false);
+    }
   };
 
   if (!entitlement && !offlineActive) {
@@ -168,7 +238,7 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
             <p className="text-text-faint mt-1 text-[10px]">
               {ja ? `${new Date(historyEntitlement.history_expires_at).toLocaleDateString("ja-JP")}まで出力できます。` : `Exports available until ${new Date(historyEntitlement.history_expires_at).toLocaleDateString("en-US")}.`}
             </p>
-            <ReportList sessions={sessions} ja={ja} />
+            <ReportList sessions={sessions} locale={locale} />
           </div>
         )}
         <EventPassPurchaseSheet open={purchaseOpen} roomId={roomId} roomTitle={roomTitle} roomCode={roomCode} locale={locale} onClose={() => setPurchaseOpen(false)} />
@@ -189,6 +259,8 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
           <div className="mt-3 space-y-2">
             <ToggleRow label={ja ? "コメントを一時停止" : "Pause comments"} value={rules?.comments_paused ?? false} onChange={(value) => void updateRule({ comments_paused: value })} />
             <ToggleRow label={ja ? "承認したコメントだけ表示" : "Require approval"} value={rules?.approval_mode ?? false} onChange={(value) => void updateRule({ approval_mode: value })} />
+            {/* 承認キューはこのパネルではなく窓の最上部に出る。毎回ここで知らせる。 */}
+            {rules?.approval_mode && <p className="text-text-faint pb-1 text-[10px] leading-relaxed">{t.approval.hint}</p>}
             <ToggleRow label={ja ? "質問だけスライドに表示" : "Questions only on slides"} value={rules?.question_only ?? false} onChange={(value) => void updateRule({ question_only: value })} />
             <ToggleRow label={ja ? "カスタムスタンプを無効化" : "Disable custom stamps"} value={!(rules?.custom_stamps_enabled ?? true)} onChange={(value) => void updateRule({ custom_stamps_enabled: !value })} />
           </div>
@@ -202,7 +274,12 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
           <p className="flex items-center gap-2 text-[13px] font-bold"><KeyRound size={14} />{ja ? "入室パスコード" : "Room passcode"}</p>
           <div className="mt-2 flex gap-2">
             <input value={passcode} onChange={(event) => setPasscode(event.target.value)} minLength={4} maxLength={12} placeholder={ja ? "4〜12文字、空欄で解除" : "4–12 characters"} className="border-border min-w-0 flex-1 rounded-[12px] border bg-transparent px-3 py-2 text-[12px] outline-none" />
-            <button type="button" onClick={() => void setRoomPasscode(supabase, roomId, passcode).then(() => setPasscode(""))} className="border-border rounded-[12px] border px-3 text-[11px] font-bold">{ja ? "保存" : "Save"}</button>
+            <button type="button" onClick={() => {
+              setError(null);
+              void setRoomPasscode(supabase, roomId, passcode)
+                .then(() => setPasscode(""))
+                .catch((err: unknown) => setError(resolveErrorMessage(err, locale)));
+            }} className="border-border rounded-[12px] border px-3 text-[11px] font-bold">{ja ? "保存" : "Save"}</button>
           </div>
         </div>
 
@@ -214,29 +291,28 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
               <option value="contains">{ja ? "部分" : "Contains"}</option>
               <option value="exact">{ja ? "完全" : "Exact"}</option>
             </select>
-            <button type="button" disabled={!newTerm.trim()} onClick={() => void supabase.from("moderation_terms").insert({ room_id: roomId, term: newTerm.trim(), match_mode: termMode }).select().single().then(({ data }) => { if (data) setTerms((current) => [...current, data]); setNewTerm(""); })} className="border-border rounded-[12px] border px-3"><Plus size={14} /></button>
+            <button type="button" disabled={!newTerm.trim()} onClick={() => {
+              setError(null);
+              void supabase.from("moderation_terms").insert({ room_id: roomId, term: newTerm.trim(), match_mode: termMode }).select().single().then(({ data, error: insertError }) => {
+                if (insertError) { setError(resolveErrorMessage(new LayerTalkError("moderation_failed", insertError.message), locale)); return; }
+                if (data) setTerms((current) => [...current, data]);
+                setNewTerm("");
+              });
+            }} className="border-border rounded-[12px] border px-3"><Plus size={14} /></button>
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {terms.map((term) => <button key={term.id} type="button" onClick={() => void supabase.from("moderation_terms").delete().eq("id", term.id).then(() => setTerms((current) => current.filter((item) => item.id !== term.id)))} className="bg-surface-strong text-text-muted flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px]">{term.term}<Trash2 size={10} /></button>)}
+            {terms.map((term) => <button key={term.id} type="button" onClick={() => {
+              setError(null);
+              void supabase.from("moderation_terms").delete().eq("id", term.id).then(({ error: deleteError }) => {
+                if (deleteError) { setError(resolveErrorMessage(new LayerTalkError("moderation_failed", deleteError.message), locale)); return; }
+                setTerms((current) => current.filter((item) => item.id !== term.id));
+              });
+            }} className="bg-surface-strong text-text-muted flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px]">{term.term}<Trash2 size={10} /></button>)}
           </div>
         </div>
 
-        {pending.length > 0 && (
-          <div className="border-border border-t pt-4">
-            <p className="text-[13px] font-bold">{ja ? `承認待ち ${pending.length}件` : `${pending.length} awaiting approval`}</p>
-            <div className="mt-2 max-h-48 space-y-2 overflow-y-auto">
-              {pending.map((comment) => (
-                <div key={comment.id} className="bg-surface-strong rounded-[12px] p-2.5">
-                  <p className="text-[11px] leading-relaxed">{comment.content}</p>
-                  <div className="mt-2 flex gap-2">
-                    <button onClick={() => void moderateComment(supabase, comment.id, "approve")} className="text-online text-[10px] font-bold">{ja ? "承認" : "Approve"}</button>
-                    <button onClick={() => void moderateComment(supabase, comment.id, "hide")} className="text-like text-[10px] font-bold">{ja ? "非表示" : "Hide"}</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* 承認待ちのキューは PendingApprovalQueue（コントロール窓の最上部）が持つ。
+            発表中はこのパネルまでスクロールしていられないので、ここには置かない。 */}
 
         {comments.some((comment) => comment.status === "approved") && (
           <div className="border-border border-t pt-4">
@@ -256,39 +332,94 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
         {branding && (
           <div className="border-border border-t pt-4">
             <p className="flex items-center gap-2 text-[13px] font-bold"><Sparkles size={14} />{ja ? "ブランド" : "Brand"}</p>
-            <div className="mt-2 flex items-center gap-3">
-              <input type="color" value={branding.brand_color} onChange={(event) => {
-                const next = { ...branding, brand_color: event.target.value.toUpperCase() }; setBranding(next);
-                void supabase.from("room_branding").update({ brand_color: next.brand_color, updated_at: new Date().toISOString() }).eq("room_id", roomId);
-              }} className="h-9 w-12 rounded border-0 bg-transparent" />
-              <ToggleRow label={ja ? "LayerTalk表記を隠す" : "Hide LayerTalk name"} value={branding.hide_layertalk_branding} onChange={(value) => {
-                setBranding({ ...branding, hide_layertalk_branding: value });
-                void supabase.from("room_branding").update({ hide_layertalk_branding: value, updated_at: new Date().toISOString() }).eq("room_id", roomId);
-              }} />
+            {/* ブランド設定が効くのは参加QRカードの中だけ。しかもスライドに出るのは
+                発表中に「参加QRを表示」を ON にしたときだけなので、ここで実物を見せる。 */}
+            <p className="text-text-faint mt-1 text-[10px] leading-relaxed">
+              {ja
+                ? "ロゴ・色・LayerTalk表記は、スライドに出る参加QRカードに反映されます。実物は下のプレビューのとおりです。"
+                : "The logo, colour and LayerTalk name apply to the join QR card shown on your slides. The preview below is the real thing."}
+            </p>
+            <div className="mt-2 flex justify-center">
+              <JoinQrCard
+                url={buildAudienceUrl(roomCode) || "https://layertalk.app"}
+                code={roomCode ?? "------"}
+                size={112}
+                label={t.qr.scan}
+                brandColor={branding.brand_color}
+                logoUrl={logoUrl}
+                hideLayerTalk={branding.hide_layertalk_branding}
+              />
             </div>
-            <label className="border-border hover:bg-surface-strong mt-3 flex cursor-pointer items-center justify-center rounded-[12px] border px-3 py-2 text-[10px] font-bold">
-              {branding.logo_path ? (ja ? "ロゴを変更" : "Replace logo") : (ja ? "PNGロゴを追加" : "Add PNG logo")}
-              <input type="file" accept="image/png" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadLogo(file); }} />
+            <p className="text-text-faint mt-2 text-[10px] leading-relaxed">
+              {display.showJoinQr
+                ? (ja ? "「スライドに参加QRを表示」はオンです。発表中は左下に出ます。" : "“Show join QR on slides” is on. It appears at the bottom-left while presenting.")
+                : (ja ? "「スライドに参加QRを表示」がオフのあいだは、スライドには出ません。" : "While “Show join QR on slides” is off, it never appears on the slides.")}
+            </p>
+            <div className="mt-3 flex items-center gap-3">
+              <input type="color" value={branding.brand_color} onChange={(event) =>
+                void patchBranding({ brand_color: event.target.value.toUpperCase() })
+              } className="h-9 w-12 rounded border-0 bg-transparent" />
+              <ToggleRow label={ja ? "LayerTalk表記を隠す" : "Hide LayerTalk name"} value={branding.hide_layertalk_branding} onChange={(value) =>
+                void patchBranding({ hide_layertalk_branding: value })
+              } />
+            </div>
+            <label className={`border-border mt-3 flex items-center justify-center rounded-[12px] border px-3 py-2 text-[10px] font-bold ${logoBusy ? "opacity-50" : "hover:bg-surface-strong cursor-pointer"}`}>
+              {logoBusy
+                ? (ja ? "処理中…" : "Working…")
+                : branding.logo_path ? (ja ? "ロゴを変更" : "Replace logo") : (ja ? "ロゴを追加" : "Add a logo")}
+              {/* accept を PNG に絞らない。toLogoPng が何を渡されても PNG に焼き直すので、
+                  ここで絞ると「変換できるのに選べない」だけになる。 */}
+              <input type="file" accept="image/*" disabled={logoBusy} className="hidden" onChange={(event) => {
+                const file = event.target.files?.[0];
+                // 同じファイルを選び直せるように必ず空にする。残すと2回目の onChange が飛ばない。
+                event.target.value = "";
+                if (file) void uploadLogo(file);
+              }} />
             </label>
+            {logoDone && <p className="text-online mt-2 text-[10px]">{ja ? "ロゴを保存しました" : "Logo saved"}</p>}
           </div>
         )}
 
         <div className="border-border border-t pt-4">
           <p className="text-[13px] font-bold">{ja ? "表示プリセット" : "Display presets"}</p>
+          {/* 「名前を付けて保存」だけ見えていて、何が保存されるのか分からない画面だった。
+              まとめて戻せる項目をそのまま並べる。 */}
+          <p className="text-text-faint mt-1 text-[10px] leading-relaxed">
+            {ja
+              ? `いまの表示設定に名前を付けて保存し、次の発表で1タップで戻します。入るのは、表示スタイル（${display.displayMode === "flow" ? "横流れ" : "フキダシ"}）・参加QR（${display.showJoinQr ? "オン" : "オフ"}）・カスタムスタンプ（${display.allowCustomStamps ? "許可" : "不許可"}）・ブランド色・LayerTalk表記・ロゴの6つです。`
+              : `Save the current look under a name and restore it in one tap at your next talk. A preset holds six things: display style (${display.displayMode === "flow" ? "flow" : "bubble"}), join QR (${display.showJoinQr ? "on" : "off"}), custom stamps (${display.allowCustomStamps ? "allowed" : "blocked"}), brand colour, the LayerTalk name, and the logo.`}
+          </p>
           <div className="mt-2 flex gap-2">
-            <input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder={ja ? "プリセット名" : "Preset name"} className="border-border min-w-0 flex-1 rounded-[12px] border bg-transparent px-3 py-2 text-[12px] outline-none" />
-            <button type="button" disabled={!entitlement || !presetName.trim() || presets.length >= 10} onClick={() => entitlement && void supabase.from("display_presets").insert({ owner_id: entitlement.owner_id, name: presetName.trim(), display_mode: display.displayMode, show_join_qr: display.showJoinQr, allow_custom_stamps: display.allowCustomStamps, hide_layertalk_branding: branding?.hide_layertalk_branding ?? false, brand_color: branding?.brand_color ?? "#6B8AFF", logo_path: branding?.logo_path ?? null }).select().single().then(({ data }) => { if (data) setPresets((current) => [...current, data]); setPresetName(""); })} className="border-border rounded-[12px] border px-3 text-[11px] font-bold">{ja ? "保存" : "Save"}</button>
+            <input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder={ja ? "プリセット名（例: 社内向け）" : "Preset name (e.g. Internal)"} className="border-border min-w-0 flex-1 rounded-[12px] border bg-transparent px-3 py-2 text-[12px] outline-none" />
+            <button type="button" disabled={!entitlement || !presetName.trim() || presets.length >= 10} onClick={() => {
+              if (!entitlement) return;
+              setError(null);
+              void supabase.from("display_presets").insert({ owner_id: entitlement.owner_id, name: presetName.trim(), display_mode: display.displayMode, show_join_qr: display.showJoinQr, allow_custom_stamps: display.allowCustomStamps, hide_layertalk_branding: branding?.hide_layertalk_branding ?? false, brand_color: branding?.brand_color ?? "#6B8AFF", logo_path: branding?.logo_path ?? null }).select().single().then(({ data, error: insertError }) => {
+                if (insertError) { setError(resolveErrorMessage(new LayerTalkError("moderation_failed", insertError.message), locale)); return; }
+                if (data) setPresets((current) => [...current, data]);
+                setPresetName("");
+              });
+            }} className="border-border rounded-[12px] border px-3 text-[11px] font-bold">{ja ? "保存" : "Save"}</button>
           </div>
-          {presets.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{presets.map((preset) => <button key={preset.id} type="button" onClick={() => {
-            onApplyPreset(preset);
-            setBranding((current) => current ? { ...current, brand_color: preset.brand_color, hide_layertalk_branding: preset.hide_layertalk_branding, logo_path: preset.logo_path } : current);
-            void supabase.from("room_branding").update({ brand_color: preset.brand_color, hide_layertalk_branding: preset.hide_layertalk_branding, logo_path: preset.logo_path, updated_at: new Date().toISOString() }).eq("room_id", roomId);
-          }} className="bg-surface-strong text-text-muted rounded-full px-2.5 py-1 text-[10px]">{preset.name}</button>)}</div>}
+          {presets.length > 0 && (
+            <>
+              <p className="text-text-faint mt-3 text-[10px]">{ja ? "押すと、その設定に戻ります" : "Tap one to restore it"}</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">{presets.map((preset) => (
+                <button key={preset.id} type="button" onClick={() => {
+                  onApplyPreset(preset);
+                  void patchBranding({ brand_color: preset.brand_color, hide_layertalk_branding: preset.hide_layertalk_branding, logo_path: preset.logo_path });
+                  setAppliedPreset(preset.name);
+                }} className={`rounded-full px-2.5 py-1 text-[10px] ${appliedPreset === preset.name ? "bg-brand/20 text-brand font-bold" : "bg-surface-strong text-text-muted"}`}>{preset.name}</button>
+              ))}</div>
+              {/* 押しても画面のどこが変わったのか分からなかったので、適用したことを明示する */}
+              {appliedPreset && <p className="text-online mt-2 text-[10px]">{ja ? `「${appliedPreset}」を適用しました` : `Applied “${appliedPreset}”`}</p>}
+            </>
+          )}
         </div>
 
         <div className="border-border border-t pt-4">
           <p className="text-[13px] font-bold">{ja ? "発表レポート" : "Presentation reports"}</p>
-          <ReportList sessions={sessions} ja={ja} />
+          <ReportList sessions={sessions} locale={locale} />
         </div>
       </div>
       {error && <p className="text-like text-[11px]">{error}</p>}
@@ -372,18 +503,48 @@ function FreeSummary({ session, ja }: { session: PresentationSession | null; ja:
   );
 }
 
-function ReportList({ sessions, ja }: { sessions: PresentationSession[]; ja: boolean }) {
+function ReportList({ sessions, locale }: { sessions: PresentationSession[]; locale: Locale }) {
+  const ja = locale === "ja";
   const finished = sessions.filter((session) => session.ended_at).slice(0, 5);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async (session: PresentationSession, format: "csv" | "md") => {
+    const key = `${session.id}:${format}`;
+    setBusy(key);
+    setSaved(null);
+    setError(null);
+    try {
+      // 押しても無反応だった原因はここを握り潰していたこと。必ず結果を見せる。
+      if (await exportReport(session, ja, format)) setSaved(key);
+    } catch (err) {
+      setError(resolveErrorMessage(err, locale));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <div className="mt-2 space-y-2">
       {finished.map((session) => (
         <div key={session.id} className="border-border flex items-center gap-2 rounded-[12px] border px-3 py-2">
           <span className="min-w-0 flex-1 truncate text-[11px]">{new Date(session.started_at).toLocaleString(ja ? "ja-JP" : "en-US")}</span>
-          <button type="button" onClick={() => void exportReport(session, ja, "csv")} className="text-text-muted flex items-center gap-1 text-[9px] font-bold"><Download size={11} />CSV</button>
-          <button type="button" onClick={() => void exportReport(session, ja, "md")} className="text-text-muted flex items-center gap-1 text-[9px] font-bold"><Download size={11} />MD</button>
+          {(["csv", "md"] as const).map((format) => {
+            const key = `${session.id}:${format}`;
+            return (
+              <button key={format} type="button" disabled={busy !== null} onClick={() => void run(session, format)}
+                className={`flex items-center gap-1 text-[9px] font-bold disabled:opacity-40 ${saved === key ? "text-online" : "text-text-muted"}`}>
+                {saved === key ? <Check size={11} /> : <Download size={11} />}
+                {format.toUpperCase()}
+              </button>
+            );
+          })}
         </div>
       ))}
       {finished.length === 0 && <p className="text-text-faint text-[10px]">{ja ? "発表を終了するとここに表示されます。" : "Reports appear after a presentation ends."}</p>}
+      {saved && <p className="text-online text-[10px]">{ja ? "保存しました" : "Saved"}</p>}
+      {error && <p className="text-like text-[10px]">{error}</p>}
     </div>
   );
 }
@@ -424,9 +585,19 @@ async function exportReport(session: PresentationSession, ja: boolean, format: "
     "",
     ...report.comments.filter((comment) => !comment.is_question).map((comment) => `- ${elapsed(comment.created_at)} ${comment.content}`),
   ].join("\n");
-  const content = format === "csv" ? ["\uFEFF", csv] : [markdown];
-  const blob = new Blob(content, { type: format === "csv" ? "text/csv;charset=utf-8" : "text/markdown;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a"); anchor.href = url; anchor.download = `layertalk-${session.started_at.slice(0, 10)}.${format}`; anchor.click();
-  URL.revokeObjectURL(url);
+  // CSV \u306E\u5148\u982D\u306E BOM \u306F Excel \u304C UTF-8 \u3068\u8A8D\u8B58\u3059\u308B\u305F\u3081\u306B\u8981\u308B\uFF08\u7121\u3044\u3068\u65E5\u672C\u8A9E\u304C\u5316\u3051\u308B\uFF09
+  const contents = format === "csv" ? `\uFEFF${csv}` : markdown;
+  const name = `layertalk-${session.started_at.slice(0, 10)}.${format}`;
+
+  // \u26A0\uFE0F Blob + <a download> \u306B\u3057\u306A\u3044\u3053\u3068\u3002WKWebView \u306F download \u3092\u51E6\u7406\u3057\u306A\u3044\u306E\u3067\u3001
+  // \u30D6\u30E9\u30A6\u30B6\u3067\u306F\u52D5\u304F\u30B3\u30FC\u30C9\u304C\u3053\u3053\u3067\u306F**\u30A8\u30E9\u30FC\u3082\u51FA\u3055\u305A\u306B\u4F55\u3082\u4FDD\u5B58\u3057\u306A\u3044**\u3002
+  const path = await save({
+    defaultPath: name,
+    filters: [format === "csv"
+      ? { name: "CSV", extensions: ["csv"] }
+      : { name: "Markdown", extensions: ["md"] }],
+  });
+  if (path === null) return false; // \u4FDD\u5B58\u30C0\u30A4\u30A2\u30ED\u30B0\u3092\u30AD\u30E3\u30F3\u30BB\u30EB\u3057\u305F
+  await writeTextFile(path, contents);
+  return true;
 }

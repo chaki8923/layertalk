@@ -1130,6 +1130,10 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // 発表レポートの書き出し用。WKWebView は <a download> を一切処理しないので、
+        // ブラウザ流儀の Blob ダウンロードでは 1 バイトも保存されない。
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {

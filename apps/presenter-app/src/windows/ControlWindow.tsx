@@ -38,6 +38,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { JoinQrCard } from "../components/JoinQrCard";
 import { EventPassPanel } from "../components/EventPassPanel";
+import { PendingApprovalQueue } from "../components/PendingApprovalQueue";
 import { PresenterAuth } from "../components/PresenterAuth";
 import { useDocumentLang, useMessages, type Messages } from "../i18n";
 import { audienceUrl as buildAudienceUrl } from "../lib/audience";
@@ -93,7 +94,7 @@ export function ControlWindow() {
     return () => data.subscription.unsubscribe();
   }, []);
 
-  const { comments, status } = useComments({
+  const { comments, status, upsertLocal } = useComments({
     client: settings.roomId ? supabase : null,
     roomId: settings.roomId,
     includeModerated: true,
@@ -417,6 +418,15 @@ export function ControlWindow() {
           </section>
         )}
 
+        {/* ------------------------------------------------------ 承認待ち
+            Event Pass のパネルではなくここに置く。壇上では ⇧⌘L で呼び出した直後に
+            見えていないと間に合わない（承認待ちが 0 件なら自分で消える）。 */}
+        <PendingApprovalQueue
+          comments={comments}
+          locale={settings.language}
+          onModerated={upsertLocal}
+        />
+
         {/* ---------------------------------------------------------- ルーム */}
         <section className="space-y-3">
           <SectionLabel>{t.room.section}</SectionLabel>
@@ -501,7 +511,11 @@ export function ControlWindow() {
               <div className="border-border flex items-center justify-between border-t pt-3">
                 <StatusPill status={status} labels={t.status} />
                 <span className="text-text-muted lt-num text-[12px]">
-                  {t.room.commentCount(comments.length)}
+                  {/* includeModerated: true なので pending / hidden も入っている。
+                      ここは「スライドに出た数」なので承認済みだけ数える。 */}
+                  {t.room.commentCount(
+                    comments.filter((comment) => comment.status === "approved").length,
+                  )}
                 </span>
               </div>
 

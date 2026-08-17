@@ -21,6 +21,10 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-opener = "2"
+# 発表レポートの保存先を選ばせて書き出すため。WKWebView は <a download> を
+# 無視するので、この 2 つが無いとレポートは永久に生成されない。
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

@@ -37,6 +37,27 @@ export const ROOM_STAMP_SIZE = 128;
 export const ROOM_STAMP_MAX_PER_ROOM = 24;
 export const ROOM_STAMP_MAX_PER_CLIENT = 5;
 
+// ------------------------------------------------------ ブランドロゴ（有料機能）
+
+/** ロゴの実体を置くprivate Storageバケット。 */
+export const ROOM_LOGO_BUCKET = "room-branding";
+
+/**
+ * ロゴを正規化する長辺の px。
+ *
+ * スタンプ（ROOM_STAMP_SIZE）と違って**正方形にはしない**。ロゴは横長が普通で、
+ * 正方形に contain すると上下の余白ぶんだけ実寸が小さくなってしまう。
+ */
+export const ROOM_LOGO_MAX_EDGE = 512;
+
+/**
+ * `room-branding` バケットの file_size_limit と必ず一致させる（マイグレーションは 1048576）。
+ *
+ * 長辺 512px でも写真のような絵柄だと PNG がここを超えることがあるので、
+ * `toLogoPng` は超えたぶんだけ縮めて上限に収める。
+ */
+export const ROOM_LOGO_MAX_BYTES = 1024 * 1024;
+
 const CUSTOM_STAMP_PREFIX = "custom:";
 
 /**

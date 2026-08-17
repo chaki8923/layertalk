@@ -32,6 +32,7 @@ export type LayerTalkErrorCode =
   | "stamp_limit_room"
   | "entitlement_fetch_failed"
   | "moderation_failed"
+  | "logo_upload_failed"
   | "session_failed"
   | "report_failed"
   | "image_unreadable"
@@ -58,6 +59,7 @@ const ja: Record<LayerTalkErrorCode, string> = {
   stamp_limit_room: `このルームのカスタムスタンプは${ROOM_STAMP_MAX_PER_ROOM}個で上限です`,
   entitlement_fetch_failed: "購入状態を確認できませんでした",
   moderation_failed: "運営設定を更新できませんでした",
+  logo_upload_failed: "ロゴを保存できませんでした",
   session_failed: "発表セッションを更新できませんでした",
   report_failed: "発表レポートを作成できませんでした",
   image_unreadable: "この画像は読み込めませんでした。別の画像を選んでください",
@@ -85,6 +87,7 @@ const en: Record<LayerTalkErrorCode, string> = {
   stamp_limit_room: `This room is at its limit of ${ROOM_STAMP_MAX_PER_ROOM} custom stamps`,
   entitlement_fetch_failed: "Could not check your purchase",
   moderation_failed: "Could not update the event controls",
+  logo_upload_failed: "Could not save the logo",
   session_failed: "Could not update the presentation session",
   report_failed: "Could not create the presentation report",
   image_unreadable: "That image could not be read. Please choose another one",
