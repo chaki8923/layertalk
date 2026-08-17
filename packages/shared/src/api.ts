@@ -58,9 +58,19 @@ export async function createRoom(
   return data;
 }
 
+/**
+ * 自分が持っているルームを引き直す。
+ *
+ * **「無い」と「引けなかった」を投げ分ける。** `resume_room` は該当が無いとき
+ * `raise exception`（PostgREST では `P0001`）を返すので、それだけを `room_not_found` にする。
+ * 呼び出し側は前者では手元の記憶を捨ててよいが、後者では捨ててはいけない
+ * — 会場の Wi-Fi が切れているだけのときに、有効なルームを消してしまうため。
+ */
 export async function resumeRoom(client: LayerTalkClient, code: string): Promise<Room> {
   const { data, error } = await client.rpc("resume_room", { p_code: normalizeRoomCode(code) });
-  if (error) throw new LayerTalkError("room_fetch_failed", error.message);
+  if (error) {
+    throw new LayerTalkError(error.code === "P0001" ? "room_not_found" : "room_fetch_failed", error.message);
+  }
   return data;
 }
 

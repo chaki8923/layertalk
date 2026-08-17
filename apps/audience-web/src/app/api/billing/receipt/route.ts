@@ -35,6 +35,7 @@ export async function POST(request: Request) {
     return corsJson(request, { url: charge.receipt_url });
   } catch (error) {
     if (error instanceof Response) return new Response(error.body, { status: error.status, headers: corsHeaders(request) });
+    console.error("[billing/receipt]", error);
     return corsJson(request, { error: "Receipt could not be retrieved" }, { status: 502 });
   }
 }

@@ -17,7 +17,10 @@ export async function POST(request: Request) {
   let event: Stripe.Event;
   try {
     event = getStripe().webhooks.constructEvent(await request.text(), signature, serverEnv.stripeWebhookSecret());
-  } catch {
+  } catch (error) {
+    // 署名の不一致と STRIPE_WEBHOOK_SECRET の未設定はここで同じ 400 になる。
+    // 決済は通るのに権利が付かない、という一番分かりにくい壊れ方の入口なので必ず残す。
+    console.error("[billing/webhook] signature", error);
     return new Response("Invalid signature", { status: 400 });
   }
 
@@ -61,6 +64,7 @@ export async function POST(request: Request) {
     }
     return Response.json({ received: true });
   } catch (error) {
+    console.error("[billing/webhook]", event.type, error);
     await recordBillingEvent(event, "failed", (event.data.object as { id?: string }).id,
       error instanceof Error ? error.message : "Unknown webhook error");
     return new Response("Webhook processing failed", { status: 500 });

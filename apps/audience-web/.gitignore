@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# 変数の一覧はリポジトリに残す（値は入れない）。リポジトリ直下の .gitignore にも
+# 同じ除外があるが、こちらの `.env*` の方が具体的なので勝ってしまう。
+!.env.example
 
 # vercel
 .vercel

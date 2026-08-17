@@ -140,6 +140,46 @@ export function ControlWindow() {
     });
   }, []);
 
+  /**
+   * localStorage に残っているルームが DB にまだ在るかを、サインイン後に 1 度だけ確かめる。
+   *
+   * `loadSettings` は前回のルームをそのまま返すだけで、行が実在するかは見ていない。
+   * マイグレーションで `rooms` を消したあとなどは、画面にはコードが出ているのに
+   * 何も繋がらない幽霊状態になる（Event Pass の購入も 404 で弾かれ、
+   * 「購入画面を開けませんでした」としか出ない）。無いと分かったときだけ手元の記憶を捨てる。
+   */
+  const verifiedRoomCode = useRef<string | null>(null);
+  useEffect(() => {
+    const code = settings.roomCode;
+    // 発表中は照合しない。ここでルームを外すとコメントが流れなくなる。
+    if (!authReady || !signedIn || !code || live) return;
+    if (verifiedRoomCode.current === code) return;
+    verifiedRoomCode.current = code;
+
+    void resumeRoom(supabase, code)
+      // タイトルの変更もここで拾い直せる。
+      .then((room) => update({ roomId: room.id, roomCode: room.code, roomTitle: room.title }))
+      .catch((err: unknown) => {
+        // instanceof はバンドルをまたぐと壊れることがあるので形で見る（errors.ts と同じ判定）。
+        const gone = typeof err === "object" && err !== null
+          && (err as { code?: unknown }).code === "room_not_found";
+        if (!gone) {
+          // 通信失敗でルームを捨てない。次の起動でやり直す。
+          verifiedRoomCode.current = null;
+          return;
+        }
+        update({
+          roomId: null,
+          roomCode: null,
+          roomTitle: null,
+          presentationSessionId: null,
+          // 消えたルームへ「1タップで戻る」ボタンを出しても踏めないので残さない。
+          previousRoomCode: null,
+        });
+        setError(resolveErrorMessage(err, settings.language));
+      });
+  }, [authReady, signedIn, settings.roomCode, settings.language, live, update]);
+
   // The tray can stop a presentation without going through the main button.
   // Close the database session as the native state transitions to stopped so
   // report windows and paid-feature snapshots do not remain open indefinitely.

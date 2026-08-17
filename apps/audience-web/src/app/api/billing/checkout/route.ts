@@ -10,11 +10,16 @@ export function OPTIONS(request: Request) {
 }
 
 export async function POST(request: Request) {
+  // 失敗したときに作りかけの attempt を片付けるので、catch からも見える位置に置く。
+  let admin: Awaited<ReturnType<typeof requirePresenter>>["admin"] | undefined;
+  let attemptId: string | undefined;
   try {
     if (!serverEnv.billingPublicationEnabled()) {
       return corsJson(request, { error: "Event Pass sales are not available yet" }, { status: 503 });
     }
-    const { admin, user } = await requirePresenter(request);
+    const presenter = await requirePresenter(request);
+    admin = presenter.admin;
+    const user = presenter.user;
     const input = await request.json() as { roomId?: string; attemptId?: string };
     if (!input.roomId || !input.attemptId) return corsJson(request, { error: "Invalid request" }, { status: 400 });
 
@@ -27,10 +32,14 @@ export async function POST(request: Request) {
     if (entitlement) return corsJson(request, { error: "Event Pass is already active" }, { status: 409 });
 
     const { data: existing } = await admin.from("checkout_attempts").select("*").eq("id", input.attemptId).maybeSingle();
-    if (existing?.status === "open" && existing.checkout_url && existing.expires_at && existing.expires_at > now) {
+    // Postgres は `...+00:00`、`toISOString()` は `...Z` を返すので文字列比較は成立しない
+    // （`+` が `.` より前に並ぶため常に偽になり、この再利用経路が丸ごと死ぬ）。時刻として比べる。
+    if (existing?.status === "open" && existing.checkout_url && existing.expires_at
+      && Date.parse(existing.expires_at) > Date.now()) {
       return corsJson(request, { url: existing.checkout_url });
     }
 
+    attemptId = input.attemptId;
     await admin.from("checkout_attempts").upsert({ id: input.attemptId, owner_id: user.id, room_id: room.id, status: "creating" });
     const { data: profile } = await admin.from("presenter_profiles").select("stripe_customer_id").eq("id", user.id).maybeSingle();
     const stripe = getStripe();
@@ -64,6 +73,14 @@ export async function POST(request: Request) {
     return corsJson(request, { url: session.url });
   } catch (error) {
     if (error instanceof Response) return new Response(error.body, { status: error.status, headers: corsHeaders(request) });
+    // 画面には定数しか返さないので、ここで残さないと原因が完全に消える
+    // （環境変数の不足なのか Stripe API の拒否なのかが分からなくなる）。
+    console.error("[billing/checkout]", error);
+    if (admin && attemptId) {
+      await admin.from("checkout_attempts")
+        .update({ status: "failed", updated_at: new Date().toISOString() })
+        .eq("id", attemptId);
+    }
     return corsJson(request, { error: "Checkout could not be started" }, { status: 500 });
   }
 }

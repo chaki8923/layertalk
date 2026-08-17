@@ -140,6 +140,25 @@ public バケットは画像の取得だけならポリシー無しで通るの�
 コントロール窓の一覧も `monitor.name` を生のまま出している。訳すのは周りの
 「主ディスプレイに追従」「・ 主ディスプレイ」など、**モニター未選択のときの表示名**だけ。
 
+**13. dev ビルドと `.app` は localStorage も CORS の origin も別物**
+`tauri.conf.json` の `devUrl` は `http://localhost:1420`、リリース版の origin は `tauri://localhost`。
+WKWebView はオリジンごとに localStorage を分けるので、**両者はまったく別のルームを覚えている**。
+「画面にはコード D9XY37 が出ているのに DB には X7AUJK しか無い」の正体はこれで、
+どちらで再現したかを取り違えると原因の説明が最後まで付かない。
+`cors.ts` の許可リストも同様で、**dev の origin は本番デプロイでは通らない**
+（`NODE_ENV !== "production"` のときだけ足している）。dev ビルドから本番 API を叩くときは
+Vercel の `ALLOWED_TAURI_ORIGINS` に `http://localhost:1420` を入れて再デプロイする
+（env はビルド時注入なので設定だけでは効かない）。**用が済んだら消すこと。**
+弾かれると `fetch` が `TypeError` で落ちるだけなので、画面には通信エラーとしか出ない。
+
+**14. `loadSettings` が返すルームは DB にある保証が無い**
+`settings.ts` は `roomId` / `roomCode` を localStorage からそのまま復元する。
+`20260815033436_monetization_event_pass.sql` のようにマイグレーションで `rooms` を消すと、
+**画面にはコードが残ったまま何も繋がらない幽霊状態**になり、Event Pass の購入も 404 で弾かれる。
+`ControlWindow` はサインイン後に `resumeRoom` で 1 度だけ照合して、無ければ外している。
+このとき **`room_not_found`（PostgREST の `P0001`）と通信失敗を必ず区別する** こと
+— 一緒くたにすると、会場の Wi-Fi が切れているだけで有効なルームを捨ててしまう。
+
 ## 設計上の決めごと
 
 - **コメント／スタンプの全面オーバーレイはクリックスルー常時 ON。** 切り替え UI も

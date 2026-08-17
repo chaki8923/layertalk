@@ -21,6 +21,48 @@ const legalLinks = [
   ["特商法表記", "Commerce disclosure", "/legal/tokusho"],
 ] as const;
 
+/**
+ * 失敗を1文にする。
+ *
+ * ここを1本にまとめてしまうと、発表直前に何を直せばいいのか壇上で判断できない。
+ * `status` が無い＝リクエストがそもそも飛んでいない（オフライン、CORS で弾かれた、
+ * サインインしていない）ときだけ、接続を疑わせる文言に落とす。
+ */
+function checkoutMessage(error: unknown, ja: boolean): string {
+  // `BillingError` の instanceof では見ない。形で見る（errors.ts と同じ理由）。
+  const status = typeof error === "object" && error !== null
+    && typeof (error as { status?: unknown }).status === "number"
+    ? (error as { status: number }).status
+    : undefined;
+  const message = error instanceof Error ? error.message : "";
+  if (status === 503 || message.includes("not available yet")) {
+    return ja ? "Event Passの販売は現在準備中です。" : "Event Pass sales are not available yet.";
+  }
+  if (status === 401) {
+    return ja
+      ? "サインインの有効期限が切れました。サインインし直してください。"
+      : "Your session expired. Please sign in again.";
+  }
+  if (status === 404) {
+    return ja
+      ? "このルームが見つかりません。ルームを作り直してから購入してください。"
+      : "That room no longer exists. Create a new room, then buy the pass.";
+  }
+  if (status === 409) {
+    return ja
+      ? "このルームのEvent Passはすでに有効です。"
+      : "This room already has an active Event Pass.";
+  }
+  if (status !== undefined) {
+    return ja
+      ? "購入画面を準備できませんでした。時間をおいてもう一度お試しください。"
+      : "Could not prepare checkout. Please try again in a moment.";
+  }
+  return ja
+    ? "購入画面を開けませんでした。接続を確認してもう一度お試しください。"
+    : "Could not open checkout. Check your connection and try again.";
+}
+
 export function EventPassPurchaseSheet({ open, roomId, roomTitle, roomCode, locale, onClose }: Props) {
   const ja = locale === "ja";
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -58,10 +100,7 @@ export function EventPassPurchaseSheet({ open, roomId, roomTitle, roomCode, loca
       dialogRef.current?.close();
       onClose();
     } catch (checkoutError) {
-      const unavailable = checkoutError instanceof Error && checkoutError.message.includes("not available yet");
-      setError(unavailable
-        ? (ja ? "Event Passの販売は現在準備中です。" : "Event Pass sales are not available yet.")
-        : (ja ? "購入画面を開けませんでした。接続を確認してもう一度お試しください。" : "Could not open checkout. Check your connection and try again."));
+      setError(checkoutMessage(checkoutError, ja));
     } finally {
       setBusy(false);
     }

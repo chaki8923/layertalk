@@ -14,6 +14,8 @@ import { DEFAULT_LOCALE, type Locale } from "./i18n";
  */
 export type LayerTalkErrorCode =
   | "room_fetch_failed"
+  /** ルーム自体が無い／自分のものではない。通信失敗（= room_fetch_failed）と必ず区別する。 */
+  | "room_not_found"
   | "room_create_failed"
   | "room_join_failed"
   | "room_language_failed"
@@ -39,6 +41,7 @@ export type LayerTalkErrorCode =
 
 const ja: Record<LayerTalkErrorCode, string> = {
   room_fetch_failed: "ルームの取得に失敗しました",
+  room_not_found: "このルームは見つかりませんでした",
   room_create_failed: "ルームの作成に失敗しました",
   room_join_failed: "ルームに入室できませんでした。コードとパスコードを確認してください",
   room_language_failed: "表示言語をルームに保存できませんでした",
@@ -65,6 +68,7 @@ const ja: Record<LayerTalkErrorCode, string> = {
 
 const en: Record<LayerTalkErrorCode, string> = {
   room_fetch_failed: "Could not load the room",
+  room_not_found: "That room no longer exists",
   room_create_failed: "Could not create the room",
   room_join_failed: "Could not join the room. Check the code and passcode",
   room_language_failed: "Could not save the language to the room",

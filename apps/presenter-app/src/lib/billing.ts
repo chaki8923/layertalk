@@ -19,6 +19,21 @@ async function jsonBody(response: Response) {
   catch { return {} as { url?: string; error?: string }; }
 }
 
+/**
+ * サーバが返した状態コードを保ったまま投げる。
+ *
+ * これが無いと、認証切れ（401）・ルーム消失（404）・環境変数の不足（500）と、
+ * そもそも通信できていない場合（CORS など、`fetch` 自体が `TypeError` で落ちる）が
+ * 呼び出し側で区別できず、全部「接続を確認してください」に化ける。
+ * `status` が無い＝リクエストが飛んでいない、という区別に使う。
+ */
+export class BillingError extends Error {
+  constructor(message: string, readonly status?: number) {
+    super(message);
+    this.name = "BillingError";
+  }
+}
+
 export async function startEventPassCheckout(roomId: string, attemptId: string) {
   const response = await fetch(`${API_BASE}/api/billing/checkout`, {
     method: "POST",
@@ -26,7 +41,7 @@ export async function startEventPassCheckout(roomId: string, attemptId: string) 
     body: JSON.stringify({ roomId, attemptId }),
   });
   const body = await jsonBody(response);
-  if (!response.ok || !body.url) throw new Error(body.error ?? "Checkout failed");
+  if (!response.ok || !body.url) throw new BillingError(body.error ?? "Checkout failed", response.status);
   await openUrl(body.url);
 }
 
@@ -42,7 +57,7 @@ export async function openEntitlementReceipt(entitlementId: string) {
     body: JSON.stringify({ entitlementId }),
   });
   const body = await jsonBody(response);
-  if (!response.ok || !body.url) throw new Error(body.error ?? "Receipt failed");
+  if (!response.ok || !body.url) throw new BillingError(body.error ?? "Receipt failed", response.status);
   await openUrl(body.url);
 }
 

@@ -48,6 +48,7 @@ export async function POST(request: Request) {
     return corsJson(request, { token, claims: { ...claims, sub: user.id } });
   } catch (error) {
     if (error instanceof Response) return new Response(error.body, { status: error.status, headers: corsHeaders(request) });
+    console.error("[billing/entitlement]", error);
     return corsJson(request, { error: "Entitlement could not be issued" }, { status: 500 });
   }
 }
