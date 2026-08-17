@@ -72,6 +72,35 @@ Put its `price_...` ID in `STRIPE_EVENT_PASS_PRICE_ID`. Use a restricted key in
 Sessions and Customers and to read Prices, PaymentIntents, and Charges. Do not place this key in a
 `NEXT_PUBLIC_...` or `VITE_...` variable.
 
+Keep the key and the price ID in the same mode. A test key with a live price ID
+fails with `No such price`, which surfaces in the Presenter app only as
+"could not prepare checkout".
+
+### Account settings that break Checkout
+
+Two Dashboard-side prerequisites are easy to miss because nothing in this
+repository can enforce them, and both fail as an opaque 500 in the Presenter app.
+Read the real reason from the `[billing/checkout]` line in the Vercel function log.
+
+**Managed Payments must stay off.** Stripe's merchant-of-record solution is
+enabled by default on some accounts, and it cannot be combined with the
+`custom_text` this integration sends — Checkout Session creation fails with a 400.
+Note that Stripe's own [unsupported-parameter list](https://docs.stripe.com/payments/managed-payments/update-checkout)
+does not mention `custom_text`; the live API is stricter than the table. The route
+therefore sends `managed_payments[enabled]=false` explicitly, so no Dashboard work
+is required. Do not switch this to the Dashboard toggle: that setting is held
+separately per mode, so turning it off in test mode would leave live mode broken.
+
+Adopting Managed Payments would make Stripe the seller, which contradicts the
+commerce disclosure, refund policy, terms consent, and receipt flow shipped here —
+all of which name the presenter as the seller. That is a legal-content change,
+not a configuration change.
+
+**A Terms of Service URL is required in public details.** The session is created
+with `consent_collection[terms_of_service] = required`, which only works when
+Settings → Business → Public details carries a terms URL. Point it at
+`<audience-host>/legal/terms`.
+
 Keep `BILLING_PUBLICATION_ENABLED=false` until the legal and support details are
 final. When it is `true`, the web prebuild check requires all of the following and
 the Checkout API becomes available:

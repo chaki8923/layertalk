@@ -159,6 +159,20 @@ Vercel の `ALLOWED_TAURI_ORIGINS` に `http://localhost:1420` を入れて再�
 このとき **`room_not_found`（PostgREST の `P0001`）と通信失敗を必ず区別する** こと
 — 一緒くたにすると、会場の Wi-Fi が切れているだけで有効なルームを捨ててしまう。
 
+**15. Stripe はアカウント側の既定設定でコードを壊す**
+`custom_text` は **Managed Payments**（Stripe が merchant of record になる仕組み。
+**既定で有効なアカウントがある**）と併用できず、Checkout Session の作成が 400 で落ちる。
+**公式の「非対応パラメーター」表に `custom_text` は載っていない** ので、表を見て安心しないこと。
+`checkout/route.ts` は `managed_payments: { enabled: false }` を明示して切っている。
+ダッシュボードのトグルで切らないのは、**あの設定を test / live で別々に持つ**ため
+（test で切っても live が壊れたままになる）。
+特商法表記・返金ポリシー・規約同意・領収書はすべて**発表者が販売者**である前提なので、
+Managed Payments を有効にする話は、コードではなく法務ページを書き直す話になる。
+なお `consent_collection: { terms_of_service: "required" }` は、ダッシュボードの
+公開情報に利用規約 URL が登録されていないと使えない。これも同じく 500 にしか見えない。
+**この種の失敗はどれも画面に「購入画面を準備できませんでした」としか出ない。**
+原因は Vercel の Function ログの `[billing/checkout]` 行にしか無い。
+
 ## 設計上の決めごと
 
 - **コメント／スタンプの全面オーバーレイはクリックスルー常時 ON。** 切り替え UI も

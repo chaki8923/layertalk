@@ -46,6 +46,14 @@ export async function POST(request: Request) {
     const appUrl = serverEnv.appUrl().replace(/\/$/, "");
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
+      // Stripe が merchant of record になる Managed Payments を明示的に切る。
+      // アカウントによっては**既定で有効**で、そのままだと下の custom_text が 400 で弾かれる
+      // （公式の非対応パラメーター表に custom_text は載っていない。実 API の方が厳しい）。
+      // 特商法表記・返金ポリシー・規約同意・領収書はすべて「発表者が販売者」である前提で
+      // 作ってあるので、Stripe を販売者にすると表の記載と食い違う。
+      // **ダッシュボードではなくここで切る**: あの設定は test / live で別々に持ち、
+      // 既定値も Stripe の都合で変わりうる。明示すれば両モードで同じ挙動になる。
+      managed_payments: { enabled: false },
       line_items: [{ price: serverEnv.stripeEventPassPriceId(), quantity: 1 }],
       ...(profile?.stripe_customer_id
         ? { customer: profile.stripe_customer_id }
