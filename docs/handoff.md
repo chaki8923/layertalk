@@ -42,9 +42,12 @@
 ## 次にやるとよさそうなこと（未着手・優先度順）
 
 1. ~~git init してコミットする~~ → 済（`origin: git@github.com:chaki8923/layertalk.git`）
-2. ~~観客用 Web のデプロイ~~ → 済。Vercel の
-   `https://layertalk-audience-web-five.vercel.app` で、
-   `apps/presenter-app/.env.local` の `VITE_AUDIENCE_BASE_URL` に設定済み
+2. ~~観客用 Web のデプロイ~~ → 済。Vercel にデプロイし、独自ドメイン
+   `https://www.layer-talk.com` を割り当てた。`apps/presenter-app/.env.local` の
+   `VITE_AUDIENCE_BASE_URL` と `VITE_BILLING_API_BASE_URL` はこちらを指す
+   （`*.vercel.app` の方も生きているが、観客に見せる URL と QR はブランドの
+   ドメインで出す）。Vercel 側の `NEXT_PUBLIC_APP_URL` も同じ値に揃えること
+   — Stripe の success_url / cancel_url がこれで組まれる
 3. `npm run build:presenter` で .app を作り、ターミナルなしで起動できるようにする
    → 下の「配布」を参照。前提（Web のデプロイ）は解消済みなので、いつでも実行できる
 4. ~~ルーム参加用の QR コード表示~~ → 済。コントロール窓のルームカードに常時、
