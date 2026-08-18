@@ -32,6 +32,10 @@ export type LayerTalkErrorCode =
   | "stamp_limit_room"
   | "entitlement_fetch_failed"
   | "moderation_failed"
+  /** ブランド設定の保存が通信・DB のエラーで落ちた。権限（= branding_rejected）と必ず区別する。 */
+  | "branding_save_failed"
+  /** RLS が 0 行更新で弾いた。Event Pass が切れているのに画面だけ成功に見える事故を防ぐ。 */
+  | "branding_rejected"
   | "logo_upload_failed"
   | "session_failed"
   | "report_failed"
@@ -59,6 +63,8 @@ const ja: Record<LayerTalkErrorCode, string> = {
   stamp_limit_room: `このルームのカスタムスタンプは${ROOM_STAMP_MAX_PER_ROOM}個で上限です`,
   entitlement_fetch_failed: "購入状態を確認できませんでした",
   moderation_failed: "運営設定を更新できませんでした",
+  branding_save_failed: "ブランド設定を保存できませんでした",
+  branding_rejected: "Event Pass が有効でないため、ブランド設定を保存できませんでした",
   logo_upload_failed: "ロゴを保存できませんでした",
   session_failed: "発表セッションを更新できませんでした",
   report_failed: "発表レポートを作成できませんでした",
@@ -87,6 +93,8 @@ const en: Record<LayerTalkErrorCode, string> = {
   stamp_limit_room: `This room is at its limit of ${ROOM_STAMP_MAX_PER_ROOM} custom stamps`,
   entitlement_fetch_failed: "Could not check your purchase",
   moderation_failed: "Could not update the event controls",
+  branding_save_failed: "Could not save the brand settings",
+  branding_rejected: "Brand settings need an active Event Pass",
   logo_upload_failed: "Could not save the logo",
   session_failed: "Could not update the presentation session",
   report_failed: "Could not create the presentation report",

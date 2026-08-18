@@ -42,6 +42,7 @@ import { PendingApprovalQueue } from "../components/PendingApprovalQueue";
 import { PresenterAuth } from "../components/PresenterAuth";
 import { useDocumentLang, useMessages, type Messages } from "../i18n";
 import { audienceUrl as buildAudienceUrl } from "../lib/audience";
+import { useRoomBranding } from "../lib/branding";
 import {
   loadSettings,
   OVERLAY_DEFAULTS,
@@ -93,6 +94,16 @@ export function ControlWindow() {
     });
     return () => data.subscription.unsubscribe();
   }, []);
+
+  // 参加QRカードのロゴ・色・LayerTalk表記。ここが唯一の書き手で、
+  // オーバーレイ窓へは `patchRoomBranding` が Tauri イベントで届ける。
+  const { branding, setBranding, reload: reloadBranding } = useRoomBranding(settings.roomId);
+
+  // ブランド設定の SELECT は authenticated 限定。サインイン前の取得は空振りするので、
+  // 通ったところで取り直す（キャッシュのまま古い値で QR を出さないため）。
+  useEffect(() => {
+    if (signedIn) void reloadBranding();
+  }, [signedIn, reloadBranding]);
 
   const { comments, status, upsertLocal } = useComments({
     client: settings.roomId ? supabase : null,
@@ -465,11 +476,16 @@ export function ControlWindow() {
               {audienceUrl && (
                 <div className="border-border space-y-3 border-t pt-3">
                   <div className="flex justify-center">
+                    {/* スライドに出るものと同じカード。ブランド設定を渡し忘れると、
+                        「表記を隠したのに消えない」の最初の目撃地点になる。 */}
                     <JoinQrCard
                       url={audienceUrl}
                       code={settings.roomCode}
                       size={132}
                       label={t.qr.scan}
+                      brandColor={branding?.brand_color}
+                      logoUrl={branding?.logoUrl}
+                      hideLayerTalk={branding?.hide_layertalk_branding}
                     />
                   </div>
 
@@ -628,6 +644,8 @@ export function ControlWindow() {
               showJoinQr: preset.show_join_qr,
               allowCustomStamps: preset.allow_custom_stamps,
             })}
+            branding={branding}
+            onBrandingChange={setBranding}
           />
         )}
 

@@ -39,6 +39,7 @@ import {
 
 import { useMessages } from "../i18n";
 import { audienceUrl as buildAudienceUrl } from "../lib/audience";
+import { patchRoomBranding, type BrandingState } from "../lib/branding";
 import { EventPassPurchaseSheet } from "./EventPassPurchaseSheet";
 import { JoinQrCard } from "./JoinQrCard";
 import { loadCachedEntitlementLease, openAudiencePage, openEntitlementReceipt, refreshEntitlementLease } from "../lib/billing";
@@ -53,9 +54,17 @@ type Props = {
   comments: Comment[];
   display: { displayMode: "flow" | "bubble"; showJoinQr: boolean; allowCustomStamps: boolean };
   onApplyPreset: (preset: DisplayPreset) => void;
+  /**
+   * ブランド設定。コントロール窓の `useRoomBranding` が持つ。
+   *
+   * ここで自前に持たないのは、同じ値をコントロール窓の参加QRカードも出すため。
+   * 2箇所で別々に取ると、片方だけ古い値のまま、という食い違いが必ず起きる。
+   */
+  branding: BrandingState | null;
+  onBrandingChange: (branding: BrandingState) => void;
 };
 
-export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comments, display, onApplyPreset }: Props) {
+export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comments, display, onApplyPreset, branding, onBrandingChange }: Props) {
   const ja = locale === "ja";
   const t = useMessages(locale);
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
@@ -66,7 +75,6 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
     catch { return null; }
   });
   const [terms, setTerms] = useState<ModerationTerm[]>([]);
-  const [branding, setBranding] = useState<RoomBranding | null>(null);
   const [presets, setPresets] = useState<DisplayPreset[]>([]);
   const [sessions, setSessions] = useState<PresentationSession[]>([]);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
@@ -77,21 +85,11 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
   const [presetName, setPresetName] = useState("");
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoDone, setLogoDone] = useState(false);
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [appliedPreset, setAppliedPreset] = useState<string | null>(null);
 
-  // ブランドの見た目はここでしか確認できない（本番はスライドの参加QRカードの中）。
-  // バケットが private なので、プレビューにも署名 URL が要る。
-  const logoPath = branding?.logo_path ?? null;
-  useEffect(() => {
-    if (!logoPath) { setLogoUrl(null); return; }
-    let cancelled = false;
-    void supabase.storage.from(ROOM_LOGO_BUCKET).createSignedUrl(logoPath, 3600).then(({ data }) => {
-      // 差し替え直後に古い画像が出ないよう、署名 URL にも版を付ける
-      if (!cancelled) setLogoUrl(data?.signedUrl ? `${data.signedUrl}&v=${branding?.updated_at ?? ""}` : null);
-    });
-    return () => { cancelled = true; };
-  }, [logoPath, branding?.updated_at]);
+  // 署名 URL の解決は `useRoomBranding` が済ませている（バケットが private なので
+  // オーバーレイ側にも同じものが要る）。ここで作り直さない。
+  const logoUrl = branding?.logoUrl ?? null;
 
   const load = useCallback(async () => {
     try {
@@ -110,16 +108,14 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
       setOfflineActive(Boolean(active) || ongoingPaid);
       if (!active && !ongoingPaid) return;
       void refreshEntitlementLease(roomId).catch(() => undefined);
-      const [nextRules, termResult, brandResult, presetResult] = await Promise.all([
+      const [nextRules, termResult, presetResult] = await Promise.all([
         fetchModerationRules(supabase, roomId),
         supabase.from("moderation_terms").select("*").eq("room_id", roomId).order("created_at"),
-        supabase.from("room_branding").select("*").eq("room_id", roomId).single(),
         supabase.from("display_presets").select("*").order("created_at"),
       ]);
       setRules(nextRules);
       localStorage.setItem(`layertalk:event-controls:${roomId}`, JSON.stringify(nextRules));
       setTerms(termResult.data ?? []);
-      setBranding(brandResult.data);
       setPresets(presetResult.data ?? []);
     } catch {
       setError(ja ? "Event Passの状態を読み込めませんでした" : "Could not load Event Pass");
@@ -150,20 +146,21 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
   /**
    * ブランド設定の 1 列だけを書き換える。
    *
-   * `room_branding` の UPDATE は `has_paid_room_features` を要求するので、パスが切れると
-   * **RLS が 0 行更新で黙って弾く**（PostgREST はエラーを返さない）。error を握りつぶすと
-   * 画面上は成功に見えたままオーバーレイに反映されないので、必ず結果を見る。
+   * 実体は `patchRoomBranding`。**返ってきた行を正として反映する**のが肝で、
+   * 楽観更新のまま放置すると「画面は ON・DB は false・スライドには LayerTalk が出たまま」
+   * になる（`room_branding` の UPDATE は `has_paid_room_features` を要求し、
+   * パスが切れると RLS が 0 行更新で黙って弾く）。
    */
   const patchBranding = async (patch: Partial<RoomBranding>) => {
     if (!branding) return;
     const previous = branding;
     setError(null);
-    setBranding({ ...branding, ...patch });
-    const { error: dbError } = await supabase.from("room_branding")
-      .update({ ...patch, updated_at: new Date().toISOString() }).eq("room_id", roomId);
-    if (dbError) {
-      setBranding(previous);
-      setError(resolveErrorMessage(new LayerTalkError("logo_upload_failed", dbError.message), locale));
+    onBrandingChange({ ...branding, ...patch });
+    try {
+      onBrandingChange(await patchRoomBranding(roomId, patch));
+    } catch (err) {
+      onBrandingChange(previous);
+      setError(resolveErrorMessage(err, locale));
     }
   };
 
@@ -190,13 +187,9 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
         contentType: "image/png", cacheControl: "0", upsert: true,
       });
       if (uploadError) throw new LayerTalkError("logo_upload_failed", uploadError.message);
-      const updatedAt = new Date().toISOString();
-      const { error: dbError } = await supabase.from("room_branding")
-        .update({ logo_path: path, updated_at: updatedAt }).eq("room_id", roomId);
-      if (dbError) throw new LayerTalkError("logo_upload_failed", dbError.message);
-      // updated_at も進めること。差し替えではパスが変わらないので、これが無いと
-      // プレビューの <img src> が同一のままで古いロゴが残る。
-      setBranding({ ...branding, logo_path: path, updated_at: updatedAt });
+      // updated_at も進めること（`patchRoomBranding` がやる）。差し替えではパスが変わらないので、
+      // これが無いとプレビューの <img src> が同一のままで古いロゴが残る。
+      onBrandingChange(await patchRoomBranding(roomId, { logo_path: path }));
       setLogoDone(true);
     } catch (err) {
       setError(resolveErrorMessage(err, locale));

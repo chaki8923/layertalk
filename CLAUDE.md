@@ -173,6 +173,26 @@ Managed Payments を有効にする話は、コードではなく法務ページ
 **この種の失敗はどれも画面に「購入画面を準備できませんでした」としか出ない。**
 原因は Vercel の Function ログの `[billing/checkout]` 行にしか無い。
 
+**16. `.select()` を付けない UPDATE は、0 行でも成功に見える**
+PostgREST は RLS で 1 行も一致しなくても **204 / `error: null`** を返す。
+`room_branding` の「LayerTalk表記を隠す」がこれで、楽観更新だけが残り
+**画面は ON・DB は false・スライドには LayerTalk が出たまま**になった
+（実測: `PATCH /rest/v1/room_branding` 6 回すべて 204 なのに行は既定値のまま）。
+`room_branding` / `moderation_rules` の UPDATE は `has_paid_room_features` を要求するので、
+Event Pass が切れた瞬間から**全部この黙った 0 行更新**になる。
+権限付きの表を書くときは `.select().maybeSingle()` を付けて**返ってきた行を正とする**こと
+（`lib/branding.ts` の `patchRoomBranding`）。行が無い＝弾かれた、で
+`branding_rejected`（権限）と `branding_save_failed`（通信）を必ず分ける。
+
+**16b. 窓をまたぐ状態を Realtime で運ばない**
+オーバーレイ窓はブランド設定を `postgres_changes` で受けていたが、書き手はコントロール窓しか
+居ないのに罠 #3（SUBSCRIBED 直後は流れてこない）を踏みに行くだけだった。本線は
+**Tauri イベント**（`settings.ts:89-94` が書いているとおり、同一オリジンでも別 WKWebView なので
+`storage` イベントは飛ばない）。加えて `hideLayerTalk` は **fail-open**（取得できなければ
+LayerTalk を出す。無料版が表記を消せてはいけないので既定は変えない）なので、
+取得失敗のたびに表記が戻らないよう `localStorage` に最後の値を残す。
+**取得に失敗したときキャッシュを消さないこと** — 会場の Wi-Fi が切れただけで表記が戻る。
+
 ## 設計上の決めごと
 
 - **コメント／スタンプの全面オーバーレイはクリックスルー常時 ON。** 切り替え UI も

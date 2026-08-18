@@ -6,7 +6,6 @@ import {
   useStampChannel,
   type Comment,
   type ModerationRules,
-  type RoomBranding,
 } from "@layertalk/shared";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,6 +16,7 @@ import { JoinQrCard } from "../components/JoinQrCard";
 import { useDocumentLang, useMessages } from "../i18n";
 import { StampLayer, type StampLayerHandle } from "../components/StampLayer";
 import { audienceUrl } from "../lib/audience";
+import { useRoomBranding } from "../lib/branding";
 import {
   loadSettings,
   OVERLAY_DEFAULTS,
@@ -39,7 +39,9 @@ export function OverlayWindow() {
   const [live, setLive] = useState(false);
   const [peeking, setPeeking] = useState(false);
   const [moderation, setModeration] = useState<ModerationRules | null>(null);
-  const [branding, setBranding] = useState<(RoomBranding & { logoUrl?: string }) | null>(null);
+
+  // 参加QRカードのロゴ・色・LayerTalk表記。窓をまたぐ伝達はフックの中の Tauri イベント。
+  const { branding } = useRoomBranding(settings.roomId);
 
   const t = useMessages(settings.language);
   useDocumentLang(settings.language);
@@ -106,28 +108,6 @@ export function OverlayWindow() {
         setModeration(row as ModerationRules);
         localStorage.setItem(`layertalk:event-controls:${roomId}`, JSON.stringify(row));
       },
-    ).subscribe();
-    return () => { cancelled = true; void supabase.removeChannel(channel); };
-  }, [settings.roomId]);
-
-  useEffect(() => {
-    if (!settings.roomId) { setBranding(null); return; }
-    let cancelled = false;
-    const roomId = settings.roomId;
-    const loadBranding = async () => {
-      const { data } = await supabase.from("room_branding").select("*").eq("room_id", roomId).single();
-      if (!data || cancelled) return;
-      let logoUrl: string | undefined;
-      if (data.logo_path) {
-        const signed = await supabase.storage.from("room-branding").createSignedUrl(data.logo_path, 3600);
-        logoUrl = signed.data?.signedUrl;
-      }
-      if (!cancelled) setBranding({ ...data, logoUrl });
-    };
-    void loadBranding();
-    const channel = supabase.channel(`branding:${roomId}`).on(
-      "postgres_changes", { event: "UPDATE", schema: "public", table: "room_branding", filter: `room_id=eq.${roomId}` },
-      () => void loadBranding(),
     ).subscribe();
     return () => { cancelled = true; void supabase.removeChannel(channel); };
   }, [settings.roomId]);
