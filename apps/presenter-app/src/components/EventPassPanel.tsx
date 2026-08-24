@@ -41,6 +41,7 @@ import { useMessages } from "../i18n";
 import { audienceUrl as buildAudienceUrl } from "../lib/audience";
 import { patchRoomBranding, type BrandingState } from "../lib/branding";
 import { EventPassPurchaseSheet } from "./EventPassPurchaseSheet";
+import { DisplayPresetPicker } from "./DisplayPresetPicker";
 import { JoinQrCard } from "./JoinQrCard";
 import { loadCachedEntitlementLease, openAudiencePage, openEntitlementReceipt, refreshEntitlementLease } from "../lib/billing";
 import { supabase } from "../lib/supabase";
@@ -85,11 +86,12 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
   const [presetName, setPresetName] = useState("");
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoDone, setLogoDone] = useState(false);
-  const [appliedPreset, setAppliedPreset] = useState<string | null>(null);
+  const [appliedPresetId, setAppliedPresetId] = useState<string | null>(null);
 
   // 署名 URL の解決は `useRoomBranding` が済ませている（バケットが private なので
   // オーバーレイ側にも同じものが要る）。ここで作り直さない。
   const logoUrl = branding?.logoUrl ?? null;
+  const appliedPreset = presets.find((preset) => preset.id === appliedPresetId) ?? null;
 
   const load = useCallback(async () => {
     try {
@@ -198,6 +200,18 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
     }
   };
 
+  const deletePreset = async (preset: DisplayPreset) => {
+    setError(null);
+    const { error: deleteError } = await supabase.from("display_presets").delete().eq("id", preset.id);
+    if (deleteError) {
+      const wrapped = new LayerTalkError("moderation_failed", deleteError.message);
+      setError(resolveErrorMessage(wrapped, locale));
+      throw wrapped;
+    }
+    setPresets((current) => current.filter((item) => item.id !== preset.id));
+    setAppliedPresetId((current) => current === preset.id ? null : current);
+  };
+
   if (!entitlement && !offlineActive) {
     return (
       <section className="space-y-3">
@@ -266,14 +280,15 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
         <div className="border-border border-t pt-4">
           <p className="flex items-center gap-2 text-[13px] font-bold"><KeyRound size={14} />{ja ? "入室パスコード" : "Room passcode"}</p>
           <div className="mt-2 flex gap-2">
-            <input value={passcode} onChange={(event) => setPasscode(event.target.value)} minLength={4} maxLength={12} placeholder={ja ? "4〜12文字、空欄で解除" : "4–12 characters"} className="border-border min-w-0 flex-1 rounded-[12px] border bg-transparent px-3 py-2 text-[12px] outline-none" />
-            <button type="button" onClick={() => {
+            <input disabled={!entitlement} value={passcode} onChange={(event) => setPasscode(event.target.value)} minLength={4} maxLength={12} placeholder={ja ? "4〜12文字、空欄で解除" : "4–12 characters"} className="border-border min-w-0 flex-1 rounded-[12px] border bg-transparent px-3 py-2 text-[12px] outline-none disabled:opacity-40" />
+            <button type="button" disabled={!entitlement} onClick={() => {
               setError(null);
               void setRoomPasscode(supabase, roomId, passcode)
                 .then(() => setPasscode(""))
                 .catch((err: unknown) => setError(resolveErrorMessage(err, locale)));
-            }} className="border-border rounded-[12px] border px-3 text-[11px] font-bold">{ja ? "保存" : "Save"}</button>
+            }} className="border-border rounded-[12px] border px-3 text-[11px] font-bold disabled:opacity-40">{ja ? "保存" : "Save"}</button>
           </div>
+          {!entitlement && <p className="text-text-faint mt-1.5 text-[10px] leading-relaxed">{ja ? "Event Passの期限切れ後は、新しく参加する人にパスコードを求めません。" : "After the Event Pass expires, new participants are not asked for a passcode."}</p>}
         </div>
 
         <div className="border-border border-t pt-4">
@@ -396,16 +411,20 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
           </div>
           {presets.length > 0 && (
             <>
-              <p className="text-text-faint mt-3 text-[10px]">{ja ? "押すと、その設定に戻ります" : "Tap one to restore it"}</p>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">{presets.map((preset) => (
-                <button key={preset.id} type="button" onClick={() => {
+              <DisplayPresetPicker
+                presets={presets}
+                selectedPresetId={appliedPresetId}
+                locale={locale}
+                onSelect={(preset) => {
                   onApplyPreset(preset);
                   void patchBranding({ brand_color: preset.brand_color, hide_layertalk_branding: preset.hide_layertalk_branding, logo_path: preset.logo_path });
-                  setAppliedPreset(preset.name);
-                }} className={`rounded-full px-2.5 py-1 text-[10px] ${appliedPreset === preset.name ? "bg-brand/20 text-brand font-bold" : "bg-surface-strong text-text-muted"}`}>{preset.name}</button>
-              ))}</div>
+                  setAppliedPresetId(preset.id);
+                }}
+                onClear={() => setAppliedPresetId(null)}
+                onDelete={deletePreset}
+              />
               {/* 押しても画面のどこが変わったのか分からなかったので、適用したことを明示する */}
-              {appliedPreset && <p className="text-online mt-2 text-[10px]">{ja ? `「${appliedPreset}」を適用しました` : `Applied “${appliedPreset}”`}</p>}
+              {appliedPreset && <p className="text-online mt-2 text-[10px]">{ja ? `「${appliedPreset.name}」を適用しました` : `Applied “${appliedPreset.name}”`}</p>}
             </>
           )}
         </div>

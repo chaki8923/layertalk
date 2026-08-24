@@ -80,7 +80,7 @@ export type Database = {
       moderation_rules: Table<{
         room_id: string; comments_paused: boolean; reactions_paused: boolean; question_only: boolean;
         approval_mode: boolean; display_delay_seconds: number; custom_stamps_enabled: boolean;
-        entry_passcode_hash: string | null; updated_at: string;
+        entry_passcode_hash: string | null; entry_passcode_entitlement_id: string | null; updated_at: string;
       }>;
       moderation_terms: Table<{
         id: string; room_id: string; term: string; match_mode: "exact" | "contains"; created_at: string;
