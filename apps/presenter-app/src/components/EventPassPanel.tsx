@@ -40,9 +40,15 @@ import {
 import { useMessages } from "../i18n";
 import { audienceUrl as buildAudienceUrl } from "../lib/audience";
 import { patchRoomBranding, type BrandingState } from "../lib/branding";
-import { loadQuestionCapturePreference, saveQuestionCapturePreference } from "../lib/question-capture";
-import { generatePresentationReportHtml } from "../lib/report-html";
-import { getScreenCapturePermission, readQuestionCapture, type ScreenCapturePermission } from "../lib/tauri";
+import { loadQuestionCapturePreference, saveQuestionCapturePreference, shouldOpenScreenCaptureSettings } from "../lib/question-capture";
+import { generatePresentationReportHtml, hasQuestionCapture } from "../lib/report-html";
+import {
+  getScreenCapturePermission,
+  openScreenCaptureSettings,
+  questionCaptureCount,
+  readQuestionCapture,
+  type ScreenCapturePermission,
+} from "../lib/tauri";
 import { EventPassPurchaseSheet } from "./EventPassPurchaseSheet";
 import { DisplayPresetPicker } from "./DisplayPresetPicker";
 import { JoinQrCard } from "./JoinQrCard";
@@ -100,15 +106,39 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
 
   useEffect(() => {
     setCaptureEnabled(loadQuestionCapturePreference(roomId));
+    setCapturePermission(null);
     void getScreenCapturePermission().then(setCapturePermission).catch(() => setCapturePermission(null));
+    const refreshPermission = () => {
+      void getScreenCapturePermission().then((next) => {
+        // 許可直後の「再起動待ち」は、preflight=falseだけでは再判別できない。
+        // 実際に利用可能になるまでは一度得た状態を消さない。
+        setCapturePermission((current) => current?.restartRequired && !next.granted ? current : next);
+      }).catch(() => undefined);
+    };
+    window.addEventListener("focus", refreshPermission);
+    return () => window.removeEventListener("focus", refreshPermission);
   }, [roomId]);
+
+  const openCaptureSettings = async () => {
+    try {
+      await openScreenCaptureSettings();
+    } catch {
+      setError(ja
+        ? "システム設定を開けませんでした。プライバシーとセキュリティから画面収録を開いてください。"
+        : "Could not open System Settings. Open Screen Recording under Privacy & Security.");
+    }
+  };
 
   const changeCaptureEnabled = async (enabled: boolean) => {
     setCaptureEnabled(enabled);
     saveQuestionCapturePreference(roomId, enabled);
     if (!enabled) return;
     try {
-      setCapturePermission(await getScreenCapturePermission(true));
+      const permission = await getScreenCapturePermission(true);
+      setCapturePermission(permission);
+      if (shouldOpenScreenCaptureSettings(permission)) {
+        await openCaptureSettings();
+      }
     } catch {
       // 許可取得に失敗しても設定は保持する。次の起動で再確認でき、発表開始も妨げない。
       setCapturePermission(null);
@@ -471,10 +501,15 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
             <p className="text-like mt-1 text-[10px]">{ja ? "この機能はmacOSでのみ利用できます。" : "This feature is available on macOS only."}</p>
           )}
           {captureEnabled && capturePermission?.restartRequired && (
-            <p className="text-like mt-1 text-[10px]">{ja ? "画面収録を許可しました。LayerTalkを再起動すると有効になります。" : "Screen Recording was allowed. Restart LayerTalk to enable it."}</p>
+            <p className="text-like mt-1 text-[10px]">{ja ? "LayerTalkの画面収録をオンにして、LayerTalkを再起動してください。" : "Turn on Screen Recording for LayerTalk, then restart LayerTalk."}</p>
           )}
           {captureEnabled && capturePermission?.supported && !capturePermission.granted && !capturePermission.restartRequired && (
-            <p className="text-like mt-1 text-[10px]">{ja ? "システム設定でLayerTalkの画面収録を許可してください。発表自体はそのまま開始できます。" : "Allow Screen Recording for LayerTalk in System Settings. Presenting still works without it."}</p>
+            <p className="text-like mt-1 text-[10px]">{ja ? "システム設定 → プライバシーとセキュリティ → 画面収録でLayerTalkをオンにしてください。発表自体はそのまま開始できます。" : "In System Settings, open Privacy & Security → Screen Recording and turn on LayerTalk. Presenting still works without it."}</p>
+          )}
+          {captureEnabled && capturePermission?.supported && !capturePermission.granted && (
+            <button type="button" onClick={() => void openCaptureSettings()} className="border-border text-text-muted mt-2 flex items-center gap-1.5 rounded-[10px] border px-2.5 py-1.5 text-[9px] font-bold">
+              {ja ? "画面収録の設定を開く" : "Open Screen Recording settings"}<ExternalLink size={10} />
+            </button>
           )}
         </div>
 
@@ -564,7 +599,7 @@ function FreeSummary({ session, ja }: { session: PresentationSession | null; ja:
   );
 }
 
-function ReportList({ sessions, locale, roomTitle, roomCode }: {
+export function ReportList({ sessions, locale, roomTitle, roomCode }: {
   sessions: PresentationSession[];
   locale: Locale;
   roomTitle: string | null;
@@ -575,6 +610,22 @@ function ReportList({ sessions, locale, roomTitle, roomCode }: {
   const [busy, setBusy] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [captureCounts, setCaptureCounts] = useState<Record<string, number | "error">>({});
+  const finishedKey = finished.map((session) => session.id).join(":");
+
+  useEffect(() => {
+    let cancelled = false;
+    setCaptureCounts({});
+    void Promise.all(finished.map(async (session) => {
+      try { return [session.id, await questionCaptureCount(session.id)] as const; }
+      catch { return [session.id, "error"] as const; }
+    })).then((entries) => {
+      if (!cancelled) setCaptureCounts(Object.fromEntries(entries));
+    });
+    return () => { cancelled = true; };
+    // finished は毎レンダーで新しい配列になるため、対象IDが変わったときだけ再確認する。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finishedKey]);
 
   const run = async (session: PresentationSession) => {
     const key = session.id;
@@ -583,7 +634,11 @@ function ReportList({ sessions, locale, roomTitle, roomCode }: {
     setError(null);
     try {
       // 押しても無反応だった原因はここを握り潰していたこと。必ず結果を見せる。
-      if (await exportReport(session, locale, roomTitle, roomCode)) setSaved(key);
+      const result = await exportReport(session, locale, roomTitle, roomCode);
+      if (result === "saved") setSaved(key);
+      if (result === "no-captures") {
+        setCaptureCounts((current) => ({ ...current, [session.id]: 0 }));
+      }
     } catch (err) {
       setError(resolveErrorMessage(err, locale));
     } finally {
@@ -593,16 +648,22 @@ function ReportList({ sessions, locale, roomTitle, roomCode }: {
 
   return (
     <div className="mt-2 space-y-2">
-      {finished.map((session) => (
-        <div key={session.id} className="border-border flex items-center gap-2 rounded-[12px] border px-3 py-2">
+      {finished.map((session) => {
+        const captureCount = captureCounts[session.id];
+        return <div key={session.id} className="border-border flex items-center gap-2 rounded-[12px] border px-3 py-2">
           <span className="min-w-0 flex-1 truncate text-[11px]">{new Date(session.started_at).toLocaleString(ja ? "ja-JP" : "en-US")}</span>
-          <button type="button" disabled={busy !== null} onClick={() => void run(session)}
-            className={`flex items-center gap-1 text-[9px] font-bold disabled:opacity-40 ${saved === session.id ? "text-online" : "text-text-muted"}`}>
-            {saved === session.id ? <Check size={11} /> : <Download size={11} />}
-            HTML
-          </button>
-        </div>
-      ))}
+          {captureCount === undefined && <span className="text-text-faint text-[9px]">{ja ? "画像を確認中…" : "Checking images…"}</span>}
+          {captureCount === "error" && <span className="text-like max-w-36 text-right text-[9px]">{ja ? "画像を確認できません" : "Could not check images"}</span>}
+          {captureCount === 0 && <span className="text-text-faint max-w-40 text-right text-[9px] leading-snug">{ja ? "スライド画像がないため出力できません" : "No slide images; report unavailable"}</span>}
+          {typeof captureCount === "number" && captureCount > 0 && (
+            <button type="button" disabled={busy !== null} onClick={() => void run(session)}
+              className={`flex items-center gap-1 text-[9px] font-bold disabled:opacity-40 ${saved === session.id ? "text-online" : "text-text-muted"}`}>
+              {saved === session.id ? <Check size={11} /> : <Download size={11} />}
+              HTML
+            </button>
+          )}
+        </div>;
+      })}
       {finished.length === 0 && <p className="text-text-faint text-[10px]">{ja ? "発表を終了するとここに表示されます。" : "Reports appear after a presentation ends."}</p>}
       {saved && <p className="text-online text-[10px]">{ja ? "保存しました" : "Saved"}</p>}
       {error && <p className="text-like text-[10px]">{error}</p>}
@@ -618,19 +679,24 @@ function ToggleRow({ label, value, onChange, disabled = false }: { label: string
   );
 }
 
-async function exportReport(session: PresentationSession, locale: Locale, roomTitle: string | null, roomCode: string | null) {
+type ExportReportResult = "saved" | "cancelled" | "no-captures";
+
+async function exportReport(session: PresentationSession, locale: Locale, roomTitle: string | null, roomCode: string | null): Promise<ExportReportResult> {
   const report = await fetchPresentationReport(supabase, session);
   const questions = report.comments.filter((comment) => comment.is_question);
   const entries = await Promise.all(questions.map(async (question) => [
     question.id,
     await readQuestionCapture(session.id, question.id).catch(() => null),
   ] as const));
+  const captures = Object.fromEntries(entries);
+  // 一覧表示後に30日削除が走った場合などにも、空のHTMLを保存しない。
+  if (!hasQuestionCapture(captures)) return "no-captures";
   const contents = generatePresentationReportHtml({
     report,
     roomTitle,
     roomCode,
     locale,
-    captures: Object.fromEntries(entries),
+    captures,
   });
   const name = `layertalk-${session.started_at.slice(0, 10)}.html`;
 
@@ -640,7 +706,7 @@ async function exportReport(session: PresentationSession, locale: Locale, roomTi
     defaultPath: name,
     filters: [{ name: "HTML", extensions: ["html"] }],
   });
-  if (path === null) return false; // \u4FDD\u5B58\u30C0\u30A4\u30A2\u30ED\u30B0\u3092\u30AD\u30E3\u30F3\u30BB\u30EB\u3057\u305F
+  if (path === null) return "cancelled"; // \u4FDD\u5B58\u30C0\u30A4\u30A2\u30ED\u30B0\u3092\u30AD\u30E3\u30F3\u30BB\u30EB\u3057\u305F
   await writeTextFile(path, contents);
-  return true;
+  return "saved";
 }

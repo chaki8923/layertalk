@@ -1,4 +1,5 @@
 import type { PresentationSession } from "@layertalk/shared";
+import type { ScreenCapturePermission } from "./tauri";
 
 const preferenceKey = (roomId: string) => `layertalk:question-capture:${roomId}`;
 
@@ -18,4 +19,8 @@ export function isPaidPresentationSession(session: PresentationSession): boolean
     && snapshot !== null
     && !Array.isArray(snapshot)
     && snapshot.paid === true;
+}
+
+export function shouldOpenScreenCaptureSettings(permission: ScreenCapturePermission): boolean {
+  return permission.supported && (!permission.granted || permission.restartRequired);
 }

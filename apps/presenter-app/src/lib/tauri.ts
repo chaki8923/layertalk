@@ -41,6 +41,10 @@ export type ScreenCapturePermission = {
 export const getScreenCapturePermission = (request = false) =>
   invoke<ScreenCapturePermission>("screen_capture_permission", { request });
 
+/** macOSの「プライバシーとセキュリティ > 画面収録」を開く。 */
+export const openScreenCaptureSettings = () =>
+  invoke<void>("open_screen_capture_settings");
+
 /** 最新フレームを質問IDへ固定する。フレーム未到着・非対象セッションなら false。 */
 export const captureQuestionSlide = (questionId: string) =>
   invoke<boolean>("capture_question_slide", { questionId });
@@ -48,6 +52,10 @@ export const captureQuestionSlide = (questionId: string) =>
 /** レポートへ埋め込むローカルJPEGを data URL として読む。 */
 export const readQuestionCapture = (sessionId: string, questionId: string) =>
   invoke<string | null>("read_question_capture", { sessionId, questionId });
+
+/** セッション用にローカル保存されている質問画像の枚数。 */
+export const questionCaptureCount = (sessionId: string) =>
+  invoke<number>("question_capture_count", { sessionId });
 
 export const getPresentationState = () => invoke<boolean>("get_presentation_state");
 

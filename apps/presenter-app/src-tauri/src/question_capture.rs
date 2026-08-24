@@ -282,6 +282,30 @@ pub fn read_capture(
     )))
 }
 
+pub fn capture_count(app_data: &Path, session_id: &str) -> Result<usize, String> {
+    let session_id = parse_id(session_id, "session")?;
+    let directory = app_data
+        .join(CAPTURE_DIRECTORY)
+        .join(session_id.to_string());
+    let files = match fs::read_dir(directory) {
+        Ok(files) => files,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(err) => return Err(err.to_string()),
+    };
+    Ok(files
+        .flatten()
+        .filter(|entry| {
+            let path = entry.path();
+            path.is_file()
+                && path.extension().and_then(|extension| extension.to_str()) == Some("jpg")
+                && path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .is_some_and(|stem| Uuid::parse_str(stem).is_ok())
+        })
+        .count())
+}
+
 pub fn cleanup_expired(app_data: &Path) {
     let root = app_data.join(CAPTURE_DIRECTORY);
     let Ok(sessions) = fs::read_dir(&root) else {
@@ -366,5 +390,24 @@ mod tests {
     #[test]
     fn dimensions_preserve_portrait_aspect_ratio() {
         assert_eq!(capture_dimensions(1080, 1920), (1080, 1920));
+    }
+
+    #[test]
+    fn capture_count_only_includes_uuid_jpegs() {
+        let suffix = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("layertalk-capture-test-{suffix}"));
+        let session_id = Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap();
+        let question_id = Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap();
+        let directory = root.join(CAPTURE_DIRECTORY).join(session_id.to_string());
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join(format!("{question_id}.jpg")), b"jpeg").unwrap();
+        fs::write(directory.join("not-a-question.jpg"), b"jpeg").unwrap();
+        fs::write(directory.join(format!("{question_id}.tmp")), b"temp").unwrap();
+
+        assert_eq!(capture_count(&root, &session_id.to_string()).unwrap(), 1);
+        fs::remove_dir_all(root).unwrap();
     }
 }

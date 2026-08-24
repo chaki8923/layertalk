@@ -22,6 +22,9 @@ const elapsedSeconds = (startedAt: string, createdAt: string) => Math.max(
 
 const formatElapsed = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
+export const hasQuestionCapture = (captures: Record<string, string | null>) =>
+  Object.values(captures).some((capture) => Boolean(capture));
+
 export function generatePresentationReportHtml({ report, roomTitle, roomCode, locale, captures }: ReportHtmlInput) {
   const ja = locale === "ja";
   const { session } = report;

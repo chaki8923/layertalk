@@ -1059,6 +1059,33 @@ fn screen_capture_permission(request: bool) -> question_capture::CapturePermissi
 }
 
 #[tauri::command]
+fn open_screen_capture_settings() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        // 固定URLを引数として直接渡す。シェルを介さないので `?` も展開されない。
+        let status = std::process::Command::new("/usr/bin/open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+            .status()
+            .map_err(|err| err.to_string())?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("System Settings exited with {status}"))
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("screen capture settings are only available on macOS".into())
+    }
+}
+
+#[tauri::command]
+fn question_capture_count(app: AppHandle, session_id: String) -> Result<usize, String> {
+    let app_data = app.path().app_data_dir().map_err(|err| err.to_string())?;
+    question_capture::capture_count(&app_data, &session_id)
+}
+
+#[tauri::command]
 fn capture_question_slide(app: AppHandle, question_id: String) -> Result<bool, String> {
     let app_data = app.path().app_data_dir().map_err(|err| err.to_string())?;
     app.state::<question_capture::QuestionCaptureState>()
@@ -1254,7 +1281,9 @@ pub fn run() {
             show_control,
             set_app_language,
             screen_capture_permission,
+            open_screen_capture_settings,
             capture_question_slide,
+            question_capture_count,
             read_question_capture,
         ])
         .setup(|app| {

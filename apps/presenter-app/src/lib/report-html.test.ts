@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PresentationReport } from "@layertalk/shared";
 
-import { generatePresentationReportHtml } from "./report-html";
+import { generatePresentationReportHtml, hasQuestionCapture } from "./report-html";
 
 const report: PresentationReport = {
   session: {
@@ -33,6 +33,11 @@ const report: PresentationReport = {
 };
 
 describe("generatePresentationReportHtml", () => {
+  it("requires at least one actual image but allows partial captures", () => {
+    expect(hasQuestionCapture({ first: null, second: null })).toBe(false);
+    expect(hasQuestionCapture({ first: "data:image/jpeg;base64,AA==", second: null })).toBe(true);
+  });
+
   it("embeds captures, elapsed time, and escaped question text in one HTML document", () => {
     const html = generatePresentationReportHtml({
       report,
