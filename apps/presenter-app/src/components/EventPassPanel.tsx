@@ -40,6 +40,9 @@ import {
 import { useMessages } from "../i18n";
 import { audienceUrl as buildAudienceUrl } from "../lib/audience";
 import { patchRoomBranding, type BrandingState } from "../lib/branding";
+import { loadQuestionCapturePreference, saveQuestionCapturePreference } from "../lib/question-capture";
+import { generatePresentationReportHtml } from "../lib/report-html";
+import { getScreenCapturePermission, readQuestionCapture, type ScreenCapturePermission } from "../lib/tauri";
 import { EventPassPurchaseSheet } from "./EventPassPurchaseSheet";
 import { DisplayPresetPicker } from "./DisplayPresetPicker";
 import { JoinQrCard } from "./JoinQrCard";
@@ -87,11 +90,30 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoDone, setLogoDone] = useState(false);
   const [appliedPresetId, setAppliedPresetId] = useState<string | null>(null);
+  const [captureEnabled, setCaptureEnabled] = useState(() => loadQuestionCapturePreference(roomId));
+  const [capturePermission, setCapturePermission] = useState<ScreenCapturePermission | null>(null);
 
   // 署名 URL の解決は `useRoomBranding` が済ませている（バケットが private なので
   // オーバーレイ側にも同じものが要る）。ここで作り直さない。
   const logoUrl = branding?.logoUrl ?? null;
   const appliedPreset = presets.find((preset) => preset.id === appliedPresetId) ?? null;
+
+  useEffect(() => {
+    setCaptureEnabled(loadQuestionCapturePreference(roomId));
+    void getScreenCapturePermission().then(setCapturePermission).catch(() => setCapturePermission(null));
+  }, [roomId]);
+
+  const changeCaptureEnabled = async (enabled: boolean) => {
+    setCaptureEnabled(enabled);
+    saveQuestionCapturePreference(roomId, enabled);
+    if (!enabled) return;
+    try {
+      setCapturePermission(await getScreenCapturePermission(true));
+    } catch {
+      // 許可取得に失敗しても設定は保持する。次の起動で再確認でき、発表開始も妨げない。
+      setCapturePermission(null);
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -245,7 +267,7 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
             <p className="text-text-faint mt-1 text-[10px]">
               {ja ? `${new Date(historyEntitlement.history_expires_at).toLocaleDateString("ja-JP")}まで出力できます。` : `Exports available until ${new Date(historyEntitlement.history_expires_at).toLocaleDateString("en-US")}.`}
             </p>
-            <ReportList sessions={sessions} locale={locale} />
+            <ReportList sessions={sessions} locale={locale} roomTitle={roomTitle} roomCode={roomCode} />
           </div>
         )}
         <EventPassPurchaseSheet open={purchaseOpen} roomId={roomId} roomTitle={roomTitle} roomCode={roomCode} locale={locale} onClose={() => setPurchaseOpen(false)} />
@@ -430,8 +452,35 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
         </div>
 
         <div className="border-border border-t pt-4">
+          <p className="text-[13px] font-bold">{ja ? "質問時のスライドを保存" : "Save slides when questions arrive"}</p>
+          <div className="mt-2">
+            <ToggleRow
+              label={ja ? "質問が届いた瞬間の画面をレポートに入れる" : "Include the screen at each question in reports"}
+              value={captureEnabled}
+              disabled={live}
+              onChange={(value) => void changeCaptureEnabled(value)}
+            />
+          </div>
+          <p className="text-text-faint mt-2 text-[10px] leading-relaxed">
+            {ja
+              ? "選択中の発表用ディスプレイだけを保存します。LayerTalkの表示とカーソルは写りません。画像はこのMacだけに30日間保存されます。"
+              : "Only the selected presentation display is saved. LayerTalk and the cursor are excluded. Images stay on this Mac for 30 days."}
+          </p>
+          {live && <p className="text-text-faint mt-1 text-[10px]">{ja ? "この設定は発表を終了してから変更できます。" : "Change this setting after the presentation ends."}</p>}
+          {captureEnabled && capturePermission && !capturePermission.supported && (
+            <p className="text-like mt-1 text-[10px]">{ja ? "この機能はmacOSでのみ利用できます。" : "This feature is available on macOS only."}</p>
+          )}
+          {captureEnabled && capturePermission?.restartRequired && (
+            <p className="text-like mt-1 text-[10px]">{ja ? "画面収録を許可しました。LayerTalkを再起動すると有効になります。" : "Screen Recording was allowed. Restart LayerTalk to enable it."}</p>
+          )}
+          {captureEnabled && capturePermission?.supported && !capturePermission.granted && !capturePermission.restartRequired && (
+            <p className="text-like mt-1 text-[10px]">{ja ? "システム設定でLayerTalkの画面収録を許可してください。発表自体はそのまま開始できます。" : "Allow Screen Recording for LayerTalk in System Settings. Presenting still works without it."}</p>
+          )}
+        </div>
+
+        <div className="border-border border-t pt-4">
           <p className="text-[13px] font-bold">{ja ? "発表レポート" : "Presentation reports"}</p>
-          <ReportList sessions={sessions} locale={locale} />
+          <ReportList sessions={sessions} locale={locale} roomTitle={roomTitle} roomCode={roomCode} />
         </div>
       </div>
       {error && <p className="text-like text-[11px]">{error}</p>}
@@ -515,21 +564,26 @@ function FreeSummary({ session, ja }: { session: PresentationSession | null; ja:
   );
 }
 
-function ReportList({ sessions, locale }: { sessions: PresentationSession[]; locale: Locale }) {
+function ReportList({ sessions, locale, roomTitle, roomCode }: {
+  sessions: PresentationSession[];
+  locale: Locale;
+  roomTitle: string | null;
+  roomCode: string | null;
+}) {
   const ja = locale === "ja";
   const finished = sessions.filter((session) => session.ended_at).slice(0, 5);
   const [busy, setBusy] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const run = async (session: PresentationSession, format: "csv" | "md") => {
-    const key = `${session.id}:${format}`;
+  const run = async (session: PresentationSession) => {
+    const key = session.id;
     setBusy(key);
     setSaved(null);
     setError(null);
     try {
       // 押しても無反応だった原因はここを握り潰していたこと。必ず結果を見せる。
-      if (await exportReport(session, ja, format)) setSaved(key);
+      if (await exportReport(session, locale, roomTitle, roomCode)) setSaved(key);
     } catch (err) {
       setError(resolveErrorMessage(err, locale));
     } finally {
@@ -542,16 +596,11 @@ function ReportList({ sessions, locale }: { sessions: PresentationSession[]; loc
       {finished.map((session) => (
         <div key={session.id} className="border-border flex items-center gap-2 rounded-[12px] border px-3 py-2">
           <span className="min-w-0 flex-1 truncate text-[11px]">{new Date(session.started_at).toLocaleString(ja ? "ja-JP" : "en-US")}</span>
-          {(["csv", "md"] as const).map((format) => {
-            const key = `${session.id}:${format}`;
-            return (
-              <button key={format} type="button" disabled={busy !== null} onClick={() => void run(session, format)}
-                className={`flex items-center gap-1 text-[9px] font-bold disabled:opacity-40 ${saved === key ? "text-online" : "text-text-muted"}`}>
-                {saved === key ? <Check size={11} /> : <Download size={11} />}
-                {format.toUpperCase()}
-              </button>
-            );
-          })}
+          <button type="button" disabled={busy !== null} onClick={() => void run(session)}
+            className={`flex items-center gap-1 text-[9px] font-bold disabled:opacity-40 ${saved === session.id ? "text-online" : "text-text-muted"}`}>
+            {saved === session.id ? <Check size={11} /> : <Download size={11} />}
+            HTML
+          </button>
         </div>
       ))}
       {finished.length === 0 && <p className="text-text-faint text-[10px]">{ja ? "発表を終了するとここに表示されます。" : "Reports appear after a presentation ends."}</p>}
@@ -561,53 +610,35 @@ function ReportList({ sessions, locale }: { sessions: PresentationSession[]; loc
   );
 }
 
-function ToggleRow({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }) {
+function ToggleRow({ label, value, onChange, disabled = false }: { label: string; value: boolean; onChange: (value: boolean) => void; disabled?: boolean }) {
   return (
-    <button type="button" role="switch" aria-checked={value} onClick={() => onChange(!value)} className="flex w-full items-center justify-between gap-3 text-left text-[11px]">
+    <button type="button" role="switch" aria-checked={value} disabled={disabled} onClick={() => onChange(!value)} className="flex w-full items-center justify-between gap-3 text-left text-[11px] disabled:opacity-45">
       <span>{label}</span><span className={`relative h-5 w-9 shrink-0 rounded-full ${value ? "bg-brand" : "bg-[var(--lt-border-strong)]"}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${value ? "translate-x-[18px]" : "translate-x-0.5"}`} /></span>
     </button>
   );
 }
 
-async function exportReport(session: PresentationSession, ja: boolean, format: "csv" | "md") {
+async function exportReport(session: PresentationSession, locale: Locale, roomTitle: string | null, roomCode: string | null) {
   const report = await fetchPresentationReport(supabase, session);
-  const elapsed = (createdAt: string) => {
-    const seconds = Math.max(0, Math.floor((new Date(createdAt).getTime() - new Date(session.started_at).getTime()) / 1000));
-    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-  };
-  const csv = [
-    ["elapsed", "type", "status", "likes", "question_status", "content"],
-    ...report.comments.map((comment) => [elapsed(comment.created_at), comment.is_question ? "question" : "comment", comment.status, String(comment.likes_count), comment.question_status ?? "", comment.content]),
-  ].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\r\n");
-  const summary = ja
-    ? `コメント ${report.totals.comments}件・質問 ${report.totals.questions}件・スタンプ ${report.totals.stamps}回`
-    : `${report.totals.comments} comments · ${report.totals.questions} questions · ${report.totals.stamps} stamps`;
-  const markdown = [
-    "# LayerTalk presentation report",
-    "",
-    `- ${summary}`,
-    `- ${ja ? "反応ピーク" : "Peak"}: ${report.peakMinute === null ? "—" : `${report.peakMinute}${ja ? "分" : " min"}`}`,
-    `- ${ja ? "未回答の質問" : "Open questions"}: ${report.totals.openQuestions}`,
-    "",
-    `## ${ja ? "質問" : "Questions"}`,
-    "",
-    ...report.comments.filter((comment) => comment.is_question).map((comment) => `- [${comment.question_status === "answered" ? "x" : " "}] ${elapsed(comment.created_at)} ${comment.content} (♥ ${comment.likes_count})`),
-    "",
-    `## ${ja ? "コメント" : "Comments"}`,
-    "",
-    ...report.comments.filter((comment) => !comment.is_question).map((comment) => `- ${elapsed(comment.created_at)} ${comment.content}`),
-  ].join("\n");
-  // CSV \u306E\u5148\u982D\u306E BOM \u306F Excel \u304C UTF-8 \u3068\u8A8D\u8B58\u3059\u308B\u305F\u3081\u306B\u8981\u308B\uFF08\u7121\u3044\u3068\u65E5\u672C\u8A9E\u304C\u5316\u3051\u308B\uFF09
-  const contents = format === "csv" ? `\uFEFF${csv}` : markdown;
-  const name = `layertalk-${session.started_at.slice(0, 10)}.${format}`;
+  const questions = report.comments.filter((comment) => comment.is_question);
+  const entries = await Promise.all(questions.map(async (question) => [
+    question.id,
+    await readQuestionCapture(session.id, question.id).catch(() => null),
+  ] as const));
+  const contents = generatePresentationReportHtml({
+    report,
+    roomTitle,
+    roomCode,
+    locale,
+    captures: Object.fromEntries(entries),
+  });
+  const name = `layertalk-${session.started_at.slice(0, 10)}.html`;
 
   // \u26A0\uFE0F Blob + <a download> \u306B\u3057\u306A\u3044\u3053\u3068\u3002WKWebView \u306F download \u3092\u51E6\u7406\u3057\u306A\u3044\u306E\u3067\u3001
   // \u30D6\u30E9\u30A6\u30B6\u3067\u306F\u52D5\u304F\u30B3\u30FC\u30C9\u304C\u3053\u3053\u3067\u306F**\u30A8\u30E9\u30FC\u3082\u51FA\u3055\u305A\u306B\u4F55\u3082\u4FDD\u5B58\u3057\u306A\u3044**\u3002
   const path = await save({
     defaultPath: name,
-    filters: [format === "csv"
-      ? { name: "CSV", extensions: ["csv"] }
-      : { name: "Markdown", extensions: ["md"] }],
+    filters: [{ name: "HTML", extensions: ["html"] }],
   });
   if (path === null) return false; // \u4FDD\u5B58\u30C0\u30A4\u30A2\u30ED\u30B0\u3092\u30AD\u30E3\u30F3\u30BB\u30EB\u3057\u305F
   await writeTextFile(path, contents);

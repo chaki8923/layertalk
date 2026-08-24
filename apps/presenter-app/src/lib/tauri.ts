@@ -26,10 +26,28 @@ export const listMonitors = () => invoke<MonitorInfo[]>("list_monitors");
 export const setOverlayMonitor = (monitor: string | null) =>
   invoke<void>("set_overlay_monitor", { monitor });
 
-export const startPresentation = (monitor: string | null) =>
-  invoke<void>("start_presentation", { monitor });
+export const startPresentation = (monitor: string | null, captureSessionId: string | null = null) =>
+  invoke<void>("start_presentation", { monitor, captureSessionId });
 
 export const stopPresentation = () => invoke<void>("stop_presentation");
+
+export type ScreenCapturePermission = {
+  supported: boolean;
+  granted: boolean;
+  restartRequired: boolean;
+};
+
+/** request=true のときだけ macOS の画面収録許可ダイアログを開く。 */
+export const getScreenCapturePermission = (request = false) =>
+  invoke<ScreenCapturePermission>("screen_capture_permission", { request });
+
+/** 最新フレームを質問IDへ固定する。フレーム未到着・非対象セッションなら false。 */
+export const captureQuestionSlide = (questionId: string) =>
+  invoke<boolean>("capture_question_slide", { questionId });
+
+/** レポートへ埋め込むローカルJPEGを data URL として読む。 */
+export const readQuestionCapture = (sessionId: string, questionId: string) =>
+  invoke<string | null>("read_question_capture", { sessionId, questionId });
 
 export const getPresentationState = () => invoke<boolean>("get_presentation_state");
 
@@ -68,6 +86,10 @@ export const onPresentationStateChanged = (handler: (live: boolean) => void) =>
 /** peek が始まったことを受け取る。ペイロードは表示時間(ms)。 */
 export const onOverlayPeek = (handler: (ms: number) => void) =>
   listen<number>("overlay-peek", (event) => handler(event.payload));
+
+/** 権限取消・ディスプレイ消失など、発表を止めずにキャプチャだけ失敗した通知。 */
+export const onQuestionCaptureError = (handler: (message: string) => void) =>
+  listen<string>("question-capture-error", (event) => handler(event.payload));
 
 // クリックスルーは常時 ON の固定仕様。切り替える API は用意していない
 // （発表中に背面が操作できなくなる事故を作らないため）。

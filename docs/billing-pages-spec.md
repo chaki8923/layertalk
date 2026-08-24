@@ -150,7 +150,7 @@ apps/audience-web/src/app/event-pass/page.tsx
    - NGワード
    - コメント・リアクションの一時停止
    - 入室パスコード
-   - 発表レポートとCSV／Markdown出力
+   - 質問時のスライド画像を含むHTML発表レポート
    - ブランドカラー、ロゴ、LayerTalk表記の非表示
 3. 利用条件
    - 購入したルームにのみ適用
@@ -762,4 +762,3 @@ apps/presenter-app/src/components/
 - Restricted API Key: <https://docs.stripe.com/keys/restricted-api-keys>
 - 消費者庁 特定商取引法ガイド（通信販売広告）: <https://www.no-trouble.caa.go.jp/what/mailorder/advertising.html>
 - 消費者庁 通信販売の最終確認画面: <https://www.no-trouble.caa.go.jp/pdf/20230628ac01.pdf>
-

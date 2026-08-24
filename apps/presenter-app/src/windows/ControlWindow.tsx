@@ -14,6 +14,8 @@ import {
   useComments,
   useRoomStamps,
   type Locale,
+  type Comment,
+  type PresentationSession,
   type RoomStamp,
 } from "@layertalk/shared";
 import { motion } from "motion/react";
@@ -52,9 +54,12 @@ import {
   type PresenterSettings,
 } from "../lib/settings";
 import { supabase } from "../lib/supabase";
+import { isPaidPresentationSession, loadQuestionCapturePreference } from "../lib/question-capture";
 import {
+  captureQuestionSlide,
   getPresentationState,
   listMonitors,
+  onQuestionCaptureError,
   onPresentationStateChanged,
   peekOverlay,
   refitOverlay,
@@ -105,10 +110,20 @@ export function ControlWindow() {
     if (signedIn) void reloadBranding();
   }, [signedIn, reloadBranding]);
 
+  const captureIncomingQuestion = useCallback((comment: Comment) => {
+    if (!comment.is_question) return;
+    // 開始直後は ScreenCaptureKit の初回フレームがまだ無い場合がある。
+    // そのときだけ短く待って1回再試行する。既に保存済みならRust側が上書きを防ぐ。
+    void captureQuestionSlide(comment.id).then((captured) => {
+      if (!captured) window.setTimeout(() => void captureQuestionSlide(comment.id).catch(() => undefined), 650);
+    }).catch(() => undefined);
+  }, []);
+
   const { comments, status, upsertLocal } = useComments({
     client: settings.roomId ? supabase : null,
     roomId: settings.roomId,
     includeModerated: true,
+    onInsert: captureIncomingQuestion,
   });
 
   const { stamps, removeLocal: removeStampLocal, addLocal: addStampLocal } = useRoomStamps({
@@ -124,6 +139,15 @@ export function ControlWindow() {
       void unlisten.then((off) => off());
     };
   }, []);
+
+  useEffect(() => {
+    const unlisten = onQuestionCaptureError(() => {
+      setError(settings.language === "ja"
+        ? "質問時のスライド画像を保存できませんでした。画面収録の許可を確認してください。発表は継続できます。"
+        : "Could not save question slide images. Check Screen Recording permission. The presentation can continue.");
+    });
+    return () => { void unlisten.then((off) => off()); };
+  }, [settings.language]);
 
   // トレイのラベルは Rust 側が起動時に組み立てる。Rust は言語を永続化しないので、
   // localStorage に残っている選択を起動のたびに渡し直す。
@@ -219,16 +243,24 @@ export function ControlWindow() {
       }
       update({ presentationSessionId: null, emergencyPaused: false });
     } else {
+      let serverSession: PresentationSession | null = null;
       if (settings.roomId) {
         try {
           const session = await startPresentationSession(supabase, settings.roomId);
+          serverSession = session;
           update({ presentationSessionId: session.id, emergencyPaused: false });
         } catch {
           // 通信障害で本番開始そのものを止めない。ローカルオーバーレイは開始できる。
           update({ presentationSessionId: crypto.randomUUID(), emergencyPaused: false });
         }
       }
-      await startPresentation(settings.monitorName);
+      const captureSessionId = serverSession
+        && isPaidPresentationSession(serverSession)
+        && settings.roomId
+        && loadQuestionCapturePreference(settings.roomId)
+        ? serverSession.id
+        : null;
+      await startPresentation(settings.monitorName, captureSessionId);
     }
   };
 

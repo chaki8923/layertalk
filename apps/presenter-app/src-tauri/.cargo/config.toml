@@ -1,0 +1,8 @@
+[env]
+# tauri.conf.json の minimumSystemVersion と揃える。Rust/Swift 側が既定の macOS 11
+# のままだと、Swift Concurrency を「同梱すべき旧OS向けライブラリ」として @rpath 参照し、
+# ScreenCaptureKit を使うバイナリが起動前に dyld で停止する。
+MACOSX_DEPLOYMENT_TARGET = "13.0"
+
+[target.'cfg(target_os = "macos")']
+rustflags = ["-C", "link-arg=-mmacosx-version-min=13.0"]

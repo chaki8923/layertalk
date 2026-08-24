@@ -1,3 +1,5 @@
+mod question_capture;
+
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -150,7 +152,7 @@ mod native_overlay {
         NSBackingStoreType, NSColor, NSPanel, NSScreen, NSView, NSWindow,
         NSWindowCollectionBehavior, NSWindowOcclusionState, NSWindowStyleMask,
     };
-    use objc2_foundation::{NSPoint, NSRect, NSSize};
+    use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     /// 載せ替える窓は 2 つある。性質が違うので作り方も分ける。
@@ -267,6 +269,27 @@ mod native_overlay {
         } else {
             name
         }
+    }
+
+    fn screen_display_id(screen: &NSScreen) -> Option<u32> {
+        let description = screen.deviceDescription();
+        let key = NSString::from_str("NSScreenNumber");
+        let value = description.objectForKey(&key)?;
+        Some(unsafe { msg_send![&*value, unsignedIntValue] })
+    }
+
+    /// ScreenCaptureKit と同じ CGDirectDisplayID を返す。AppKit の表示名を選択値として
+    /// 使いつつ、キャプチャ対象は物理ディスプレイ ID で曖昧なく指定する。
+    pub fn display_id(mtm: MainThreadMarker, target: Option<&str>) -> Option<u32> {
+        let screens = NSScreen::screens(mtm);
+        if let Some(name) = target {
+            for (index, screen) in screens.iter().enumerate() {
+                if screen_name(&screen, index) == name {
+                    return screen_display_id(&screen);
+                }
+            }
+        }
+        screens.iter().next().and_then(|screen| screen_display_id(&screen))
     }
 
     /// 選択中のモニターの矩形（AppKit の座標系・ポイント単位）。
@@ -927,11 +950,43 @@ fn list_monitors(app: AppHandle) -> Vec<MonitorInfo> {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn capture_display_id(app: &AppHandle, monitor: Option<String>) -> Option<u32> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    if app.run_on_main_thread(move || {
+        let display_id = objc2::MainThreadMarker::new()
+            .and_then(|mtm| native_overlay::display_id(mtm, monitor.as_deref()));
+        let _ = tx.send(display_id);
+    }).is_err() {
+        return None;
+    }
+    rx.recv_timeout(Duration::from_secs(2)).ok().flatten()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn capture_display_id(_app: &AppHandle, _monitor: Option<String>) -> Option<u32> { None }
+
+fn start_question_capture(app: &AppHandle, session_id: &str, monitor: Option<String>) {
+    let Some(display_id) = capture_display_id(app, monitor) else {
+        let message = "capture display was not found".to_string();
+        eprintln!("[layertalk] {message}");
+        let _ = app.emit("question-capture-error", message);
+        return;
+    };
+    if let Err(message) = app
+        .state::<question_capture::QuestionCaptureState>()
+        .start(session_id, display_id)
+    {
+        eprintln!("[layertalk] question capture could not start: {message}");
+        let _ = app.emit("question-capture-error", message);
+    }
+}
+
 /// 表示先モニターを変更する。発表中なら即座に移動する。
 #[tauri::command]
 fn set_overlay_monitor(app: AppHandle, monitor: Option<String>) {
     // ここが表示先を書き換えられる唯一の入口（あとは開始時と確認表示）。
-    set_target_monitor(&app, monitor);
+    set_target_monitor(&app, monitor.clone());
 
     // 発表中なら自前の窓ごと移す。開始前は何もしなくてよい
     // （`peek_overlay` / `start_presentation` が保存値で配置する）。
@@ -945,13 +1000,30 @@ fn set_overlay_monitor(app: AppHandle, monitor: Option<String>) {
         }
     }
     refit_question_panel(&app);
+
+    // 発表中に表示先を変えた場合は、質問用のスライド画像も同じ画面へ追従する。
+    if is_live(&app) {
+        if let Some(session_id) = app
+            .state::<question_capture::QuestionCaptureState>()
+            .active_session_id()
+        {
+            start_question_capture(&app, &session_id, monitor);
+        }
+    }
 }
 
 /// 発表を開始する。指定モニターに配置してからオーバーレイを見せる。
 #[tauri::command]
-fn start_presentation(app: AppHandle, monitor: Option<String>) {
+fn start_presentation(app: AppHandle, monitor: Option<String>, capture_session_id: Option<String>) {
     debug_log(&format!("command: start_presentation monitor={monitor:?}"));
-    set_target_monitor(&app, monitor);
+    set_target_monitor(&app, monitor.clone());
+    if let Some(session_id) = capture_session_id {
+        // 失敗しても発表は止めない。権限・キャプチャは付加機能であり、オーバーレイを
+        // 開始できない理由にしてはいけない。
+        start_question_capture(&app, &session_id, monitor);
+    } else {
+        app.state::<question_capture::QuestionCaptureState>().stop();
+    }
     show_overlay(&app);
     set_live(&app, true);
 }
@@ -964,6 +1036,7 @@ fn stop_presentation(app: AppHandle) {
     // 次の周回で show() し直されてオーバーレイが残る。
     set_live(&app, false);
     set_panel_shown(&app, false);
+    app.state::<question_capture::QuestionCaptureState>().stop();
 
     // 自前の窓（オーバーレイ・質問パネル）を引っ込める。
     #[cfg(target_os = "macos")]
@@ -978,6 +1051,28 @@ fn stop_presentation(app: AppHandle) {
     if let Some(questions) = app.get_webview_window(QUESTIONS) {
         let _ = questions.hide();
     }
+}
+
+#[tauri::command]
+fn screen_capture_permission(request: bool) -> question_capture::CapturePermission {
+    question_capture::permission(request)
+}
+
+#[tauri::command]
+fn capture_question_slide(app: AppHandle, question_id: String) -> Result<bool, String> {
+    let app_data = app.path().app_data_dir().map_err(|err| err.to_string())?;
+    app.state::<question_capture::QuestionCaptureState>()
+        .capture_question(&app_data, &question_id)
+}
+
+#[tauri::command]
+fn read_question_capture(
+    app: AppHandle,
+    session_id: String,
+    question_id: String,
+) -> Result<Option<String>, String> {
+    let app_data = app.path().app_data_dir().map_err(|err| err.to_string())?;
+    question_capture::read_capture(&app_data, &session_id, &question_id)
 }
 
 #[tauri::command]
@@ -1146,6 +1241,7 @@ pub fn run() {
                 .build(),
         )
         .manage(SessionState::default())
+        .manage(question_capture::QuestionCaptureState::default())
         .invoke_handler(tauri::generate_handler![
             list_monitors,
             set_overlay_monitor,
@@ -1157,8 +1253,14 @@ pub fn run() {
             set_question_panel_expanded,
             show_control,
             set_app_language,
+            screen_capture_permission,
+            capture_question_slide,
+            read_question_capture,
         ])
         .setup(|app| {
+            if let Ok(app_data) = app.path().app_data_dir() {
+                question_capture::cleanup_expired(&app_data);
+            }
             // Dock アイコンを出さず、⌘-Tab にも現れず、オーバーレイが
             // 発表アプリからフォーカスを奪わないようにする。
             #[cfg(target_os = "macos")]
