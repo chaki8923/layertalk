@@ -953,32 +953,45 @@ fn list_monitors(app: AppHandle) -> Vec<MonitorInfo> {
 #[cfg(target_os = "macos")]
 fn capture_display_id(app: &AppHandle, monitor: Option<String>) -> Option<u32> {
     let (tx, rx) = std::sync::mpsc::channel();
-    if app.run_on_main_thread(move || {
-        let display_id = objc2::MainThreadMarker::new()
-            .and_then(|mtm| native_overlay::display_id(mtm, monitor.as_deref()));
-        let _ = tx.send(display_id);
-    }).is_err() {
+    if app
+        .run_on_main_thread(move || {
+            let display_id = objc2::MainThreadMarker::new()
+                .and_then(|mtm| native_overlay::display_id(mtm, monitor.as_deref()));
+            let _ = tx.send(display_id);
+        })
+        .is_err()
+    {
         return None;
     }
     rx.recv_timeout(Duration::from_secs(2)).ok().flatten()
 }
 
 #[cfg(not(target_os = "macos"))]
-fn capture_display_id(_app: &AppHandle, _monitor: Option<String>) -> Option<u32> { None }
+fn capture_display_id(_app: &AppHandle, _monitor: Option<String>) -> Option<u32> {
+    None
+}
 
 fn start_question_capture(app: &AppHandle, session_id: &str, monitor: Option<String>) {
     let Some(display_id) = capture_display_id(app, monitor) else {
-        let message = "capture display was not found".to_string();
-        eprintln!("[layertalk] {message}");
-        let _ = app.emit("question-capture-error", message);
+        let detail = "capture display was not found";
+        debug_log(&format!("question capture could not start: {detail}"));
+        let event = question_capture::error_event(
+            question_capture::CaptureErrorKind::DisplayUnavailable,
+            detail,
+        );
+        let _ = app.emit("question-capture-error", event);
         return;
     };
-    if let Err(message) = app
+    if let Err(error) = app
         .state::<question_capture::QuestionCaptureState>()
         .start(session_id, display_id)
     {
-        eprintln!("[layertalk] question capture could not start: {message}");
-        let _ = app.emit("question-capture-error", message);
+        debug_log(&format!(
+            "question capture could not start ({:?}): {}",
+            error.kind, error.detail
+        ));
+        let event = question_capture::error_event(error.kind, error.detail);
+        let _ = app.emit("question-capture-error", event);
     }
 }
 
@@ -1086,7 +1099,10 @@ fn question_capture_count(app: AppHandle, session_id: String) -> Result<usize, S
 }
 
 #[tauri::command]
-fn capture_question_slide(app: AppHandle, question_id: String) -> Result<bool, String> {
+fn capture_question_slide(
+    app: AppHandle,
+    question_id: String,
+) -> Result<question_capture::CaptureQuestionResult, String> {
     let app_data = app.path().app_data_dir().map_err(|err| err.to_string())?;
     app.state::<question_capture::QuestionCaptureState>()
         .capture_question(&app_data, &question_id)

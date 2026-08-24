@@ -20,6 +20,65 @@ pub struct CapturePermission {
     pub granted: bool,
     /// macOS では許可後にアプリの再起動が必要になる場合がある。
     pub restart_required: bool,
+    pub permission_target: CapturePermissionTarget,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CapturePermissionTarget {
+    LayerTalk,
+    LaunchingApp,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CaptureErrorKind {
+    PermissionDenied,
+    DisplayUnavailable,
+    CaptureStartFailed,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureErrorEvent {
+    pub kind: CaptureErrorKind,
+    pub detail: String,
+    pub permission_target: CapturePermissionTarget,
+}
+
+#[derive(Debug)]
+pub struct CaptureStartError {
+    pub kind: CaptureErrorKind,
+    pub detail: String,
+}
+
+impl CaptureStartError {
+    fn start(detail: impl Into<String>) -> Self {
+        Self {
+            kind: CaptureErrorKind::CaptureStartFailed,
+            detail: detail.into(),
+        }
+    }
+
+    fn permission() -> Self {
+        Self {
+            kind: CaptureErrorKind::PermissionDenied,
+            detail: "screen capture permission is not granted".into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CaptureQuestionStatus {
+    Captured,
+    Inactive,
+    FramePending,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct CaptureQuestionResult {
+    pub status: CaptureQuestionStatus,
 }
 
 #[derive(Clone)]
@@ -60,21 +119,21 @@ impl QuestionCaptureState {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn start(&self, session_id: &str, display_id: u32) -> Result<(), String> {
+    pub fn start(&self, session_id: &str, display_id: u32) -> Result<(), CaptureStartError> {
         use screencapturekit::cm::SCFrameStatus;
         use screencapturekit::prelude::*;
         use screencapturekit::stream::configuration::PixelFormat;
 
-        let session_id = parse_id(session_id, "session")?;
+        let session_id = parse_id(session_id, "session").map_err(CaptureStartError::start)?;
         let access = core_graphics::access::ScreenCaptureAccess::default();
         if !access.preflight() {
-            return Err("screen capture permission is not granted".into());
+            return Err(CaptureStartError::permission());
         }
 
         let mut active = self
             .active
             .lock()
-            .map_err(|_| "capture state lock failed")?;
+            .map_err(|_| CaptureStartError::start("capture state lock failed"))?;
         if let Some(current) = active.as_ref() {
             if current.session_id == session_id && current.display_id == display_id {
                 return Ok(());
@@ -82,13 +141,17 @@ impl QuestionCaptureState {
         }
         stop_locked(&mut active);
 
-        let content = SCShareableContent::get().map_err(|err| err.to_string())?;
+        let content =
+            SCShareableContent::get().map_err(|err| CaptureStartError::start(err.to_string()))?;
         let displays = content.displays();
         let display = displays
             .iter()
             .find(|candidate| candidate.display_id() == display_id)
             .or_else(|| displays.first())
-            .ok_or_else(|| "capture display was not found".to_string())?;
+            .ok_or_else(|| CaptureStartError {
+                kind: CaptureErrorKind::DisplayUnavailable,
+                detail: "capture display was not found".into(),
+            })?;
 
         // LayerTalk 自身の透明オーバーレイや質問パネルをスライド画像へ焼き込まない。
         let own_applications = content
@@ -156,9 +219,13 @@ impl QuestionCaptureState {
             SCStreamOutputType::Screen,
         );
         if handler.is_none() {
-            return Err("could not install the screen capture handler".into());
+            return Err(CaptureStartError::start(
+                "could not install the screen capture handler",
+            ));
         }
-        stream.start_capture().map_err(|err| err.to_string())?;
+        stream
+            .start_capture()
+            .map_err(|err| CaptureStartError::start(err.to_string()))?;
         *active = Some(ActiveCapture {
             session_id,
             display_id,
@@ -169,8 +236,10 @@ impl QuestionCaptureState {
     }
 
     #[cfg(not(target_os = "macos"))]
-    pub fn start(&self, _session_id: &str, _display_id: u32) -> Result<(), String> {
-        Err("question screenshots are only supported on macOS".into())
+    pub fn start(&self, _session_id: &str, _display_id: u32) -> Result<(), CaptureStartError> {
+        Err(CaptureStartError::start(
+            "question screenshots are only supported on macOS",
+        ))
     }
 
     #[cfg(target_os = "macos")]
@@ -184,7 +253,11 @@ impl QuestionCaptureState {
     pub fn stop(&self) {}
 
     #[cfg(target_os = "macos")]
-    pub fn capture_question(&self, app_data: &Path, question_id: &str) -> Result<bool, String> {
+    pub fn capture_question(
+        &self,
+        app_data: &Path,
+        question_id: &str,
+    ) -> Result<CaptureQuestionResult, String> {
         let question_id = parse_id(question_id, "question")?;
         let (path, frame) = {
             let state = self
@@ -192,12 +265,16 @@ impl QuestionCaptureState {
                 .lock()
                 .map_err(|_| "capture state lock failed")?;
             let Some(active) = state.as_ref() else {
-                return Ok(false);
+                return Ok(CaptureQuestionResult {
+                    status: CaptureQuestionStatus::Inactive,
+                });
             };
             let path = capture_path(app_data, active.session_id, question_id);
             if path.exists() {
                 // pending → approved の更新でも hook が再度呼ばれる。質問到着時の画像を上書きしない。
-                return Ok(true);
+                return Ok(CaptureQuestionResult {
+                    status: CaptureQuestionStatus::Captured,
+                });
             }
             let frame = active
                 .latest
@@ -206,14 +283,52 @@ impl QuestionCaptureState {
                 .clone();
             (path, frame)
         };
-        let Some(frame) = frame else { return Ok(false) };
+        let Some(frame) = frame else {
+            return Ok(CaptureQuestionResult {
+                status: CaptureQuestionStatus::FramePending,
+            });
+        };
         write_frame(&path, frame)?;
-        Ok(true)
+        Ok(CaptureQuestionResult {
+            status: CaptureQuestionStatus::Captured,
+        })
     }
 
     #[cfg(not(target_os = "macos"))]
-    pub fn capture_question(&self, _app_data: &Path, _question_id: &str) -> Result<bool, String> {
-        Ok(false)
+    pub fn capture_question(
+        &self,
+        _app_data: &Path,
+        _question_id: &str,
+    ) -> Result<CaptureQuestionResult, String> {
+        Ok(CaptureQuestionResult {
+            status: CaptureQuestionStatus::Inactive,
+        })
+    }
+}
+
+pub fn permission_target() -> CapturePermissionTarget {
+    #[cfg(all(target_os = "macos", debug_assertions))]
+    {
+        let bundled = std::env::current_exe()
+            .ok()
+            .is_some_and(|path| is_inside_app_bundle(&path));
+        if !bundled {
+            return CapturePermissionTarget::LaunchingApp;
+        }
+    }
+    CapturePermissionTarget::LayerTalk
+}
+
+fn is_inside_app_bundle(path: &Path) -> bool {
+    path.ancestors()
+        .any(|ancestor| ancestor.extension().and_then(|value| value.to_str()) == Some("app"))
+}
+
+pub fn error_event(kind: CaptureErrorKind, detail: impl Into<String>) -> CaptureErrorEvent {
+    CaptureErrorEvent {
+        kind,
+        detail: detail.into(),
+        permission_target: permission_target(),
     }
 }
 
@@ -350,6 +465,7 @@ pub fn permission(request: bool) -> CapturePermission {
                 supported: true,
                 granted: true,
                 restart_required: false,
+                permission_target: permission_target(),
             };
         }
         if request {
@@ -359,12 +475,14 @@ pub fn permission(request: bool) -> CapturePermission {
                 supported: true,
                 granted,
                 restart_required: granted_now && !granted,
+                permission_target: permission_target(),
             };
         }
         CapturePermission {
             supported: true,
             granted: false,
             restart_required: false,
+            permission_target: permission_target(),
         }
     }
     #[cfg(not(target_os = "macos"))]
@@ -374,6 +492,7 @@ pub fn permission(request: bool) -> CapturePermission {
             supported: false,
             granted: false,
             restart_required: false,
+            permission_target: permission_target(),
         }
     }
 }
@@ -409,5 +528,24 @@ mod tests {
 
         assert_eq!(capture_count(&root, &session_id.to_string()).unwrap(), 1);
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn app_bundle_detection_distinguishes_direct_development_binary() {
+        assert!(is_inside_app_bundle(Path::new(
+            "/Applications/LayerTalk.app/Contents/MacOS/presenter-app"
+        )));
+        assert!(!is_inside_app_bundle(Path::new(
+            "/project/target/debug/presenter-app"
+        )));
+    }
+
+    #[test]
+    fn capture_question_status_serializes_for_tauri() {
+        let value = serde_json::to_value(CaptureQuestionResult {
+            status: CaptureQuestionStatus::FramePending,
+        })
+        .unwrap();
+        assert_eq!(value, serde_json::json!({ "status": "framePending" }));
     }
 }

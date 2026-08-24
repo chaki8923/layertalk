@@ -40,7 +40,12 @@ import {
 import { useMessages } from "../i18n";
 import { audienceUrl as buildAudienceUrl } from "../lib/audience";
 import { patchRoomBranding, type BrandingState } from "../lib/branding";
-import { loadQuestionCapturePreference, saveQuestionCapturePreference, shouldOpenScreenCaptureSettings } from "../lib/question-capture";
+import {
+  loadQuestionCapturePreference,
+  saveQuestionCapturePreference,
+  screenCapturePermissionTargetName,
+  shouldOpenScreenCaptureSettings,
+} from "../lib/question-capture";
 import { generatePresentationReportHtml, hasQuestionCapture } from "../lib/report-html";
 import {
   getScreenCapturePermission,
@@ -103,6 +108,12 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
   // オーバーレイ側にも同じものが要る）。ここで作り直さない。
   const logoUrl = branding?.logoUrl ?? null;
   const appliedPreset = presets.find((preset) => preset.id === appliedPresetId) ?? null;
+  const captureTargetName = capturePermission
+    ? screenCapturePermissionTargetName(capturePermission.permissionTarget, locale)
+    : "LayerTalk";
+  const captureRestartName = capturePermission?.permissionTarget === "launchingApp"
+    ? ja ? "開発プロセス" : "the development process"
+    : "LayerTalk";
 
   useEffect(() => {
     setCaptureEnabled(loadQuestionCapturePreference(roomId));
@@ -501,10 +512,18 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
             <p className="text-like mt-1 text-[10px]">{ja ? "この機能はmacOSでのみ利用できます。" : "This feature is available on macOS only."}</p>
           )}
           {captureEnabled && capturePermission?.restartRequired && (
-            <p className="text-like mt-1 text-[10px]">{ja ? "LayerTalkの画面収録をオンにして、LayerTalkを再起動してください。" : "Turn on Screen Recording for LayerTalk, then restart LayerTalk."}</p>
+            <p className="text-like mt-1 text-[10px]">
+              {ja
+                ? `${captureTargetName}の画面収録をオンにして、${captureRestartName}を再起動してください。`
+                : `Turn on Screen Recording for ${captureTargetName}, then restart ${captureRestartName}.`}
+            </p>
           )}
           {captureEnabled && capturePermission?.supported && !capturePermission.granted && !capturePermission.restartRequired && (
-            <p className="text-like mt-1 text-[10px]">{ja ? "システム設定 → プライバシーとセキュリティ → 画面収録でLayerTalkをオンにしてください。発表自体はそのまま開始できます。" : "In System Settings, open Privacy & Security → Screen Recording and turn on LayerTalk. Presenting still works without it."}</p>
+            <p className="text-like mt-1 text-[10px]">
+              {ja
+                ? `システム設定 → プライバシーとセキュリティ → 画面収録で${captureTargetName}をオンにしてください。発表自体はそのまま開始できます。`
+                : `In System Settings, open Privacy & Security → Screen Recording and turn on ${captureTargetName}. Presenting still works without it.`}
+            </p>
           )}
           {captureEnabled && capturePermission?.supported && !capturePermission.granted && (
             <button type="button" onClick={() => void openCaptureSettings()} className="border-border text-text-muted mt-2 flex items-center gap-1.5 rounded-[10px] border px-2.5 py-1.5 text-[9px] font-bold">

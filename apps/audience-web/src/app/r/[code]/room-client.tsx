@@ -3,7 +3,6 @@
 import {
   buildComment,
   fetchLikedIds,
-  findRoomByCode,
   getClientId,
   insertComment,
   joinRoom,
@@ -34,6 +33,7 @@ import { Turnstile } from "@/components/turnstile";
 import { localeFromRoom, messages, type Messages } from "@/i18n";
 import { LocaleProvider } from "@/i18n/locale-context";
 import { supabase } from "@/lib/supabase";
+import { resolveInitialRoomEntry } from "@/lib/room-entry";
 
 type RoomState =
   | { kind: "loading" }
@@ -72,24 +72,13 @@ export function RoomClient({ code, fallbackLocale }: { code: string; fallbackLoc
 
     void (async () => {
       try {
-        const found = await findRoomByCode(supabase, code);
+        const entry = await resolveInitialRoomEntry(
+          supabase,
+          code,
+          Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY),
+        );
         if (cancelled) return;
-        if (!found) {
-          setRoomState({ kind: "notfound" });
-          return;
-        }
-        if (found.requires_passcode || process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) {
-          setRoomState({ kind: "gate", room: found });
-          return;
-        }
-        const { data: sessionData } = await supabase.auth.getSession();
-        if (!sessionData.session) {
-          const { error: authError } = await supabase.auth.signInAnonymously();
-          if (authError) throw authError;
-        }
-        const joined = await joinRoom(supabase, code);
-        if (cancelled) return;
-        setRoomState(joined ? { kind: "ready", room: { ...found, ...joined } } : { kind: "notfound" });
+        setRoomState(entry);
       } catch (err) {
         if (cancelled) return;
         setRoomState({ kind: "error", error: err });

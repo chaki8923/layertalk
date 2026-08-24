@@ -31,10 +31,13 @@ export const startPresentation = (monitor: string | null, captureSessionId: stri
 
 export const stopPresentation = () => invoke<void>("stop_presentation");
 
+export type ScreenCapturePermissionTarget = "layerTalk" | "launchingApp";
+
 export type ScreenCapturePermission = {
   supported: boolean;
   granted: boolean;
   restartRequired: boolean;
+  permissionTarget: ScreenCapturePermissionTarget;
 };
 
 /** request=true のときだけ macOS の画面収録許可ダイアログを開く。 */
@@ -45,9 +48,13 @@ export const getScreenCapturePermission = (request = false) =>
 export const openScreenCaptureSettings = () =>
   invoke<void>("open_screen_capture_settings");
 
-/** 最新フレームを質問IDへ固定する。フレーム未到着・非対象セッションなら false。 */
+export type CaptureQuestionResult = {
+  status: "captured" | "inactive" | "framePending";
+};
+
+/** 最新フレームを質問IDへ固定する。撮影停止中と初回フレーム待ちを区別して返す。 */
 export const captureQuestionSlide = (questionId: string) =>
-  invoke<boolean>("capture_question_slide", { questionId });
+  invoke<CaptureQuestionResult>("capture_question_slide", { questionId });
 
 /** レポートへ埋め込むローカルJPEGを data URL として読む。 */
 export const readQuestionCapture = (sessionId: string, questionId: string) =>
@@ -95,9 +102,15 @@ export const onPresentationStateChanged = (handler: (live: boolean) => void) =>
 export const onOverlayPeek = (handler: (ms: number) => void) =>
   listen<number>("overlay-peek", (event) => handler(event.payload));
 
+export type QuestionCaptureError = {
+  kind: "permissionDenied" | "displayUnavailable" | "captureStartFailed";
+  detail: string;
+  permissionTarget: ScreenCapturePermissionTarget;
+};
+
 /** 権限取消・ディスプレイ消失など、発表を止めずにキャプチャだけ失敗した通知。 */
-export const onQuestionCaptureError = (handler: (message: string) => void) =>
-  listen<string>("question-capture-error", (event) => handler(event.payload));
+export const onQuestionCaptureError = (handler: (error: QuestionCaptureError) => void) =>
+  listen<QuestionCaptureError>("question-capture-error", (event) => handler(event.payload));
 
 // クリックスルーは常時 ON の固定仕様。切り替える API は用意していない
 // （発表中に背面が操作できなくなる事故を作らないため）。

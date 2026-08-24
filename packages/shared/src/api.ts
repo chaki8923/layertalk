@@ -39,6 +39,21 @@ export async function joinRoom(
   return room ? ({ ...room, requires_passcode: Boolean(passcode) } as PublicRoom) : null;
 }
 
+/** 保存済み匿名セッションに有効な入室権がある場合だけ、パスコードなしで復帰する。 */
+export async function resumeAudienceRoom(
+  client: LayerTalkClient,
+  room: PublicRoom,
+): Promise<PublicRoom | null> {
+  const { data, error } = await client
+    .from("audience_room_access")
+    .select("expires_at")
+    .eq("room_id", room.id)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (error) throw new LayerTalkError("room_join_failed", error.message);
+  return data ? { ...room, requires_passcode: false } : null;
+}
+
 export type CreateRoomInput = {
   title?: string;
   /** 発表者が選んでいる表示言語。観客用 Web はこれに従う。 */
