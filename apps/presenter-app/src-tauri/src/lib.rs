@@ -1098,14 +1098,28 @@ fn question_capture_count(app: AppHandle, session_id: String) -> Result<usize, S
     question_capture::capture_count(&app_data, &session_id)
 }
 
-#[tauri::command]
+/// 最新フレームを質問IDへ固定する。
+///
+/// **`async` を外さないこと。** Tauri の同期コマンドは**メインスレッド**で走る。
+/// `capture_question` はストリームが1枚も出していないとき単発撮影へ落ちて最大1.5秒待つので、
+/// メインスレッドで待つとオーバーレイごと固まる。
+#[tauri::command(async)]
 fn capture_question_slide(
     app: AppHandle,
     question_id: String,
 ) -> Result<question_capture::CaptureQuestionResult, String> {
     let app_data = app.path().app_data_dir().map_err(|err| err.to_string())?;
-    app.state::<question_capture::QuestionCaptureState>()
-        .capture_question(&app_data, &question_id)
+    let state = app.state::<question_capture::QuestionCaptureState>();
+    let result = state.capture_question(&app_data, &question_id)?;
+    if result.status == question_capture::CaptureQuestionStatus::FramePending {
+        // 「フレームが来ない」以外に言えることを残す。原因の切り分けはここにしか出ない。
+        debug_log(&format!(
+            "question capture pending ({:?}): {:?}",
+            result.reason,
+            state.health()
+        ));
+    }
+    Ok(result)
 }
 
 #[tauri::command]

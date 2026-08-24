@@ -54,7 +54,7 @@ import {
   type PresenterSettings,
 } from "../lib/settings";
 import { supabase } from "../lib/supabase";
-import { isPaidPresentationSession, loadQuestionCapturePreference, questionCaptureErrorMessage } from "../lib/question-capture";
+import { isPaidPresentationSession, loadQuestionCapturePreference, questionCaptureErrorMessage, questionCapturePendingMessage } from "../lib/question-capture";
 import {
   captureQuestionSlide,
   getPresentationState,
@@ -110,25 +110,36 @@ export function ControlWindow() {
     if (signedIn) void reloadBranding();
   }, [signedIn, reloadBranding]);
 
+  // キャプチャの失敗は**発表1回につき1度しか**出さない。質問20件で赤バナーが20回出ると
+  // 壇上で操作できなくなる。戻すのは `handleToggleLive` の開始側だけ。
+  const captureFailureShown = useRef(false);
+  const reportCaptureFailure = useCallback((message: string) => {
+    if (captureFailureShown.current) return;
+    captureFailureShown.current = true;
+    setError(message);
+  }, []);
+
   const captureIncomingQuestion = useCallback((comment: Comment) => {
     if (!comment.is_question) return;
-    // 開始直後は ScreenCaptureKit の初回フレームがまだ無い場合がある。
-    // そのときだけ500ms間隔で最大2秒待つ。既に保存済みならRust側が上書きを防ぐ。
+    // 開始直後は ScreenCaptureKit の初回フレームがまだ無い場合がある。そのときだけ
+    // 500ms空けてもう一度だけ試す。Rust側が単発撮影へ落ちるので長く待つ意味は無い。
+    // 既に保存済みならRust側が上書きを防ぐ。
     void (async () => {
-      for (let attempt = 0; attempt < 5; attempt += 1) {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
         const result = await captureQuestionSlide(comment.id);
         if (result.status === "captured" || result.status === "inactive") return;
-        if (attempt < 4) await new Promise((resolve) => window.setTimeout(resolve, 500));
+        if (attempt === 0) {
+          await new Promise((resolve) => window.setTimeout(resolve, 500));
+          continue;
+        }
+        reportCaptureFailure(questionCapturePendingMessage(result.reason, settings.language));
       }
-      setError(settings.language === "ja"
-        ? "画面収録の準備が完了せず、この質問のスライド画像を保存できませんでした。発表は継続できます。"
-        : "Screen capture was not ready, so this question's slide image could not be saved. The presentation can continue.");
     })().catch(() => {
-      setError(settings.language === "ja"
+      reportCaptureFailure(settings.language === "ja"
         ? "この質問のスライド画像を保存できませんでした。保存先を確認してください。発表は継続できます。"
         : "This question's slide image could not be saved. Check local storage access. The presentation can continue.");
     });
-  }, [settings.language]);
+  }, [reportCaptureFailure, settings.language]);
 
   const { comments, status, upsertLocal } = useComments({
     client: settings.roomId ? supabase : null,
@@ -153,10 +164,10 @@ export function ControlWindow() {
 
   useEffect(() => {
     const unlisten = onQuestionCaptureError((captureError) => {
-      setError(questionCaptureErrorMessage(captureError, settings.language));
+      reportCaptureFailure(questionCaptureErrorMessage(captureError, settings.language));
     });
     return () => { void unlisten.then((off) => off()); };
-  }, [settings.language]);
+  }, [reportCaptureFailure, settings.language]);
 
   // トレイのラベルは Rust 側が起動時に組み立てる。Rust は言語を永続化しないので、
   // localStorage に残っている選択を起動のたびに渡し直す。
@@ -269,6 +280,11 @@ export function ControlWindow() {
         && loadQuestionCapturePreference(settings.roomId)
         ? serverSession.id
         : null;
+      // 発表を開始し直したら、前回のキャプチャ失敗は忘れて1度だけ出し直す。
+      // **`presentation-state-changed` では戻せない** — `start_presentation` は
+      // キャプチャ開始（＝エラーを投げうる）→ `set_live` の順なので、開始時のエラーを
+      // 受け取った直後に true が届いてフラグを消してしまう。
+      captureFailureShown.current = false;
       await startPresentation(settings.monitorName, captureSessionId);
     }
   };

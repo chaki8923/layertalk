@@ -193,6 +193,49 @@ LayerTalk を出す。無料版が表記を消せてはいけないので既定�
 取得失敗のたびに表記が戻らないよう `localStorage` に最後の値を残す。
 **取得に失敗したときキャッシュを消さないこと** — 会場の Wi-Fi が切れただけで表記が戻る。
 
+**17. ScreenCaptureKit は「動いているのに1枚も撮れない」状態を黙って続ける**
+質問スライドの撮影が全滅していた件。**権限は通っていた**（`tccd` は Allowed）し、replayd も
+`Health: … screenframeCount=10`（＝5秒あたり10枚＝設定どおりの 2 fps）を出し続けていたのに、
+`~/Library/Application Support/app.layertalk.presenter/` はディレクトリごと存在しなかった。
+重なっていた3つ:
+- **`sample.frame_status()` は読めないと `None` を返す。** これが本命。
+  `!= Some(SCFrameStatus::Complete)` で捨てていたので、**全フレームが無言で消えていた**。
+  実測（macOS 26 / screencapturekit 8.0.1、`SCStreamFrameInfo` の attachment を読む実装）では
+  **12枚中12枚が `None`**、それでも `image_buffer()` は全部中身を持っていた。
+  **ステータスを「許可リスト」に使わないこと** — 読めないことを理由にフレームを捨てる形になる。
+  `Blank` / `Suspended` / `Stopped`（macOS が塞いだ合図。取り込むと真っ黒が保存される）
+  だけを弾く**拒否リスト**として書き、中身があるかは `image_buffer()` に判定させる。
+  静止したスライドで延々来る `Idle` も、ここで一緒に救われる。
+  → `question_capture.rs` の `usable_status`
+- **デリゲートを付けていなかった。** `SCStream::new()` だと `did_stop_with_error` の行き先が無く、
+  macOS にキャプチャを止められても「まだ準備中」と言い続ける。今回は
+  `+[SCAlert …] user acknowledgement refused`（macOS の画面収録確認ダイアログが拒否された）
+  が起点だった。**システム設定でオンにしても、このダイアログを断ると撮れない。**
+  → `new_with_delegate` + `StreamCallbacks` で `CaptureHealth` に理由を残す
+- **フォールバックが無かった。** ストリームが1枚も出さないとその発表は全滅。質問到着時に
+  `SCScreenshotManager::capture_sample_buffer` で単発撮影へ落ちるようにした。これは
+  **タイムアウトを持たない Condvar 待ち**なので必ず別スレッドへ投げて見切ること
+  （`active` の `Mutex` を握ったまま呼ぶと `stop_presentation` まで巻き添えで固まる）。
+  `screencapturekit` の `macos_14_0` feature が要る（デプロイメントターゲットは上がらない。
+  Swift 側に `#available(macOS 14.0, *)` があるので macOS 13 では Err が返るだけ）
+- ついでに `queue_depth` は Apple の文書上の下限が 3。2 にしていた
+
+切り分けはアプリのログではなく **OS 側**を見る:
+`log show --last 10m --info --debug --predicate 'process == "replayd"'` の
+`screenframeCount`（OS がフレームを作っているか）と `SCAlert` 行（塞がれていないか）で一発。
+`Tauri の同期コマンドはメインスレッドで走る`ので、`capture_question_slide` は
+`#[tauri::command(async)]` のまま置くこと。外すと単発撮影の待ちでオーバーレイごと固まる。
+
+**17b. dev ビルドの画面収録の許可先は LayerTalk ではなく「起動元ターミナル」**
+罠 #13（dev と `.app` は別物）の TCC 版。`npm run dev:presenter` が動かすのは
+`target/debug/presenter-app` という**素のバイナリ**で、.app バンドルに入っていない。
+TCC の責任プロセスは起動元（Terminal / iTerm / IDE）になるので、
+**システム設定で LayerTalk をオンにしても dev では効かない**。実測ログでも
+`Handling access request … from Sub:{com.apple.Terminal}` と出る。
+`permission_target()` がこれを見て文言を出し分けている（`launchingApp`）。
+署名が無いので `.app` 側も**リビルドで TCC の照合が外れる**ことがある。効かないときは
+システム設定で LayerTalk を一度 `−` で外してから `+` で入れ直す。
+
 ## 設計上の決めごと
 
 - **コメント／スタンプの全面オーバーレイはクリックスルー常時 ON。** 切り替え UI も

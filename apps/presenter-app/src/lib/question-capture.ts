@@ -1,5 +1,5 @@
 import type { Locale, PresentationSession } from "@layertalk/shared";
-import type { QuestionCaptureError, ScreenCapturePermission, ScreenCapturePermissionTarget } from "./tauri";
+import type { CapturePendingReason, QuestionCaptureError, ScreenCapturePermission, ScreenCapturePermissionTarget } from "./tauri";
 
 const preferenceKey = (roomId: string) => `layertalk:question-capture:${roomId}`;
 
@@ -52,4 +52,31 @@ export function questionCaptureErrorMessage(error: QuestionCaptureError, locale:
   return ja
     ? "画面収録を開始できませんでした。LayerTalkを再起動してもう一度お試しください。発表は継続できます。"
     : "Screen capture could not start. Restart LayerTalk and try again. The presentation can continue.";
+}
+
+/**
+ * 撮影は動いているのに画像が1枚も取れなかったときの文言。
+ *
+ * `questionCaptureErrorMessage` が「開始に失敗した」側、こちらが「開始はできたが撮れない」側。
+ * `captureBlocked` / `streamStopped` は macOS が確認ダイアログでキャプチャを止めた形なので、
+ * **システム設定ではなくダイアログの話をする**（設定は既にオンになっている）。
+ */
+export function questionCapturePendingMessage(
+  reason: CapturePendingReason | undefined,
+  locale: Locale,
+): string {
+  const ja = locale === "ja";
+  if (reason === "captureBlocked" || reason === "streamStopped") {
+    return ja
+      ? "macOSが画面収録を止めています。表示された確認ダイアログで「許可」を選び、発表を開始し直してください。発表は継続できます。"
+      : "macOS stopped the screen capture. Choose Allow in the confirmation dialog, then start the presentation again. The presentation can continue.";
+  }
+  if (reason === "snapshotFailed") {
+    return ja
+      ? "スライド画像を保存できませんでした。この機能はmacOS 14以降で動作します。発表は継続できます。"
+      : "The slide image could not be saved. This feature needs macOS 14 or later. The presentation can continue.";
+  }
+  return ja
+    ? "画面収録の準備が完了せず、この質問のスライド画像を保存できませんでした。発表は継続できます。"
+    : "Screen capture was not ready, so this question's slide image could not be saved. The presentation can continue.";
 }

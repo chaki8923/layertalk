@@ -50,4 +50,7 @@ objc2-app-kit = { version = "0.3", features = [
 ] }
 objc2-foundation = "0.3"
 core-graphics = "0.25"
-screencapturekit = "8"
+# `macos_14_0` は `SCScreenshotManager`（質問到着時の単発撮影フォールバック）を出すためだけの
+# **モジュールと Swift の `#if` を開けるフラグ**。デプロイメントターゲットは上がらず、
+# Swift 側に `#available(macOS 14.0, *)` があるので macOS 13 では Err が返るだけ。
+screencapturekit = { version = "8", features = ["macos_14_0"] }

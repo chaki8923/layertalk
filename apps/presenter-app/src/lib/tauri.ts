@@ -48,8 +48,22 @@ export const getScreenCapturePermission = (request = false) =>
 export const openScreenCaptureSettings = () =>
   invoke<void>("open_screen_capture_settings");
 
+/**
+ * `framePending` になった理由。
+ *
+ * ここを潰して「準備できませんでした」の一言に戻さないこと。macOS の確認ダイアログを
+ * 拒否したのか、まだ1枚も来ていないのか、macOS 13 で単発撮影が使えないのかで、
+ * 発表者が壇上でやるべきことが違う。
+ */
+export type CapturePendingReason =
+  | "awaitingFirstFrame"
+  | "captureBlocked"
+  | "streamStopped"
+  | "snapshotFailed";
+
 export type CaptureQuestionResult = {
   status: "captured" | "inactive" | "framePending";
+  reason?: CapturePendingReason;
 };
 
 /** 最新フレームを質問IDへ固定する。撮影停止中と初回フレーム待ちを区別して返す。 */

@@ -13,6 +13,11 @@ const RETENTION: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 const JPEG_QUALITY: u8 = 82;
 const MAX_LONG_EDGE: u32 = 1920;
 
+/// フォールバック撮影の待ち上限。`SCScreenshotManager` はタイムアウトを持たない
+/// Condvar 待ちなので、replayd が黙ると永久に返らない。
+#[cfg(target_os = "macos")]
+const SNAPSHOT_TIMEOUT: Duration = Duration::from_millis(1500);
+
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CapturePermission {
@@ -76,9 +81,66 @@ pub enum CaptureQuestionStatus {
     FramePending,
 }
 
+/// `FramePending` になった理由。ここを潰すと「画面収録の準備が完了せず」しか
+/// 出せなくなり、権限・macOS の確認ダイアログ・ディスプレイ消失の区別が付かなくなる。
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CapturePendingReason {
+    /// まだ 1 枚もフレームが届いていない（開始直後）。
+    AwaitingFirstFrame,
+    /// Blank / Suspended / Stopped を受け取った。macOS 側で塞がれている。
+    CaptureBlocked,
+    /// デリゲートがストリームの停止を報告した。
+    StreamStopped,
+    /// フォールバックの単発撮影も失敗した（macOS 13 では常にここ）。
+    SnapshotFailed,
+}
+
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct CaptureQuestionResult {
     pub status: CaptureQuestionStatus,
+    /// `FramePending` のときだけ入る。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<CapturePendingReason>,
+}
+
+impl CaptureQuestionResult {
+    fn captured() -> Self {
+        Self {
+            status: CaptureQuestionStatus::Captured,
+            reason: None,
+        }
+    }
+
+    fn inactive() -> Self {
+        Self {
+            status: CaptureQuestionStatus::Inactive,
+            reason: None,
+        }
+    }
+
+    fn pending(reason: CapturePendingReason) -> Self {
+        Self {
+            status: CaptureQuestionStatus::FramePending,
+            reason: Some(reason),
+        }
+    }
+}
+
+/// ストリームが何を返しているかの記録。**これが無いと「フレームが来ない」以外に
+/// 言えることが無くなる。** 実際、原因（`frame_status()` が全部 `None`）は
+/// アプリのログからは分からず、macOS の `log show --predicate 'process == "replayd"'` と
+/// 突き合わせるまで特定できなかった。
+#[derive(Debug, Default, Clone)]
+pub struct CaptureHealth {
+    pub frames_seen: u64,
+    pub frames_stored: u64,
+    /// 直近フレームの `SCFrameStatus` の名前。ログ用。
+    pub last_status: Option<&'static str>,
+    /// Blank / Suspended / Stopped を 1 度でも見たか。
+    pub blocked: bool,
+    /// デリゲートが報告した停止理由。
+    pub stopped: Option<String>,
 }
 
 #[derive(Clone)]
@@ -94,6 +156,11 @@ struct ActiveCapture {
     session_id: Uuid,
     display_id: u32,
     latest: Arc<Mutex<Option<Frame>>>,
+    health: Arc<Mutex<CaptureHealth>>,
+    /// 単発撮影のフォールバックで使い回す。`Clone` は Swift の retain なので
+    /// クレートの勧めどおり `Arc` で共有する。
+    filter: Arc<screencapturekit::stream::content_filter::SCContentFilter>,
+    configuration: Arc<screencapturekit::stream::configuration::SCStreamConfiguration>,
     stream: screencapturekit::stream::SCStream,
 }
 
@@ -118,11 +185,25 @@ impl QuestionCaptureState {
         None
     }
 
+    /// ストリームの健康状態。撮影していなければ `None`。
+    #[cfg(target_os = "macos")]
+    pub fn health(&self) -> Option<CaptureHealth> {
+        let active = self.active.lock().ok()?;
+        let capture = active.as_ref()?;
+        let health = capture.health.lock().ok()?;
+        Some(health.clone())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn health(&self) -> Option<CaptureHealth> {
+        None
+    }
+
     #[cfg(target_os = "macos")]
     pub fn start(&self, session_id: &str, display_id: u32) -> Result<(), CaptureStartError> {
-        use screencapturekit::cm::SCFrameStatus;
         use screencapturekit::prelude::*;
         use screencapturekit::stream::configuration::PixelFormat;
+        use screencapturekit::stream::StreamCallbacks;
 
         let session_id = parse_id(session_id, "session").map_err(CaptureStartError::start)?;
         let access = core_graphics::access::ScreenCaptureAccess::default();
@@ -160,60 +241,70 @@ impl QuestionCaptureState {
             .filter(|application| application.process_id() == std::process::id() as i32)
             .collect::<Vec<_>>();
         let own_application_refs = own_applications.iter().collect::<Vec<_>>();
-        let filter = SCContentFilter::create()
-            .with_display(display)
-            // アプリ単位で除外するため、開始後に初めて作られる質問パネルも写らない。
-            .with_excluding_applications(&own_application_refs, &[])
-            .build();
+        let filter = Arc::new(
+            SCContentFilter::create()
+                .with_display(display)
+                // アプリ単位で除外するため、開始後に初めて作られる質問パネルも写らない。
+                .with_excluding_applications(&own_application_refs, &[])
+                .build(),
+        );
 
         let (width, height) = capture_dimensions(display.width(), display.height());
-        let configuration = SCStreamConfiguration::new()
-            .with_width(width)
-            .with_height(height)
-            .with_pixel_format(PixelFormat::BGRA)
-            .with_shows_cursor(false)
-            .with_queue_depth(2)
-            .with_fps(2);
+        let configuration = Arc::new(
+            SCStreamConfiguration::new()
+                .with_width(width)
+                .with_height(height)
+                .with_pixel_format(PixelFormat::BGRA)
+                .with_shows_cursor(false)
+                // Apple が文書化している下限は 3（2 を渡していた）。
+                .with_queue_depth(3)
+                .with_fps(2),
+        );
+
         let latest = Arc::new(Mutex::new(None));
+        let health = Arc::new(Mutex::new(CaptureHealth::default()));
+
+        // デリゲートを付けないと、macOS にキャプチャを止められても**何も起きない**。
+        // 「まだ準備中」と言い続けたまま発表が終わる。
+        let health_for_stop = Arc::clone(&health);
+        let health_for_error = Arc::clone(&health);
+        let delegate = StreamCallbacks::new()
+            .on_stop(move |error| {
+                if let Ok(mut health) = health_for_stop.lock() {
+                    health.stopped = Some(error.unwrap_or_else(|| "stream stopped".into()));
+                }
+            })
+            .on_error(move |error| {
+                if let Ok(mut health) = health_for_error.lock() {
+                    health.stopped = Some(error.to_string());
+                }
+            });
+
         let latest_for_handler = Arc::clone(&latest);
-        let mut stream = SCStream::new(&filter, &configuration);
+        let health_for_handler = Arc::clone(&health);
+        let mut stream = SCStream::new_with_delegate(&filter, &configuration, delegate);
         let handler = stream.add_output_handler(
             move |sample: CMSampleBuffer, output_type: SCStreamOutputType| {
-                if output_type != SCStreamOutputType::Screen
-                    || sample.frame_status() != Some(SCFrameStatus::Complete)
-                {
+                if output_type != SCStreamOutputType::Screen {
                     return;
                 }
-                let Some(buffer) = sample.image_buffer() else {
-                    return;
-                };
-                let Ok(guard) = buffer.lock_read_only() else {
-                    return;
-                };
-                let frame_width = guard.width();
-                let frame_height = guard.height();
-                let source_stride = guard.bytes_per_row();
-                let row_bytes = frame_width.saturating_mul(4);
-                if frame_width == 0 || frame_height == 0 || source_stride < row_bytes {
-                    return;
+                let status = sample.frame_status();
+                let usable = usable_status(status);
+                let frame = if usable { frame_from_sample(&sample) } else { None };
+                if let Ok(mut health) = health_for_handler.lock() {
+                    health.frames_seen += 1;
+                    health.last_status = Some(frame_status_name(status));
+                    if !usable {
+                        health.blocked = true;
+                    }
+                    if frame.is_some() {
+                        health.frames_stored += 1;
+                    }
                 }
-                let source = guard.as_slice();
-                let mut bgra = vec![0; row_bytes.saturating_mul(frame_height)];
-                for row in 0..frame_height {
-                    let source_start = row.saturating_mul(source_stride);
-                    let target_start = row.saturating_mul(row_bytes);
-                    let Some(source_row) = source.get(source_start..source_start + row_bytes)
-                    else {
-                        return;
-                    };
-                    bgra[target_start..target_start + row_bytes].copy_from_slice(source_row);
-                }
-                if let Ok(mut target) = latest_for_handler.lock() {
-                    *target = Some(Frame {
-                        width: frame_width as u32,
-                        height: frame_height as u32,
-                        bgra,
-                    });
+                if let Some(frame) = frame {
+                    if let Ok(mut target) = latest_for_handler.lock() {
+                        *target = Some(frame);
+                    }
                 }
             },
             SCStreamOutputType::Screen,
@@ -230,6 +321,9 @@ impl QuestionCaptureState {
             session_id,
             display_id,
             latest,
+            health,
+            filter,
+            configuration,
             stream,
         });
         Ok(())
@@ -259,39 +353,45 @@ impl QuestionCaptureState {
         question_id: &str,
     ) -> Result<CaptureQuestionResult, String> {
         let question_id = parse_id(question_id, "question")?;
-        let (path, frame) = {
+        let (path, frame, filter, configuration) = {
             let state = self
                 .active
                 .lock()
                 .map_err(|_| "capture state lock failed")?;
             let Some(active) = state.as_ref() else {
-                return Ok(CaptureQuestionResult {
-                    status: CaptureQuestionStatus::Inactive,
-                });
+                return Ok(CaptureQuestionResult::inactive());
             };
             let path = capture_path(app_data, active.session_id, question_id);
             if path.exists() {
                 // pending → approved の更新でも hook が再度呼ばれる。質問到着時の画像を上書きしない。
-                return Ok(CaptureQuestionResult {
-                    status: CaptureQuestionStatus::Captured,
-                });
+                return Ok(CaptureQuestionResult::captured());
             }
             let frame = active
                 .latest
                 .lock()
                 .map_err(|_| "latest frame lock failed")?
                 .clone();
-            (path, frame)
+            (
+                path,
+                frame,
+                Arc::clone(&active.filter),
+                Arc::clone(&active.configuration),
+            )
         };
+
+        // ストリームが 1 枚も出していなくても、ここで単発撮影を試す。
+        // **`active` のロックは既に外してある**（握ったまま待つと `stop_presentation`
+        // まで巻き添えで固まる）。
+        let frame = match frame {
+            Some(frame) => Some(frame),
+            None => snapshot_frame(&filter, &configuration),
+        };
+
         let Some(frame) = frame else {
-            return Ok(CaptureQuestionResult {
-                status: CaptureQuestionStatus::FramePending,
-            });
+            return Ok(CaptureQuestionResult::pending(self.pending_reason()));
         };
         write_frame(&path, frame)?;
-        Ok(CaptureQuestionResult {
-            status: CaptureQuestionStatus::Captured,
-        })
+        Ok(CaptureQuestionResult::captured())
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -300,9 +400,24 @@ impl QuestionCaptureState {
         _app_data: &Path,
         _question_id: &str,
     ) -> Result<CaptureQuestionResult, String> {
-        Ok(CaptureQuestionResult {
-            status: CaptureQuestionStatus::Inactive,
-        })
+        Ok(CaptureQuestionResult::inactive())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn pending_reason(&self) -> CapturePendingReason {
+        let Some(health) = self.health() else {
+            return CapturePendingReason::SnapshotFailed;
+        };
+        if health.stopped.is_some() {
+            return CapturePendingReason::StreamStopped;
+        }
+        if health.blocked {
+            return CapturePendingReason::CaptureBlocked;
+        }
+        if health.frames_seen == 0 {
+            return CapturePendingReason::AwaitingFirstFrame;
+        }
+        CapturePendingReason::SnapshotFailed
     }
 }
 
@@ -337,6 +452,98 @@ fn stop_locked(active: &mut Option<ActiveCapture>) {
     if let Some(previous) = active.take() {
         let _ = previous.stream.stop_capture();
     }
+}
+
+/// 取り込んでよいフレームか。**ステータスは「読めたときだけ効く拒否リスト」として扱う。**
+///
+/// `frame_status()` は `SCStreamFrameInfo` の attachment を読むだけで、**読めないと `None`
+/// を返す**。実測（macOS 26 / screencapturekit 8.0.1）では **12枚中12枚が `None`** で、
+/// それでも `image_buffer()` は全部中身を持っていた。
+/// 元のコードは `!= Some(Complete)` で捨てていたので、**全フレームが無言で消えていた**
+/// ——これが「画面収録の準備が完了せず」の正体。
+///
+/// なので「`Complete` を許可する」ではなく「**明示的に中身が無いと言われたときだけ捨てる**」
+/// と書く。`Blank` / `Suspended` / `Stopped` は macOS がキャプチャを塞いだ合図で、
+/// 取り込むと真っ黒な画像が保存される。それ以外（読めなかった `None` も、静止スライドで
+/// 延々来る `Idle` も）は中身があるものとして扱い、実際に取れるかは
+/// `frame_from_sample` の `image_buffer()` に判定させる。
+#[cfg(target_os = "macos")]
+fn usable_status(status: Option<screencapturekit::cm::SCFrameStatus>) -> bool {
+    use screencapturekit::cm::SCFrameStatus;
+
+    !matches!(
+        status,
+        Some(SCFrameStatus::Blank | SCFrameStatus::Suspended | SCFrameStatus::Stopped)
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn frame_status_name(status: Option<screencapturekit::cm::SCFrameStatus>) -> &'static str {
+    use screencapturekit::cm::SCFrameStatus;
+
+    match status {
+        Some(SCFrameStatus::Complete) => "complete",
+        Some(SCFrameStatus::Idle) => "idle",
+        Some(SCFrameStatus::Blank) => "blank",
+        Some(SCFrameStatus::Suspended) => "suspended",
+        Some(SCFrameStatus::Started) => "started",
+        Some(SCFrameStatus::Stopped) => "stopped",
+        None => "unknown",
+    }
+}
+
+/// BGRA の行パディングを落として `Frame` にする。ストリームと単発撮影で共用する。
+#[cfg(target_os = "macos")]
+fn frame_from_sample(sample: &screencapturekit::prelude::CMSampleBuffer) -> Option<Frame> {
+    use screencapturekit::prelude::CMSampleBufferExt;
+
+    let buffer = sample.image_buffer()?;
+    let guard = buffer.lock_read_only().ok()?;
+    let frame_width = guard.width();
+    let frame_height = guard.height();
+    let source_stride = guard.bytes_per_row();
+    let row_bytes = frame_width.saturating_mul(4);
+    if frame_width == 0 || frame_height == 0 || source_stride < row_bytes {
+        return None;
+    }
+    let source = guard.as_slice();
+    let mut bgra = vec![0; row_bytes.saturating_mul(frame_height)];
+    for row in 0..frame_height {
+        let source_start = row.saturating_mul(source_stride);
+        let target_start = row.saturating_mul(row_bytes);
+        let source_row = source.get(source_start..source_start + row_bytes)?;
+        bgra[target_start..target_start + row_bytes].copy_from_slice(source_row);
+    }
+    Some(Frame {
+        width: frame_width as u32,
+        height: frame_height as u32,
+        bgra,
+    })
+}
+
+/// ストリームに頼らず今の画面を 1 枚だけ撮る。macOS 14 以降でのみ成功する。
+///
+/// `SCScreenshotManager::capture_sample_buffer` は**タイムアウトを持たない**
+/// Condvar 待ち（`doom-fish-utils` の `SyncCompletion::wait`）なので、
+/// 直接呼ぶと replayd が黙ったときに呼び出し元ごと固まる。必ず別スレッドへ投げて見切る。
+#[cfg(target_os = "macos")]
+fn snapshot_frame(
+    filter: &Arc<screencapturekit::stream::content_filter::SCContentFilter>,
+    configuration: &Arc<screencapturekit::stream::configuration::SCStreamConfiguration>,
+) -> Option<Frame> {
+    use screencapturekit::screenshot_manager::SCScreenshotManager;
+
+    let filter = Arc::clone(filter);
+    let configuration = Arc::clone(configuration);
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let frame = SCScreenshotManager::capture_sample_buffer(&filter, &configuration)
+            .ok()
+            .as_ref()
+            .and_then(frame_from_sample);
+        let _ = tx.send(frame);
+    });
+    rx.recv_timeout(SNAPSHOT_TIMEOUT).ok().flatten()
 }
 
 fn parse_id(value: &str, kind: &str) -> Result<Uuid, String> {
@@ -542,10 +749,34 @@ mod tests {
 
     #[test]
     fn capture_question_status_serializes_for_tauri() {
-        let value = serde_json::to_value(CaptureQuestionResult {
-            status: CaptureQuestionStatus::FramePending,
-        })
+        let captured = serde_json::to_value(CaptureQuestionResult::captured()).unwrap();
+        assert_eq!(captured, serde_json::json!({ "status": "captured" }));
+
+        let pending = serde_json::to_value(CaptureQuestionResult::pending(
+            CapturePendingReason::CaptureBlocked,
+        ))
         .unwrap();
-        assert_eq!(value, serde_json::json!({ "status": "framePending" }));
+        assert_eq!(
+            pending,
+            serde_json::json!({ "status": "framePending", "reason": "captureBlocked" })
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn only_explicitly_empty_frames_are_rejected() {
+        use screencapturekit::cm::SCFrameStatus;
+
+        // **実測ではステータスを1枚も読めなかった（全部 None）。** ここを false にすると
+        // 全フレームが無言で消え、1枚も保存できなくなる。
+        assert!(usable_status(None));
+        // 静止したスライドは Idle で流れてくる。ここを落とすと1枚も撮れない。
+        assert!(usable_status(Some(SCFrameStatus::Idle)));
+        assert!(usable_status(Some(SCFrameStatus::Started)));
+        assert!(usable_status(Some(SCFrameStatus::Complete)));
+        // macOS に塞がれた合図。取り込むと真っ黒な画像が残る。
+        assert!(!usable_status(Some(SCFrameStatus::Blank)));
+        assert!(!usable_status(Some(SCFrameStatus::Suspended)));
+        assert!(!usable_status(Some(SCFrameStatus::Stopped)));
     }
 }
