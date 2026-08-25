@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { resumeAudienceRoom } from "./api";
+import {
+  fetchRoomStampUrl,
+  resolveRoomStampImageUrl,
+  resumeAudienceRoom,
+  roomStampUrl,
+} from "./api";
 import type { LayerTalkClient } from "./client";
 import type { PublicRoom } from "./types";
 
@@ -45,5 +50,66 @@ describe("resumeAudienceRoom", () => {
   it("returns null when the access is missing or expired", async () => {
     const { client } = accessClient({ data: null, error: null });
     await expect(resumeAudienceRoom(client, room)).resolves.toBeNull();
+  });
+});
+
+describe("room stamp signed URL cache", () => {
+  it("refreshes an expired signed URL instead of returning a dead image URL", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-25T00:00:00.000Z"));
+
+    const createSignedUrl = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { signedUrl: "https://example.test/first" }, error: null })
+      .mockResolvedValueOnce({ data: { signedUrl: "https://example.test/second" }, error: null });
+    const bucket = { createSignedUrl };
+    const client = {
+      storage: { from: vi.fn().mockReturnValue(bucket) },
+    } as unknown as LayerTalkClient;
+    const path = "room/cache-expiry-test.png";
+
+    await expect(fetchRoomStampUrl(client, path)).resolves.toBe("https://example.test/first");
+    expect(roomStampUrl(client, path)).toBe("https://example.test/first");
+
+    vi.advanceTimersByTime(59 * 60 * 1000);
+    expect(roomStampUrl(client, path)).toBe("");
+    await expect(fetchRoomStampUrl(client, path)).resolves.toBe("https://example.test/second");
+    expect(createSignedUrl).toHaveBeenCalledTimes(2);
+
+    vi.useRealTimers();
+  });
+
+  it("recovers a custom stamp when its broadcast arrives before the local list", async () => {
+    const stamp = {
+      id: "22222222-2222-2222-2222-222222222222",
+      room_id: room.id,
+      path: `${room.id}/broadcast-race-test.png`,
+      client_id: "audience-device",
+      owner_user_id: "33333333-3333-3333-3333-333333333333",
+      created_at: "2026-08-25T00:00:00.000Z",
+    };
+    const query = {
+      select: vi.fn(),
+      eq: vi.fn(),
+      order: vi.fn().mockResolvedValue({ data: [stamp], error: null }),
+    };
+    query.select.mockReturnValue(query);
+    query.eq.mockReturnValue(query);
+    const createSignedUrl = vi.fn().mockResolvedValue({
+      data: { signedUrl: "https://example.test/recovered" },
+      error: null,
+    });
+    const client = {
+      from: vi.fn().mockReturnValue(query),
+      storage: {
+        from: vi.fn().mockReturnValue({ createSignedUrl }),
+      },
+    } as unknown as LayerTalkClient;
+
+    await expect(resolveRoomStampImageUrl(client, room.id, stamp.id)).resolves.toBe(
+      "https://example.test/recovered",
+    );
+    expect(client.from).toHaveBeenCalledWith("room_stamps");
+    expect(createSignedUrl).toHaveBeenCalledWith(stamp.path, 3600);
   });
 });

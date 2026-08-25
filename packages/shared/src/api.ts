@@ -184,20 +184,40 @@ export async function fetchLikedIds(
 
 // ------------------------------------------------- カスタムスタンプ（ルーム固有）
 
-const roomStampUrls = new Map<string, string>();
+const ROOM_STAMP_SIGNED_URL_TTL_SECONDS = 3600;
+/** 期限ぎりぎりの URL を新しいバーストに使わないための余白。 */
+const ROOM_STAMP_SIGNED_URL_REFRESH_MARGIN_MS = 60_000;
+
+type CachedRoomStampUrl = {
+  url: string;
+  expiresAt: number;
+};
+
+const roomStampUrls = new Map<string, CachedRoomStampUrl>();
 
 /** private Storageの署名URLキャッシュを返す。fetchRoomStamps/uploadRoomStampが事前に温める。 */
 export function roomStampUrl(client: LayerTalkClient, path: string): string {
   void client;
-  return roomStampUrls.get(path) ?? "";
+  const cached = roomStampUrls.get(path);
+  if (!cached) return "";
+  if (cached.expiresAt <= Date.now() + ROOM_STAMP_SIGNED_URL_REFRESH_MARGIN_MS) {
+    roomStampUrls.delete(path);
+    return "";
+  }
+  return cached.url;
 }
 
 export async function fetchRoomStampUrl(client: LayerTalkClient, path: string): Promise<string> {
-  const cached = roomStampUrls.get(path);
+  const cached = roomStampUrl(client, path);
   if (cached) return cached;
-  const { data, error } = await client.storage.from(ROOM_STAMP_BUCKET).createSignedUrl(path, 3600);
+  const { data, error } = await client.storage
+    .from(ROOM_STAMP_BUCKET)
+    .createSignedUrl(path, ROOM_STAMP_SIGNED_URL_TTL_SECONDS);
   if (error) throw new LayerTalkError("stamp_fetch_failed", error.message);
-  roomStampUrls.set(path, data.signedUrl);
+  roomStampUrls.set(path, {
+    url: data.signedUrl,
+    expiresAt: Date.now() + ROOM_STAMP_SIGNED_URL_TTL_SECONDS * 1000,
+  });
   return data.signedUrl;
 }
 
@@ -218,6 +238,25 @@ export async function fetchRoomStamps(
   // バーが空になる。1件を諦めて残りを返し、次の取得で埋める。
   await Promise.allSettled((data ?? []).map((stamp) => fetchRoomStampUrl(client, stamp.path)));
   return data ?? [];
+}
+
+/**
+ * Broadcast の custom:id を、描画できる署名 URL に解決する。
+ *
+ * INSERT と Broadcast は別チャンネルなので、登録直後は Broadcast が一覧同期より先に
+ * 到着しうる。既知の行が無ければその場で一覧を引き直し、URL キャッシュも未準備・期限切れ
+ * なら更新する。存在しない（または削除済みの）id は null のまま捨てる。
+ */
+export async function resolveRoomStampImageUrl(
+  client: LayerTalkClient,
+  roomId: string,
+  stampId: string,
+  knownStamp?: RoomStamp,
+): Promise<string | null> {
+  const stamp = knownStamp
+    ?? (await fetchRoomStamps(client, roomId)).find((candidate) => candidate.id === stampId);
+  if (!stamp) return null;
+  return roomStampUrl(client, stamp.path) || fetchRoomStampUrl(client, stamp.path);
 }
 
 /** DB のトリガが投げる上限エラーを、観客に見せられるコードに置き換える。 */

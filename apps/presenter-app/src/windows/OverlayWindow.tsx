@@ -1,5 +1,6 @@
 import {
   parseCustomStampKey,
+  resolveRoomStampImageUrl,
   roomStampUrl,
   useComments,
   useRoomStamps,
@@ -191,13 +192,30 @@ export function OverlayWindow() {
 
       if (!settings.allowCustomStamps || moderation?.custom_stamps_enabled === false) return;
 
-      const stamp = roomStampsById.get(id);
-      // 削除済み・未知の id は黙って捨てる
-      if (!stamp) return;
+      const roomId = settings.roomId;
+      if (!roomId) return;
 
-      stampRef.current?.burstImage(roomStampUrl(supabase, stamp.path), count);
+      const burstResolvedImage = async () => {
+        // 登録直後は Broadcast が一覧の同期より先に届くことがある。特に非表示だった
+        // オーバーレイを別ディスプレイへ出した直後は、署名 URL の準備が間に合わない。
+        // その場で1度だけ一覧を引き直し、最初のバーストを空振りさせない。
+        const url = await resolveRoomStampImageUrl(
+          supabase,
+          roomId,
+          id,
+          roomStampsById.get(id),
+        );
+        // 削除済み・本当に未知の id は黙って捨てる
+        if (!url) return;
+        stampRef.current?.burstImage(url, count);
+      };
+
+      void burstResolvedImage().catch(() => {
+        // 一覧・署名 URL の取得失敗は次回の hydrate / バーストで再試行する。
+        // 通常の絵文字やコメントまで止めない。
+      });
     },
-    [moderation, settings.allowCustomStamps, roomStampsById],
+    [moderation, settings.allowCustomStamps, settings.roomId, roomStampsById],
   );
 
   useStampChannel({
