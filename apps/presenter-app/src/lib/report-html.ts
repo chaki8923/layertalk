@@ -25,6 +25,43 @@ const formatElapsed = (seconds: number) => `${Math.floor(seconds / 60)}:${String
 export const hasQuestionCapture = (captures: Record<string, string | null>) =>
   Object.values(captures).some((capture) => Boolean(capture));
 
+type ReportQuestion = PresentationReport["comments"][number];
+
+type QuestionGroup = {
+  capture: string | null;
+  questions: Array<{ question: ReportQuestion; index: number }>;
+};
+
+/**
+ * 完全に同じキャプチャだけを同一スライドとしてまとめる。
+ * 画像がない質問は判定材料がないため、互いにまとめず1件ずつ残す。
+ */
+function groupQuestionsByCapture(
+  questions: ReportQuestion[],
+  captures: Record<string, string | null>,
+): QuestionGroup[] {
+  const groups: QuestionGroup[] = [];
+  const capturedGroups = new Map<string, QuestionGroup>();
+
+  questions.forEach((question, index) => {
+    const capture = captures[question.id] || null;
+    if (!capture) {
+      groups.push({ capture: null, questions: [{ question, index }] });
+      return;
+    }
+
+    let group = capturedGroups.get(capture);
+    if (!group) {
+      group = { capture, questions: [] };
+      capturedGroups.set(capture, group);
+      groups.push(group);
+    }
+    group.questions.push({ question, index });
+  });
+
+  return groups;
+}
+
 export function generatePresentationReportHtml({ report, roomTitle, roomCode, locale, captures }: ReportHtmlInput) {
   const ja = locale === "ja";
   const { session } = report;
@@ -42,18 +79,21 @@ export function generatePresentationReportHtml({ report, roomTitle, roomCode, lo
     const answered = questionStatus === "answered";
     return `${answered ? (ja ? "回答済み" : "Answered") : (ja ? "未回答" : "Open")}${moderation}`;
   };
-  const questionCards = questions.map((question, index) => {
-    const elapsed = formatElapsed(elapsedSeconds(session.started_at, question.created_at));
-    const capture = captures[question.id];
-    return `<article class="question">
-      <div class="visual">${capture
-        ? `<img src="${capture}" alt="${ja ? "質問到着時のスライド" : "Slide when the question arrived"}">`
+  const questionCards = groupQuestionsByCapture(questions, captures).map((group) => {
+    const questionBodies = group.questions.map(({ question, index }) => {
+      const elapsed = formatElapsed(elapsedSeconds(session.started_at, question.created_at));
+      return `<section class="question-body">
+          <div class="eyebrow"><span>${ja ? `質問 ${index + 1}` : `Question ${index + 1}`}</span><time>+${elapsed}</time></div>
+          <h2>${escapeHtml(question.content)}</h2>
+          <div class="meta"><span>${escapeHtml(statusText(question.status, question.question_status))}</span><span>♥ ${question.likes_count}</span></div>
+        </section>`;
+    }).join("\n");
+
+    return `<article class="slide">
+      <div class="visual">${group.capture
+        ? `<img src="${group.capture}" alt="${ja ? "質問到着時のスライド" : "Slide when the question arrived"}">`
         : `<div class="missing">${ja ? "スライド画像なし" : "No slide image"}</div>`}</div>
-      <div class="question-body">
-        <div class="eyebrow"><span>${ja ? `質問 ${index + 1}` : `Question ${index + 1}`}</span><time>+${elapsed}</time></div>
-        <h2>${escapeHtml(question.content)}</h2>
-        <div class="meta"><span>${escapeHtml(statusText(question.status, question.question_status))}</span><span>♥ ${question.likes_count}</span></div>
-      </div>
+      <div class="question-list">${questionBodies}</div>
     </article>`;
   }).join("\n");
 
@@ -70,12 +110,12 @@ export function generatePresentationReportHtml({ report, roomTitle, roomCode, lo
     h1{margin:5px 0 4px;font-size:clamp(28px,4vw,42px);line-height:1.2}.sub{margin:0;color:var(--muted)}
     .facts{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:28px 0}.fact{padding:18px;border:1px solid var(--line);border-radius:18px;background:var(--paper)}
     .fact b{display:block;font-size:26px;line-height:1.2}.fact span{color:var(--muted);font-size:12px}.session{margin:0 0 32px;color:var(--muted);font-size:12px}
-    .section-title{margin:0 0 14px;font-size:18px}.questions{display:grid;gap:18px}.question{overflow:hidden;border:1px solid var(--line);border-radius:22px;background:var(--paper);box-shadow:0 10px 30px rgba(23,32,51,.05)}
+    .section-title{margin:0 0 14px;font-size:18px}.questions{display:grid;gap:18px}.slide{overflow:hidden;border:1px solid var(--line);border-radius:22px;background:var(--paper);box-shadow:0 10px 30px rgba(23,32,51,.05)}
     .visual{aspect-ratio:16/9;background:#111827;display:grid;place-items:center}.visual img{display:block;width:100%;height:100%;object-fit:contain}.missing{color:#aeb7c8;font-size:13px}
-    .question-body{padding:20px 22px 22px}.eyebrow,.meta{display:flex;justify-content:space-between;gap:16px;color:var(--muted);font-size:12px}.eyebrow span{color:var(--brand);font-weight:800}.question h2{margin:10px 0 16px;font-size:20px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+    .question-body{padding:20px 22px 22px;break-inside:avoid}.question-body+.question-body{border-top:1px solid var(--line)}.eyebrow,.meta{display:flex;justify-content:space-between;gap:16px;color:var(--muted);font-size:12px}.eyebrow span{color:var(--brand);font-weight:800}.slide h2{margin:10px 0 16px;font-size:20px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
     .empty{padding:48px;border:1px dashed var(--line);border-radius:22px;background:var(--paper);color:var(--muted);text-align:center}footer{margin-top:30px;color:var(--muted);font-size:11px;text-align:center}
-    @media(max-width:700px){main{margin-top:24px}.facts{grid-template-columns:repeat(2,1fr)}.fact b{font-size:22px}.question-body{padding:16px}.question h2{font-size:17px}}
-    @media print{body{background:#fff}main{width:100%;margin:0}.question{break-inside:avoid;box-shadow:none;margin-bottom:16px}}
+    @media(max-width:700px){main{margin-top:24px}.facts{grid-template-columns:repeat(2,1fr)}.fact b{font-size:22px}.question-body{padding:16px}.slide h2{font-size:17px}}
+    @media print{body{background:#fff}main{width:100%;margin:0}.slide{box-shadow:none;margin-bottom:16px}.question-body{break-inside:avoid}}
   </style>
 </head>
 <body><main>

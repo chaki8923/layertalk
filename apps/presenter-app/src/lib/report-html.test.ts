@@ -54,4 +54,80 @@ describe("generatePresentationReportHtml", () => {
     expect(html).toContain("&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;");
     expect(html).not.toContain("<script>alert");
   });
+
+  it("groups questions with the exact same slide capture", () => {
+    const second = {
+      ...report.comments[0],
+      id: "55555555-5555-5555-5555-555555555555",
+      content: "補足の質問です",
+      likes_count: 7,
+      question_status: "answered" as const,
+      created_at: "2026-08-24T01:03:00.000Z",
+    };
+    const groupedReport = {
+      ...report,
+      comments: [report.comments[0], second],
+      totals: { ...report.totals, comments: 2, questions: 2 },
+    };
+    const capture = "data:image/jpeg;base64,SAME";
+    const html = generatePresentationReportHtml({
+      report: groupedReport,
+      roomTitle: "Demo",
+      roomCode: "ABC123",
+      locale: "ja",
+      captures: {
+        [report.comments[0].id]: capture,
+        [second.id]: capture,
+      },
+    });
+
+    expect(html.match(/<article class="slide">/g)).toHaveLength(1);
+    expect(html.match(/data:image\/jpeg;base64,SAME/g)).toHaveLength(1);
+    expect(html).toContain("質問 1");
+    expect(html).toContain("質問 2");
+    expect(html).toContain("補足の質問です");
+    expect(html).toContain("+3:00");
+    expect(html).toContain("回答済み");
+    expect(html).toContain("♥ 7");
+  });
+
+  it("keeps different captures separate and groups a returning slide with its first card", () => {
+    const questions = [
+      report.comments[0],
+      { ...report.comments[0], id: "55555555-5555-5555-5555-555555555555", content: "スライドBへの質問" },
+      { ...report.comments[0], id: "66666666-6666-6666-6666-666666666666", content: "スライドAへの追加質問" },
+    ];
+    const html = generatePresentationReportHtml({
+      report: { ...report, comments: questions },
+      roomTitle: null,
+      roomCode: null,
+      locale: "ja",
+      captures: {
+        [questions[0].id]: "data:image/jpeg;base64,SLIDE_A",
+        [questions[1].id]: "data:image/jpeg;base64,SLIDE_B",
+        [questions[2].id]: "data:image/jpeg;base64,SLIDE_A",
+      },
+    });
+
+    expect(html.match(/<article class="slide">/g)).toHaveLength(2);
+    expect(html.match(/data:image\/jpeg;base64,SLIDE_A/g)).toHaveLength(1);
+    expect(html.indexOf("スライドAへの追加質問")).toBeLessThan(html.indexOf("スライドBへの質問"));
+  });
+
+  it("does not group questions whose slide capture is missing", () => {
+    const questions = [
+      report.comments[0],
+      { ...report.comments[0], id: "55555555-5555-5555-5555-555555555555", content: "画像のない質問2" },
+    ];
+    const html = generatePresentationReportHtml({
+      report: { ...report, comments: questions },
+      roomTitle: null,
+      roomCode: null,
+      locale: "ja",
+      captures: {},
+    });
+
+    expect(html.match(/<article class="slide">/g)).toHaveLength(2);
+    expect(html.match(/スライド画像なし/g)).toHaveLength(2);
+  });
 });
