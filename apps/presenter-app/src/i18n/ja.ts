@@ -88,15 +88,6 @@ export const ja = {
     deleteHint: "× で消すと観客のスタンプバーからも消えます。",
   },
 
-  overlay: {
-    section: "オーバーレイ",
-    clickThrough: "クリックスルー 有効",
-    clickThroughHint:
-      "コメントとスタンプはマウス操作を受け取りません。右端の質問パネルだけを展開・折りたたみできます。",
-    refit: "画面サイズに合わせ直す",
-    refitHint: "外部ディスプレイを繋いだ後や解像度を変えた後に押してください。",
-  },
-
   status: {
     connecting: "接続中…",
     connected: "接続済み",

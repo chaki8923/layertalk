@@ -24,11 +24,13 @@ export type Database = {
       comments: Table<{
         id: string; room_id: string; content: string; is_question: boolean; likes_count: number;
         status: "approved" | "pending" | "hidden"; question_status: "open" | "answered" | null;
+        status_before_hidden: "approved" | "pending" | null;
         presentation_session_id: string | null; moderated_by: string | null;
         moderated_at: string | null; created_at: string;
       }, {
         id?: string; room_id: string; content: string; is_question?: boolean; likes_count?: number;
         status?: "approved" | "pending" | "hidden"; question_status?: "open" | "answered" | null;
+        status_before_hidden?: "approved" | "pending" | null;
         presentation_session_id?: string | null; moderated_by?: string | null;
         moderated_at?: string | null; created_at?: string;
       }>;

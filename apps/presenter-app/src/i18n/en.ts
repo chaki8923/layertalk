@@ -81,15 +81,6 @@ export const en: Messages = {
     deleteHint: "Deleting with × also removes it from the audience's stamp bar.",
   },
 
-  overlay: {
-    section: "Overlay",
-    clickThrough: "Click-through is on",
-    clickThroughHint:
-      "Comments and stamps never take mouse input. Only the question panel on the right can be expanded and collapsed.",
-    refit: "Refit to the screen",
-    refitHint: "Press this after connecting an external display or changing the resolution.",
-  },
-
   status: {
     connecting: "Connecting…",
     connected: "Connected",

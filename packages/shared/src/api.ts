@@ -130,6 +130,7 @@ export function buildComment(roomId: string, content: string, isQuestion = false
     likes_count: 0,
     created_at: new Date().toISOString(),
     status: "approved",
+    status_before_hidden: null,
     question_status: isQuestion ? "open" : null,
     presentation_session_id: null,
     moderated_by: null,

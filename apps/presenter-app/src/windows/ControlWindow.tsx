@@ -25,8 +25,6 @@ import {
   Loader2,
   LogOut,
   MessageSquareText,
-  Monitor,
-  MousePointerClick,
   Play,
   PauseCircle,
   Repeat,
@@ -62,7 +60,6 @@ import {
   onQuestionCaptureError,
   onPresentationStateChanged,
   peekOverlay,
-  refitOverlay,
   setAppLanguage,
   setOverlayMonitor,
   startCurrentWindowDragging,
@@ -695,6 +692,7 @@ export function ControlWindow() {
             locale={settings.language}
             live={live}
             comments={comments}
+            onCommentModerated={upsertLocal}
             display={{ displayMode: settings.displayMode, showJoinQr: settings.showJoinQr, allowCustomStamps: settings.allowCustomStamps }}
             onApplyPreset={(preset) => update({
               displayMode: preset.display_mode,
@@ -898,35 +896,6 @@ export function ControlWindow() {
           </div>
         </section>
 
-        {/* ------------------------------------------------------ オーバーレイ */}
-        <section className="space-y-3">
-          <SectionLabel>{t.overlay.section}</SectionLabel>
-
-          <div className="border-border bg-bg-elev flex items-start gap-2 rounded-[16px] border px-4 py-3">
-            <MousePointerClick size={14} className="text-online mt-0.5 shrink-0" />
-            <div>
-              <p className="text-[13px] font-medium">{t.overlay.clickThrough}</p>
-              <p className="text-text-faint mt-0.5 text-[11px] leading-relaxed">
-                {t.overlay.clickThroughHint}
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              reloadMonitors();
-              void refitOverlay();
-            }}
-            className="lt-tap border-border hover:bg-surface-strong flex w-full items-center justify-center gap-2 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors"
-          >
-            <Monitor size={15} />
-            {t.overlay.refit}
-          </button>
-          <p className="text-text-faint text-[11px] leading-relaxed">
-            {t.overlay.refitHint}
-          </p>
-        </section>
       </div>
     </div>
   );

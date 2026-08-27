@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Download,
   ExternalLink,
-  EyeOff,
   KeyRound,
   Plus,
   ReceiptText,
@@ -57,6 +56,7 @@ import {
 import { EventPassPurchaseSheet } from "./EventPassPurchaseSheet";
 import { DisplayPresetPicker } from "./DisplayPresetPicker";
 import { JoinQrCard } from "./JoinQrCard";
+import { RecentComments } from "./RecentComments";
 import { loadCachedEntitlementLease, openAudiencePage, openEntitlementReceipt, refreshEntitlementLease } from "../lib/billing";
 import { supabase } from "../lib/supabase";
 
@@ -67,6 +67,7 @@ type Props = {
   locale: Locale;
   live: boolean;
   comments: Comment[];
+  onCommentModerated: (comment: Comment) => void;
   display: { displayMode: "flow" | "bubble"; showJoinQr: boolean; allowCustomStamps: boolean };
   onApplyPreset: (preset: DisplayPreset) => void;
   /**
@@ -79,7 +80,7 @@ type Props = {
   onBrandingChange: (branding: BrandingState) => void;
 };
 
-export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comments, display, onApplyPreset, branding, onBrandingChange }: Props) {
+export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comments, onCommentModerated, display, onApplyPreset, branding, onBrandingChange }: Props) {
   const ja = locale === "ja";
   const t = useMessages(locale);
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
@@ -385,20 +386,12 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
         {/* 承認待ちのキューは PendingApprovalQueue（コントロール窓の最上部）が持つ。
             発表中はこのパネルまでスクロールしていられないので、ここには置かない。 */}
 
-        {comments.some((comment) => comment.status === "approved") && (
-          <div className="border-border border-t pt-4">
-            <p className="text-[13px] font-bold">{ja ? "最近のコメント" : "Recent comments"}</p>
-            <div className="mt-2 max-h-44 space-y-1.5 overflow-y-auto">
-              {comments.filter((comment) => comment.status === "approved").slice(0, 8).map((comment) => (
-                <div key={comment.id} className="bg-surface-strong flex items-start gap-2 rounded-[11px] px-2.5 py-2">
-                  <p className="min-w-0 flex-1 text-[10px] leading-relaxed">{comment.content}</p>
-                  {comment.is_question && <button type="button" onClick={() => void moderateComment(supabase, comment.id, comment.question_status === "answered" ? "mark_open" : "mark_answered")} className={comment.question_status === "answered" ? "text-online text-[9px] font-bold" : "text-text-faint text-[9px] font-bold"}>{comment.question_status === "answered" ? (ja ? "回答済" : "Answered") : (ja ? "未回答" : "Open")}</button>}
-                  <button type="button" aria-label={ja ? "非表示" : "Hide"} onClick={() => void moderateComment(supabase, comment.id, "hide")} className="text-text-faint hover:text-like shrink-0"><EyeOff size={12} /></button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <RecentComments
+          comments={comments}
+          locale={locale}
+          moderate={(commentId, action) => moderateComment(supabase, commentId, action)}
+          onModerated={onCommentModerated}
+        />
 
         {branding && (
           <div className="border-border border-t pt-4">

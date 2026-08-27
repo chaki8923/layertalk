@@ -21,6 +21,23 @@ export function sortComments(comments: Comment[], mode: SortMode): Comment[] {
 }
 
 /**
+ * 承認済みコメントを演出済みとして登録し、今回だけ演出すべきなら true を返す。
+ *
+ * status_before_hidden が approved の行は「新規承認」ではなく、承認済み行の
+ * 表示復元。接続中の UPDATE でも再接続後の再取得でも、再度は流さない。
+ */
+export function registerApprovedComment(
+  comment: Comment,
+  approvedIds: Set<string>,
+): boolean {
+  if (comment.status !== "approved") return false;
+  const shouldAnnounce = !approvedIds.has(comment.id)
+    && comment.status_before_hidden !== "approved";
+  approvedIds.add(comment.id);
+  return shouldAnnounce;
+}
+
+/**
  * SUBSCRIBED が返ってから、実際にレプリケーションのフィルタが効き始めるまでの猶予(ms)。
  *
  * 実測: SUBSCRIBED 直後に INSERT すると postgres_changes が届かず、
@@ -98,6 +115,11 @@ export function useComments({
     (comment: Comment) => {
       // 自分の楽観的追加。Realtime のエコーで演出を二重に走らせないため記録しておく。
       markSeen(comment.id);
+      // visibility の復元結果が RPC 応答より後に Realtime で届いても再演出しない。
+      // 明示的な approve はここでは登録せず、Realtime UPDATE 側で一度だけ流す。
+      if (comment.status === "approved" && comment.status_before_hidden === "approved") {
+        approvedIdsRef.current.add(comment.id);
+      }
       setComments((prev) => mergeById(prev, [comment]));
     },
     [markSeen],
@@ -153,11 +175,20 @@ export function useComments({
       setError(null);
       const rows = data ?? [];
 
-      // 古い順に流したいので、announce のときだけ並べ直す
-      const fresh = rows.filter((row) => markSeen(row.id));
-      for (const row of rows) if (row.status === "approved") approvedIdsRef.current.add(row.id);
+      for (const row of rows) markSeen(row.id);
       if (announce) {
-        for (const row of [...fresh].reverse()) onInsertRef.current?.(row);
+        // id は既知でも、切断中に pending -> approved へ変わった可能性がある。
+        // approvedIds で状態遷移を判定し、古い順に新規承認だけを流す。
+        for (const row of [...rows].reverse()) {
+          if (registerApprovedComment(row, approvedIdsRef.current)) {
+            onInsertRef.current?.(row);
+          }
+        }
+      } else {
+        // 初回取得は既存行を演出せず、以後の復元でも再演出しないよう記録する。
+        for (const row of rows) {
+          if (row.status === "approved") approvedIdsRef.current.add(row.id);
+        }
       }
 
       // Realtime 経由で持っている行の方が新しいので、そちらを上書き側にする。
@@ -175,10 +206,11 @@ export function useComments({
           if (!includeModerated && comment.status !== "approved") return;
           // 自分の楽観的追加や、hydrate で既に拾った行はここで弾く
           if (!markSeen(comment.id)) return;
-          if (comment.status === "approved") approvedIdsRef.current.add(comment.id);
 
           setComments((prev) => [comment, ...prev]);
-          onInsertRef.current?.(comment);
+          if (registerApprovedComment(comment, approvedIdsRef.current)) {
+            onInsertRef.current?.(comment);
+          }
         },
       )
       .on(
@@ -186,11 +218,8 @@ export function useComments({
         { event: "UPDATE", schema: "public", table: "comments", filter },
         ({ new: row }) => {
           const comment = row as Comment;
-          if (comment.status === "approved" && !approvedIdsRef.current.has(comment.id)) {
-            approvedIdsRef.current.add(comment.id);
+          if (registerApprovedComment(comment, approvedIdsRef.current)) {
             onInsertRef.current?.(comment);
-          } else if (comment.status !== "approved") {
-            approvedIdsRef.current.delete(comment.id);
           }
           if (!includeModerated && comment.status !== "approved") {
             setComments((prev) => prev.filter((c) => c.id !== comment.id));

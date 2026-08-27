@@ -21,6 +21,7 @@ const report: PresentationReport = {
     is_question: true,
     likes_count: 3,
     status: "approved",
+    status_before_hidden: null,
     question_status: "open",
     presentation_session_id: "11111111-1111-1111-1111-111111111111",
     moderated_by: null,
