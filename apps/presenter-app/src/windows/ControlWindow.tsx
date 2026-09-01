@@ -3,25 +3,30 @@ import {
   customStampKey,
   deleteRoomStamp,
   endPresentationSession,
+  LayerTalkError,
   LOCALES,
   normalizeRoomCode,
   resolveErrorMessage,
   ROOM_CODE_PATTERN,
+  ROOM_LOGO_BUCKET,
   roomStampUrl,
   resumeRoom,
   setRoomLanguage,
   startPresentationSession,
+  toLogoPng,
   useComments,
   useRoomStamps,
   type Locale,
   type Comment,
   type PresentationSession,
+  type RoomBranding,
   type RoomStamp,
 } from "@layertalk/shared";
-import { motion } from "motion/react";
+import { motion, Reorder, useDragControls } from "motion/react";
 import {
   Check,
   Copy,
+  GripVertical,
   Loader2,
   LogOut,
   MessageSquareText,
@@ -42,7 +47,7 @@ import { PendingApprovalQueue } from "../components/PendingApprovalQueue";
 import { PresenterAuth } from "../components/PresenterAuth";
 import { useDocumentLang, useMessages, type Messages } from "../i18n";
 import { audienceUrl as buildAudienceUrl } from "../lib/audience";
-import { useRoomBranding } from "../lib/branding";
+import { patchRoomBranding, useRoomBranding } from "../lib/branding";
 import {
   loadSettings,
   OVERLAY_DEFAULTS,
@@ -50,6 +55,7 @@ import {
   sendTestComment,
   sendTestStamp,
   type PresenterSettings,
+  type SectionId,
 } from "../lib/settings";
 import { supabase } from "../lib/supabase";
 import { isPaidPresentationSession, loadQuestionCapturePreference, questionCaptureErrorMessage, questionCapturePendingMessage } from "../lib/question-capture";
@@ -107,6 +113,27 @@ export function ControlWindow() {
     if (signedIn) void reloadBranding();
   }, [signedIn, reloadBranding]);
 
+  /**
+   * このルームで有料機能が使えるか。`EventPassPanel` が取った結果を受けている。
+   *
+   * ブランドの書き込みは `has_paid_room_features` を要求するので、無料のあいだは
+   * 操作そのものを止める。開けておくと RLS の 0 行更新（罠 #16）に落ちるだけの
+   * 行き止まりになり、しかもロゴは **Storage には上がってしまう**
+   * （`room-branding` のポリシーは is_room_operator しか見ない）ので孤児ファイルが残る。
+   */
+  const [paidFeatures, setPaidFeatures] = useState(false);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoDone, setLogoDone] = useState(false);
+
+  /**
+   * この発表でキャプチャしている対象セッション。null なら撮らない発表。
+   *
+   * 「サーバー確定のセッション」×「有料」×「ルームごとのトグル」の3条件は
+   * **発表の開始時にしか判定できない**ので、そこで決めた値をここに残して
+   * 質問ごとの無駄な IPC を止める。トグルは発表中は操作できないので途中で変わらない。
+   */
+  const captureSessionIdRef = useRef<string | null>(null);
+
   // キャプチャの失敗は**発表1回につき1度しか**出さない。質問20件で赤バナーが20回出ると
   // 壇上で操作できなくなる。戻すのは `handleToggleLive` の開始側だけ。
   const captureFailureShown = useRef(false);
@@ -118,6 +145,10 @@ export function ControlWindow() {
 
   const captureIncomingQuestion = useCallback((comment: Comment) => {
     if (!comment.is_question) return;
+    // 撮らない発表なら往復しない。**ref から読むこと** — 依存に入れて `onInsert` の
+    // 識別子が変わると `useComments` の購読が張り直しになり、罠 #3
+    // （SUBSCRIBED 直後は流れてこない）を踏みに行くことになる。
+    if (!captureSessionIdRef.current) return;
     // 開始直後は ScreenCaptureKit の初回フレームがまだ無い場合がある。そのときだけ
     // 500ms空けてもう一度だけ試す。Rust側が単発撮影へ落ちるので長く待つ意味は無い。
     // 既に保存済みならRust側が上書きを防ぐ。
@@ -238,9 +269,12 @@ export function ControlWindow() {
   // report windows and paid-feature snapshots do not remain open indefinitely.
   const previousLive = useRef(false);
   useEffect(() => {
-    if (previousLive.current && !live && settings.presentationSessionId) {
-      void endPresentationSession(supabase, settings.presentationSessionId).catch(() => undefined);
-      update({ presentationSessionId: null, emergencyPaused: false });
+    if (previousLive.current && !live) {
+      captureSessionIdRef.current = null;
+      if (settings.presentationSessionId) {
+        void endPresentationSession(supabase, settings.presentationSessionId).catch(() => undefined);
+        update({ presentationSessionId: null, emergencyPaused: false });
+      }
     }
     previousLive.current = live;
   }, [live, settings.presentationSessionId, update]);
@@ -254,6 +288,7 @@ export function ControlWindow() {
 
   const handleToggleLive = async () => {
     if (live) {
+      captureSessionIdRef.current = null;
       await stopPresentation();
       if (settings.presentationSessionId) {
         void endPresentationSession(supabase, settings.presentationSessionId).catch(() => undefined);
@@ -277,6 +312,7 @@ export function ControlWindow() {
         && loadQuestionCapturePreference(settings.roomId)
         ? serverSession.id
         : null;
+      captureSessionIdRef.current = captureSessionId;
       // 発表を開始し直したら、前回のキャプチャ失敗は忘れて1度だけ出し直す。
       // **`presentation-state-changed` では戻せない** — `start_presentation` は
       // キャプチャ開始（＝エラーを投げうる）→ `set_live` の順なので、開始時のエラーを
@@ -353,6 +389,62 @@ export function ControlWindow() {
   const audienceUrl = buildAudienceUrl(settings.roomCode);
 
   /**
+   * ブランド設定の1列だけを書き換える。
+   *
+   * **返ってきた行を正とする**のが肝。`patchRoomBranding` が `.select()` を付けているので
+   * 弾かれれば `branding_rejected` が飛ぶ。楽観更新のまま放置すると
+   * 「画面は ON・DB は false・スライドには LayerTalk が出たまま」になる。
+   */
+  const patchBranding = async (patch: Partial<RoomBranding>) => {
+    const roomId = settings.roomId;
+    if (!roomId || !branding) return;
+    const previous = branding;
+    setError(null);
+    setBranding({ ...branding, ...patch });
+    try {
+      setBranding(await patchRoomBranding(roomId, patch));
+    } catch (err) {
+      setBranding(previous);
+      setError(resolveErrorMessage(err, settings.language));
+    }
+  };
+
+  /**
+   * ロゴを上げる。
+   *
+   * **必ず `toLogoPng` を通してから上げる。** 生ファイルをそのまま渡すと
+   * `room-branding` バケットの image/png・1MB 制限にユーザーが自分で合わせる羽目になり、
+   * 「1MB以下のPNGを選べ」としか言えない行き止まりを作ってしまう。
+   * 再エンコードすれば JPEG も HEIC も 5MB の PNG も数十KB の PNG になって必ず通る。
+   */
+  const uploadLogo = async (file: File) => {
+    const roomId = settings.roomId;
+    if (!roomId || !branding) return;
+    // ここで消さないと、一度出したエラーがこの画面から二度と消えない
+    setError(null);
+    setLogoDone(false);
+    setLogoBusy(true);
+    try {
+      const png = await toLogoPng(file);
+      const path = `${roomId}/logo.png`;
+      const { error: uploadError } = await supabase.storage.from(ROOM_LOGO_BUCKET).upload(path, png, {
+        // パスが固定で upsert するので、CDN に抱えさせない。
+        // 版付きの名前にすると display_presets が指す旧ファイルを retention が消してしまう。
+        contentType: "image/png", cacheControl: "0", upsert: true,
+      });
+      if (uploadError) throw new LayerTalkError("logo_upload_failed", uploadError.message);
+      // updated_at も進めること（`patchRoomBranding` がやる）。差し替えではパスが変わらないので、
+      // これが無いとプレビューの <img src> が同一のままで古いロゴが残る。
+      setBranding(await patchRoomBranding(roomId, { logo_path: path }));
+      setLogoDone(true);
+    } catch (err) {
+      setError(resolveErrorMessage(err, settings.language));
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
+  /**
    * スライドの上の QR を出し入れする。発表前は ON にしても何も見えないので、
    * モニター選択と同じように peek で置き場所を実物で見せる。
    */
@@ -405,6 +497,35 @@ export function ControlWindow() {
     }
   };
 
+  /**
+   * ドラッグ中の並び。保存済みの並びとは別に持つ。
+   *
+   * `Reorder.Group` の `onReorder` は**入れ替わるたび**に飛んでくる。そこで
+   * `update()` を呼ぶと `saveSettings` が毎回全設定を Tauri イベントで
+   * 全ウィンドウへ撒くことになるので、ここでは手元の state だけ動かし、
+   * 保存は指を離したとき（`onDragEnd`）に1回だけにする。
+   */
+  const [draftOrder, setDraftOrder] = useState<SectionId[]>(settings.sectionOrder);
+  useEffect(() => { setDraftOrder(settings.sectionOrder); }, [settings.sectionOrder]);
+  // onDragEnd の閉包が古い draftOrder を掴んでいることがあるので ref から読む。
+  const draftOrderRef = useRef(draftOrder);
+  draftOrderRef.current = draftOrder;
+  const persistSectionOrder = useCallback(() => {
+    update({ sectionOrder: draftOrderRef.current });
+  }, [update]);
+
+  // Event Pass だけルーム未接続で消える。`Reorder.Group` の `values` は
+  // 実際に描いた children と一致していないといけないので、見えているものだけ渡す。
+  const visibleOrder = draftOrder.filter((id) => id !== "eventPass" || Boolean(settings.roomId));
+  const handleReorder = useCallback((next: SectionId[]) => {
+    // 見えている枠だけを新しい順に置き換え、隠れている id は元の位置に留める。
+    setDraftOrder((current) => {
+      const moving = new Set(next);
+      let cursor = 0;
+      return current.map((id) => (moving.has(id) ? next[cursor++] : id));
+    });
+  }, []);
+
   if (!authReady) {
     return <div className="bg-bg text-text flex h-screen items-center justify-center"><Loader2 size={20} className="animate-spin" /></div>;
   }
@@ -416,6 +537,500 @@ export function ControlWindow() {
       </div>
     );
   }
+
+  /**
+   * 並び替えできるセクションの中身。並びは `settings.sectionOrder` が持つので、
+   * ここは id と中身の対応だけ。中身は素の JSX で、順序のことを何も知らない。
+   */
+  const sectionNodes: Record<SectionId, React.ReactNode> = {
+    monitor: (
+      <section className="space-y-3">
+        <SectionLabel>{t.monitor.section}</SectionLabel>
+
+        <div className="border-border bg-bg-elev overflow-hidden rounded-[16px] border">
+          <MonitorRow
+            label={t.monitor.followPrimary}
+            sub={t.monitor.followPrimarySub}
+            selected={settings.monitorName === null}
+            onSelect={() => handlePickMonitor(null)}
+          />
+          {monitors.map((monitor) => (
+            <MonitorRow
+              key={monitor.name}
+              label={monitor.name}
+              sub={`${monitor.width}×${monitor.height}${monitor.is_primary ? t.monitor.primarySuffix : ""}`}
+              selected={settings.monitorName === monitor.name}
+              onSelect={() => handlePickMonitor(monitor.name)}
+            />
+          ))}
+        </div>
+
+        <p className="text-text-faint text-[11px] leading-relaxed">
+          {t.monitor.hint}
+          {monitors.length <= 1 && t.monitor.hintSingle}
+        </p>
+      </section>
+    ),
+    room: (
+      <section className="space-y-3">
+        <SectionLabel>{t.room.section}</SectionLabel>
+
+        {settings.roomCode ? (
+          <div className="border-border bg-bg-elev space-y-3 rounded-[20px] border p-4">
+            <div>
+              <div className="text-text-faint text-[11px] font-semibold tracking-wider">
+                {t.room.joinCode}
+              </div>
+              <div className="lt-num mt-1 text-[34px] leading-none font-bold tracking-[0.14em]">
+                {settings.roomCode}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="lt-tap border-border hover:bg-surface-strong flex w-full items-center justify-center gap-2 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors"
+            >
+              {copied ? (
+                <>
+                  <Check size={15} className="text-online" />
+                  {t.room.copied}
+                </>
+              ) : (
+                <>
+                  <Copy size={15} />
+                  {t.room.copyUrl}
+                </>
+              )}
+            </button>
+
+            <div className="text-text-faint truncate text-[11px]">{audienceUrl}</div>
+
+            {audienceUrl && (
+              <div className="border-border space-y-3 border-t pt-3">
+                <div className="flex justify-center">
+                  {/* スライドに出るものと同じカード。ブランド設定を渡し忘れると、
+                      「表記を隠したのに消えない」の最初の目撃地点になる。 */}
+                  <JoinQrCard
+                    url={audienceUrl}
+                    code={settings.roomCode}
+                    size={132}
+                    label={t.qr.scan}
+                    brandColor={branding?.brand_color}
+                    logoUrl={branding?.logoUrl}
+                    hideLayerTalk={branding?.hide_layertalk_branding}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={settings.showJoinQr}
+                  onClick={handleToggleJoinQr}
+                  className={`lt-tap flex w-full items-center justify-between rounded-[14px] border px-3 py-2.5 text-left transition-colors ${
+                    settings.showJoinQr
+                      ? "border-brand/40 bg-brand/12"
+                      : "border-border hover:bg-surface-strong"
+                  }`}
+                >
+                  <span className="text-[13px] font-semibold">{t.room.showQr}</span>
+                  <span
+                    aria-hidden
+                    className="relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors"
+                    style={{
+                      background: settings.showJoinQr
+                        ? "var(--lt-brand)"
+                        : "var(--lt-border-strong)",
+                    }}
+                  >
+                    <motion.span
+                      className="absolute top-[3px] h-4 w-4 rounded-full bg-white shadow-sm"
+                      animate={{ left: settings.showJoinQr ? 19 : 3 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 32, mass: 0.6 }}
+                    />
+                  </span>
+                </button>
+
+                <p className="text-text-faint text-[11px] leading-relaxed">
+                  {settings.showJoinQr ? t.room.qrOn : t.room.qrOff}
+                </p>
+
+                {/* ブランド設定。Event Pass パネルではなくここに置くのは、真上に出ている
+                    カードがそのまま結果だから。無料のあいだは全部 disabled にする
+                    （書き込みが RLS で 0 行になるだけの行き止まりを見せない）。 */}
+                <div className="border-border space-y-3 border-t pt-3">
+                  <div>
+                    <p className="flex items-center gap-2 text-[13px] font-semibold">
+                      <Sparkles size={14} />
+                      {t.room.brand}
+                    </p>
+                    <p className="text-text-faint mt-1 text-[11px] leading-relaxed">{t.room.brandHint}</p>
+                  </div>
+
+                  <label className="flex items-center justify-between">
+                    <span className="text-[13px] font-semibold">{t.room.brandColor}</span>
+                    <input
+                      type="color"
+                      value={branding?.brand_color ?? "#6B8AFF"}
+                      disabled={!paidFeatures || !branding}
+                      onChange={(event) => void patchBranding({ brand_color: event.target.value.toUpperCase() })}
+                      className="h-8 w-12 rounded border-0 bg-transparent disabled:opacity-40"
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={branding?.hide_layertalk_branding ?? false}
+                    disabled={!paidFeatures || !branding}
+                    onClick={() => void patchBranding({
+                      hide_layertalk_branding: !(branding?.hide_layertalk_branding ?? false),
+                    })}
+                    className={`lt-tap flex w-full items-center justify-between rounded-[14px] border px-3 py-2.5 text-left transition-colors disabled:opacity-40 ${
+                      branding?.hide_layertalk_branding
+                        ? "border-brand/40 bg-brand/12"
+                        : "border-border enabled:hover:bg-surface-strong"
+                    }`}
+                  >
+                    <span className="text-[13px] font-semibold">{t.room.brandHideLayerTalk}</span>
+                    <span
+                      aria-hidden
+                      className="relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors"
+                      style={{
+                        background: branding?.hide_layertalk_branding
+                          ? "var(--lt-brand)"
+                          : "var(--lt-border-strong)",
+                      }}
+                    >
+                      <motion.span
+                        className="absolute top-[3px] h-4 w-4 rounded-full bg-white shadow-sm"
+                        animate={{ left: branding?.hide_layertalk_branding ? 19 : 3 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 32, mass: 0.6 }}
+                      />
+                    </span>
+                  </button>
+
+                  <label
+                    className={`border-border flex items-center justify-center rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold ${
+                      logoBusy || !paidFeatures || !branding
+                        ? "opacity-40"
+                        : "hover:bg-surface-strong cursor-pointer"
+                    }`}
+                  >
+                    {logoBusy
+                      ? t.room.brandLogoBusy
+                      : branding?.logo_path ? t.room.brandLogoReplace : t.room.brandLogoAdd}
+                    {/* accept を PNG に絞らない。toLogoPng が何を渡されても PNG に焼き直すので、
+                        ここで絞ると「変換できるのに選べない」だけになる。 */}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={logoBusy || !paidFeatures || !branding}
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        // 同じファイルを選び直せるように必ず空にする。残すと2回目の onChange が飛ばない。
+                        event.target.value = "";
+                        if (file) void uploadLogo(file);
+                      }}
+                    />
+                  </label>
+
+                  {!paidFeatures && (
+                    <p className="text-text-faint text-[11px] leading-relaxed">{t.room.brandLocked}</p>
+                  )}
+                  {logoDone && <p className="text-online text-[11px]">{t.room.brandLogoSaved}</p>}
+                </div>
+              </div>
+            )}
+
+            <div className="border-border flex items-center justify-between border-t pt-3">
+              <StatusPill status={status} labels={t.status} />
+              <span className="text-text-muted lt-num text-[12px]">
+                {/* includeModerated: true なので pending / hidden も入っている。
+                    ここは「スライドに出た数」なので承認済みだけ数える。 */}
+                {t.room.commentCount(
+                  comments.filter((comment) => comment.status === "approved").length,
+                )}
+              </span>
+            </div>
+
+            {/* 切り替えは押し間違えると参加コードが変わるので、その場で一段確認する。
+                ネイティブの confirm() は webview を止めてしまうので使わない。 */}
+            <div className="border-border border-t pt-3">
+              {confirmSwitch && !live ? (
+                <div className="space-y-2">
+                  <p className="text-text-muted text-[12px] leading-relaxed">
+                    {t.room.switchWarning}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmSwitch(false)}
+                      className="lt-tap border-border hover:bg-surface-strong flex-1 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors"
+                    >
+                      {t.room.cancel}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSwitchRoom}
+                      className="lt-tap flex-1 rounded-[14px] bg-[var(--lt-like)] px-3 py-2.5 text-[13px] font-semibold text-white transition-transform active:scale-[0.97]"
+                    >
+                      {t.room.switchConfirm}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmSwitch(true)}
+                    disabled={live}
+                    className="lt-tap border-border hover:bg-surface-strong flex w-full items-center justify-center gap-2 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors disabled:opacity-40"
+                  >
+                    <Repeat size={15} />
+                    {t.room.switch}
+                  </button>
+                  {live && (
+                    <p className="text-text-faint mt-2 text-[11px] leading-relaxed">
+                      {t.room.switchBlocked(t.live.stop)}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="border-border bg-bg-elev space-y-3 rounded-[20px] border p-4">
+            <button
+              type="button"
+              onClick={handleCreateRoom}
+              disabled={busy}
+              className="lt-tap flex w-full items-center justify-center gap-2 rounded-[14px] bg-[linear-gradient(135deg,#6b8aff,#b47cff)] px-3 py-3 text-[14px] font-semibold text-white shadow-[var(--lt-shadow-glow)] transition-transform active:scale-[0.97] disabled:opacity-60"
+            >
+              {busy && <Loader2 size={15} className="animate-spin" />}
+              {t.room.create}
+            </button>
+
+            <div className="flex items-center gap-2">
+              <input
+                value={joinCode}
+                onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
+                onKeyDown={(event) => event.key === "Enter" && handleJoin()}
+                placeholder={t.room.joinPlaceholder}
+                maxLength={6}
+                className="border-border focus:border-border-strong lt-num placeholder:text-text-faint min-w-0 flex-1 rounded-[14px] border bg-transparent px-3 py-2.5 text-[14px] tracking-[0.12em] outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => handleJoin()}
+                disabled={busy || joinCode.length < 6}
+                className="lt-tap border-border hover:bg-surface-strong shrink-0 rounded-[14px] border px-4 py-2.5 text-[13px] font-semibold disabled:opacity-40"
+              >
+                {t.room.join}
+              </button>
+            </div>
+
+            {settings.previousRoomCode && (
+              <button
+                type="button"
+                onClick={() => handleJoin(settings.previousRoomCode ?? undefined)}
+                disabled={busy}
+                className="lt-tap text-text-muted hover:text-text flex w-full items-center justify-center gap-1.5 text-[12px] font-medium transition-colors disabled:opacity-40"
+              >
+                <Undo2 size={13} />
+                {t.room.backToPrevious.before}
+                <span className="lt-num tracking-[0.12em]">{settings.previousRoomCode}</span>
+                {t.room.backToPrevious.after}
+              </button>
+            )}
+          </div>
+        )}
+
+        {error && <p className="text-like text-[12px]">{error}</p>}
+      </section>
+    ),
+    display: (
+      <section className="space-y-3">
+        <SectionLabel>{t.display.section}</SectionLabel>
+
+        <div className="border-border bg-bg-elev relative grid grid-cols-2 gap-1 rounded-[16px] border p-1">
+          {(["flow", "bubble"] as const).map((mode) => {
+            const active = settings.displayMode === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => update({ displayMode: mode })}
+                className="lt-tap relative rounded-[12px] px-3 py-2.5 text-[13px] font-semibold"
+              >
+                {active && (
+                  <motion.span
+                    layoutId="display-mode-indicator"
+                    className="absolute inset-0 rounded-[12px] bg-[linear-gradient(135deg,#6b8aff,#b47cff)]"
+                    transition={{ type: "spring", stiffness: 220, damping: 26 }}
+                  />
+                )}
+                <span className={`relative ${active ? "text-white" : "text-text-muted"}`}>
+                  {mode === "flow" ? t.display.flow : t.display.bubble}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            const previewMs =
+              settings.displayMode === "bubble"
+                ? OVERLAY_DEFAULTS.bubbleDurationSec * 1000 + 1200
+                : OVERLAY_DEFAULTS.flowDurationSec * 1000 + 2200;
+            if (!live) void peekOverlay(settings.monitorName, previewMs);
+            void sendTestComment(t.display.testText);
+          }}
+          className="lt-tap border-border hover:bg-surface-strong flex w-full items-center justify-center gap-2 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors"
+        >
+          <MessageSquareText size={15} />
+          {t.display.test}
+        </button>
+      </section>
+    ),
+    stamp: (
+      <section className="space-y-3">
+        <SectionLabel>{t.stamp.section}</SectionLabel>
+
+        <button
+          type="button"
+          onClick={() => {
+            // 開始前はオーバーレイが隠れているので、確認のあいだだけ出す
+            if (!live) {
+              void peekOverlay(
+                settings.monitorName,
+                OVERLAY_DEFAULTS.stampDurationSec * 1000 + 1500,
+              );
+            }
+            // カスタムがあれば、それも混ぜて実物の見え方を確かめられるようにする
+            const custom = settings.allowCustomStamps ? stamps : [];
+            const pool = [
+              ...STAMP_EMOJIS,
+              ...custom.map((stamp) => customStampKey(stamp.id)),
+            ];
+            void sendTestStamp({
+              emoji: pool[Math.floor(Math.random() * pool.length)],
+              count: 6,
+            });
+          }}
+          className="lt-tap border-border hover:bg-surface-strong flex w-full items-center justify-center gap-2 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors"
+        >
+          <Sparkles size={15} />
+          {t.stamp.test}
+        </button>
+        <p className="text-text-faint text-[11px] leading-relaxed">
+          {t.stamp.hint}
+          {!live && t.stamp.hintPeek}
+        </p>
+      </section>
+    ),
+    customStamp: (
+      <section className="space-y-3">
+        <SectionLabel>{t.customStamp.section}</SectionLabel>
+
+        <div className="border-border bg-bg-elev space-y-3 rounded-[20px] border p-4">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={settings.allowCustomStamps}
+            onClick={() => update({ allowCustomStamps: !settings.allowCustomStamps })}
+            className={`lt-tap flex w-full items-center justify-between rounded-[14px] border px-3 py-2.5 text-left transition-colors ${
+              settings.allowCustomStamps
+                ? "border-brand/40 bg-brand/12"
+                : "border-border hover:bg-surface-strong"
+            }`}
+          >
+            <span className="text-[13px] font-semibold">{t.customStamp.allow}</span>
+            <span
+              aria-hidden
+              className="relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors"
+              style={{
+                background: settings.allowCustomStamps
+                  ? "var(--lt-brand)"
+                  : "var(--lt-border-strong)",
+              }}
+            >
+              <motion.span
+                className="absolute top-[3px] h-4 w-4 rounded-full bg-white shadow-sm"
+                animate={{ left: settings.allowCustomStamps ? 19 : 3 }}
+                transition={{ type: "spring", stiffness: 500, damping: 32, mass: 0.6 }}
+              />
+            </span>
+          </button>
+
+          <p className="text-text-faint text-[11px] leading-relaxed">
+            {settings.allowCustomStamps ? t.customStamp.allowOn : t.customStamp.allowOff}
+          </p>
+
+          {!settings.roomId ? (
+            <p className="text-text-faint text-[11px]">{t.customStamp.needsRoom}</p>
+          ) : stamps.length === 0 ? (
+            <p className="text-text-faint border-border border-t pt-3 text-[11px] leading-relaxed">
+              {t.customStamp.empty}
+            </p>
+          ) : (
+            <div className="border-border space-y-2 border-t pt-3">
+              <div className="grid grid-cols-5 gap-2">
+                {stamps.map((stamp) => (
+                  <div key={stamp.id} className="relative">
+                    <div className="border-border bg-surface-strong flex aspect-square items-center justify-center rounded-[12px] border p-1.5">
+                      <img
+                        src={roomStampUrl(supabase, stamp.path)}
+                        alt=""
+                        draggable={false}
+                        className="h-full w-full object-contain"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      aria-label={t.customStamp.delete}
+                      onClick={() => handleDeleteStamp(stamp)}
+                      className="lt-tap bg-bg-elev border-border text-text-muted hover:border-like hover:text-like absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border transition-colors"
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p className="text-text-faint text-[11px] leading-relaxed">
+                {t.customStamp.deleteHint}
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
+    ),
+    eventPass: settings.roomId && (
+      (
+        <EventPassPanel
+          roomId={settings.roomId}
+          roomCode={settings.roomCode}
+          roomTitle={settings.roomTitle}
+          locale={settings.language}
+          live={live}
+          comments={comments}
+          onCommentModerated={upsertLocal}
+          display={{ displayMode: settings.displayMode, showJoinQr: settings.showJoinQr, allowCustomStamps: settings.allowCustomStamps }}
+          onApplyPreset={(preset) => update({
+            displayMode: preset.display_mode,
+            showJoinQr: preset.show_join_qr,
+            allowCustomStamps: preset.allow_custom_stamps,
+          })}
+          branding={branding}
+          onBrandingChange={setBranding}
+          onPaidChange={setPaidFeatures}
+        />
+      )
+    ),
+  };
 
   return (
     <div className="bg-bg text-text flex h-screen flex-col overflow-hidden">
@@ -492,409 +1107,32 @@ export function ControlWindow() {
           onModerated={upsertLocal}
         />
 
-        {/* ---------------------------------------------------------- ルーム */}
-        <section className="space-y-3">
-          <SectionLabel>{t.room.section}</SectionLabel>
-
-          {settings.roomCode ? (
-            <div className="border-border bg-bg-elev space-y-3 rounded-[20px] border p-4">
-              <div>
-                <div className="text-text-faint text-[11px] font-semibold tracking-wider">
-                  {t.room.joinCode}
-                </div>
-                <div className="lt-num mt-1 text-[34px] leading-none font-bold tracking-[0.14em]">
-                  {settings.roomCode}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="lt-tap border-border hover:bg-surface-strong flex w-full items-center justify-center gap-2 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors"
-              >
-                {copied ? (
-                  <>
-                    <Check size={15} className="text-online" />
-                    {t.room.copied}
-                  </>
-                ) : (
-                  <>
-                    <Copy size={15} />
-                    {t.room.copyUrl}
-                  </>
-                )}
-              </button>
-
-              <div className="text-text-faint truncate text-[11px]">{audienceUrl}</div>
-
-              {audienceUrl && (
-                <div className="border-border space-y-3 border-t pt-3">
-                  <div className="flex justify-center">
-                    {/* スライドに出るものと同じカード。ブランド設定を渡し忘れると、
-                        「表記を隠したのに消えない」の最初の目撃地点になる。 */}
-                    <JoinQrCard
-                      url={audienceUrl}
-                      code={settings.roomCode}
-                      size={132}
-                      label={t.qr.scan}
-                      brandColor={branding?.brand_color}
-                      logoUrl={branding?.logoUrl}
-                      hideLayerTalk={branding?.hide_layertalk_branding}
-                    />
-                  </div>
-
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={settings.showJoinQr}
-                    onClick={handleToggleJoinQr}
-                    className={`lt-tap flex w-full items-center justify-between rounded-[14px] border px-3 py-2.5 text-left transition-colors ${
-                      settings.showJoinQr
-                        ? "border-brand/40 bg-brand/12"
-                        : "border-border hover:bg-surface-strong"
-                    }`}
-                  >
-                    <span className="text-[13px] font-semibold">{t.room.showQr}</span>
-                    <span
-                      aria-hidden
-                      className="relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors"
-                      style={{
-                        background: settings.showJoinQr
-                          ? "var(--lt-brand)"
-                          : "var(--lt-border-strong)",
-                      }}
-                    >
-                      <motion.span
-                        className="absolute top-[3px] h-4 w-4 rounded-full bg-white shadow-sm"
-                        animate={{ left: settings.showJoinQr ? 19 : 3 }}
-                        transition={{ type: "spring", stiffness: 500, damping: 32, mass: 0.6 }}
-                      />
-                    </span>
-                  </button>
-
-                  <p className="text-text-faint text-[11px] leading-relaxed">
-                    {settings.showJoinQr ? t.room.qrOn : t.room.qrOff}
-                  </p>
-                </div>
-              )}
-
-              <div className="border-border flex items-center justify-between border-t pt-3">
-                <StatusPill status={status} labels={t.status} />
-                <span className="text-text-muted lt-num text-[12px]">
-                  {/* includeModerated: true なので pending / hidden も入っている。
-                      ここは「スライドに出た数」なので承認済みだけ数える。 */}
-                  {t.room.commentCount(
-                    comments.filter((comment) => comment.status === "approved").length,
-                  )}
-                </span>
-              </div>
-
-              {/* 切り替えは押し間違えると参加コードが変わるので、その場で一段確認する。
-                  ネイティブの confirm() は webview を止めてしまうので使わない。 */}
-              <div className="border-border border-t pt-3">
-                {confirmSwitch && !live ? (
-                  <div className="space-y-2">
-                    <p className="text-text-muted text-[12px] leading-relaxed">
-                      {t.room.switchWarning}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setConfirmSwitch(false)}
-                        className="lt-tap border-border hover:bg-surface-strong flex-1 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors"
-                      >
-                        {t.room.cancel}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSwitchRoom}
-                        className="lt-tap flex-1 rounded-[14px] bg-[var(--lt-like)] px-3 py-2.5 text-[13px] font-semibold text-white transition-transform active:scale-[0.97]"
-                      >
-                        {t.room.switchConfirm}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmSwitch(true)}
-                      disabled={live}
-                      className="lt-tap border-border hover:bg-surface-strong flex w-full items-center justify-center gap-2 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors disabled:opacity-40"
-                    >
-                      <Repeat size={15} />
-                      {t.room.switch}
-                    </button>
-                    {live && (
-                      <p className="text-text-faint mt-2 text-[11px] leading-relaxed">
-                        {t.room.switchBlocked(t.live.stop)}
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="border-border bg-bg-elev space-y-3 rounded-[20px] border p-4">
-              <button
-                type="button"
-                onClick={handleCreateRoom}
-                disabled={busy}
-                className="lt-tap flex w-full items-center justify-center gap-2 rounded-[14px] bg-[linear-gradient(135deg,#6b8aff,#b47cff)] px-3 py-3 text-[14px] font-semibold text-white shadow-[var(--lt-shadow-glow)] transition-transform active:scale-[0.97] disabled:opacity-60"
-              >
-                {busy && <Loader2 size={15} className="animate-spin" />}
-                {t.room.create}
-              </button>
-
-              <div className="flex items-center gap-2">
-                <input
-                  value={joinCode}
-                  onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
-                  onKeyDown={(event) => event.key === "Enter" && handleJoin()}
-                  placeholder={t.room.joinPlaceholder}
-                  maxLength={6}
-                  className="border-border focus:border-border-strong lt-num placeholder:text-text-faint min-w-0 flex-1 rounded-[14px] border bg-transparent px-3 py-2.5 text-[14px] tracking-[0.12em] outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleJoin()}
-                  disabled={busy || joinCode.length < 6}
-                  className="lt-tap border-border hover:bg-surface-strong shrink-0 rounded-[14px] border px-4 py-2.5 text-[13px] font-semibold disabled:opacity-40"
-                >
-                  {t.room.join}
-                </button>
-              </div>
-
-              {settings.previousRoomCode && (
-                <button
-                  type="button"
-                  onClick={() => handleJoin(settings.previousRoomCode ?? undefined)}
-                  disabled={busy}
-                  className="lt-tap text-text-muted hover:text-text flex w-full items-center justify-center gap-1.5 text-[12px] font-medium transition-colors disabled:opacity-40"
-                >
-                  <Undo2 size={13} />
-                  {t.room.backToPrevious.before}
-                  <span className="lt-num tracking-[0.12em]">{settings.previousRoomCode}</span>
-                  {t.room.backToPrevious.after}
-                </button>
-              )}
-            </div>
-          )}
-
-          {error && <p className="text-like text-[12px]">{error}</p>}
-        </section>
-
-        {settings.roomId && (
-          <EventPassPanel
-            roomId={settings.roomId}
-            roomCode={settings.roomCode}
-            roomTitle={settings.roomTitle}
-            locale={settings.language}
-            live={live}
-            comments={comments}
-            onCommentModerated={upsertLocal}
-            display={{ displayMode: settings.displayMode, showJoinQr: settings.showJoinQr, allowCustomStamps: settings.allowCustomStamps }}
-            onApplyPreset={(preset) => update({
-              displayMode: preset.display_mode,
-              showJoinQr: preset.show_join_qr,
-              allowCustomStamps: preset.allow_custom_stamps,
-            })}
-            branding={branding}
-            onBrandingChange={setBranding}
-          />
-        )}
-
-        {/* ------------------------------------------------------ 表示モニター */}
-        <section className="space-y-3">
-          <SectionLabel>{t.monitor.section}</SectionLabel>
-
-          <div className="border-border bg-bg-elev overflow-hidden rounded-[16px] border">
-            <MonitorRow
-              label={t.monitor.followPrimary}
-              sub={t.monitor.followPrimarySub}
-              selected={settings.monitorName === null}
-              onSelect={() => handlePickMonitor(null)}
-            />
-            {monitors.map((monitor) => (
-              <MonitorRow
-                key={monitor.name}
-                label={monitor.name}
-                sub={`${monitor.width}×${monitor.height}${monitor.is_primary ? t.monitor.primarySuffix : ""}`}
-                selected={settings.monitorName === monitor.name}
-                onSelect={() => handlePickMonitor(monitor.name)}
-              />
-            ))}
-          </div>
-
-          <p className="text-text-faint text-[11px] leading-relaxed">
-            {t.monitor.hint}
-            {monitors.length <= 1 && t.monitor.hintSingle}
-          </p>
-        </section>
+        <Reorder.Group
+          axis="y"
+          as="div"
+          values={visibleOrder}
+          onReorder={handleReorder}
+          className="space-y-5"
+          onMouseDown={handleEmptyAreaMouseDown}
+        >
+          {visibleOrder.map((id) => (
+            <SortableSection
+              key={id}
+              id={id}
+              draggable={!live}
+              handleLabel={t.reorder.handle}
+              onDragEnd={persistSectionOrder}
+            >
+              {sectionNodes[id]}
+            </SortableSection>
+          ))}
+        </Reorder.Group>
 
         {!live && (
           <button type="button" onClick={() => void supabase.auth.signOut()} className="text-text-faint hover:text-text flex w-full items-center justify-center gap-1.5 py-2 text-[11px]">
             <LogOut size={12} />{settings.language === "ja" ? "ログアウト" : "Sign out"}
           </button>
         )}
-
-        {/* ------------------------------------------------------ 表示スタイル */}
-        <section className="space-y-3">
-          <SectionLabel>{t.display.section}</SectionLabel>
-
-          <div className="border-border bg-bg-elev relative grid grid-cols-2 gap-1 rounded-[16px] border p-1">
-            {(["flow", "bubble"] as const).map((mode) => {
-              const active = settings.displayMode === mode;
-              return (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => update({ displayMode: mode })}
-                  className="lt-tap relative rounded-[12px] px-3 py-2.5 text-[13px] font-semibold"
-                >
-                  {active && (
-                    <motion.span
-                      layoutId="display-mode-indicator"
-                      className="absolute inset-0 rounded-[12px] bg-[linear-gradient(135deg,#6b8aff,#b47cff)]"
-                      transition={{ type: "spring", stiffness: 220, damping: 26 }}
-                    />
-                  )}
-                  <span className={`relative ${active ? "text-white" : "text-text-muted"}`}>
-                    {mode === "flow" ? t.display.flow : t.display.bubble}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              const previewMs =
-                settings.displayMode === "bubble"
-                  ? OVERLAY_DEFAULTS.bubbleDurationSec * 1000 + 1200
-                  : OVERLAY_DEFAULTS.flowDurationSec * 1000 + 2200;
-              if (!live) void peekOverlay(settings.monitorName, previewMs);
-              void sendTestComment(t.display.testText);
-            }}
-            className="lt-tap border-border hover:bg-surface-strong flex w-full items-center justify-center gap-2 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors"
-          >
-            <MessageSquareText size={15} />
-            {t.display.test}
-          </button>
-        </section>
-
-        {/* ---------------------------------------------------------- スタンプ */}
-        <section className="space-y-3">
-          <SectionLabel>{t.stamp.section}</SectionLabel>
-
-          <button
-            type="button"
-            onClick={() => {
-              // 開始前はオーバーレイが隠れているので、確認のあいだだけ出す
-              if (!live) {
-                void peekOverlay(
-                  settings.monitorName,
-                  OVERLAY_DEFAULTS.stampDurationSec * 1000 + 1500,
-                );
-              }
-              // カスタムがあれば、それも混ぜて実物の見え方を確かめられるようにする
-              const custom = settings.allowCustomStamps ? stamps : [];
-              const pool = [
-                ...STAMP_EMOJIS,
-                ...custom.map((stamp) => customStampKey(stamp.id)),
-              ];
-              void sendTestStamp({
-                emoji: pool[Math.floor(Math.random() * pool.length)],
-                count: 6,
-              });
-            }}
-            className="lt-tap border-border hover:bg-surface-strong flex w-full items-center justify-center gap-2 rounded-[14px] border px-3 py-2.5 text-[13px] font-semibold transition-colors"
-          >
-            <Sparkles size={15} />
-            {t.stamp.test}
-          </button>
-          <p className="text-text-faint text-[11px] leading-relaxed">
-            {t.stamp.hint}
-            {!live && t.stamp.hintPeek}
-          </p>
-        </section>
-
-        {/* -------------------------------------------- カスタムスタンプ */}
-        <section className="space-y-3">
-          <SectionLabel>{t.customStamp.section}</SectionLabel>
-
-          <div className="border-border bg-bg-elev space-y-3 rounded-[20px] border p-4">
-            <button
-              type="button"
-              role="switch"
-              aria-checked={settings.allowCustomStamps}
-              onClick={() => update({ allowCustomStamps: !settings.allowCustomStamps })}
-              className={`lt-tap flex w-full items-center justify-between rounded-[14px] border px-3 py-2.5 text-left transition-colors ${
-                settings.allowCustomStamps
-                  ? "border-brand/40 bg-brand/12"
-                  : "border-border hover:bg-surface-strong"
-              }`}
-            >
-              <span className="text-[13px] font-semibold">{t.customStamp.allow}</span>
-              <span
-                aria-hidden
-                className="relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors"
-                style={{
-                  background: settings.allowCustomStamps
-                    ? "var(--lt-brand)"
-                    : "var(--lt-border-strong)",
-                }}
-              >
-                <motion.span
-                  className="absolute top-[3px] h-4 w-4 rounded-full bg-white shadow-sm"
-                  animate={{ left: settings.allowCustomStamps ? 19 : 3 }}
-                  transition={{ type: "spring", stiffness: 500, damping: 32, mass: 0.6 }}
-                />
-              </span>
-            </button>
-
-            <p className="text-text-faint text-[11px] leading-relaxed">
-              {settings.allowCustomStamps ? t.customStamp.allowOn : t.customStamp.allowOff}
-            </p>
-
-            {!settings.roomId ? (
-              <p className="text-text-faint text-[11px]">{t.customStamp.needsRoom}</p>
-            ) : stamps.length === 0 ? (
-              <p className="text-text-faint border-border border-t pt-3 text-[11px] leading-relaxed">
-                {t.customStamp.empty}
-              </p>
-            ) : (
-              <div className="border-border space-y-2 border-t pt-3">
-                <div className="grid grid-cols-5 gap-2">
-                  {stamps.map((stamp) => (
-                    <div key={stamp.id} className="relative">
-                      <div className="border-border bg-surface-strong flex aspect-square items-center justify-center rounded-[12px] border p-1.5">
-                        <img
-                          src={roomStampUrl(supabase, stamp.path)}
-                          alt=""
-                          draggable={false}
-                          className="h-full w-full object-contain"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        aria-label={t.customStamp.delete}
-                        onClick={() => handleDeleteStamp(stamp)}
-                        className="lt-tap bg-bg-elev border-border text-text-muted hover:border-like hover:text-like absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border transition-colors"
-                      >
-                        <X size={11} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <p className="text-text-faint text-[11px] leading-relaxed">
-                  {t.customStamp.deleteHint}
-                </p>
-              </div>
-            )}
-          </div>
-        </section>
 
       </div>
     </div>
@@ -990,6 +1228,51 @@ function MonitorRow({ label, sub, selected, onSelect }: MonitorRowProps) {
         <span className="text-text-faint lt-num block text-[11px]">{sub}</span>
       </span>
     </button>
+  );
+}
+
+/**
+ * 並び替えできるセクション1つぶん。
+ *
+ * `dragListener={false}` + `dragControls` にしてあるので、**掴めるのはハンドルだけ**。
+ * セクションの中にはスイッチ・スライダー・カラーピッカーが入っていて、
+ * 全面をドラッグ対象にすると操作と競合する。
+ *
+ * ハンドルは見出し行の右端に絶対配置する。こうすると中身側を一切書き換えずに済む
+ * （どのセクションも先頭行が見出しなので高さが揃う）。
+ */
+function SortableSection({ id, draggable, handleLabel, onDragEnd, children }: {
+  id: SectionId;
+  draggable: boolean;
+  handleLabel: string;
+  onDragEnd: () => void;
+  children: React.ReactNode;
+}) {
+  const controls = useDragControls();
+  return (
+    <Reorder.Item
+      value={id}
+      as="div"
+      dragListener={false}
+      dragControls={controls}
+      onDragEnd={onDragEnd}
+      className="relative"
+    >
+      {draggable && (
+        <button
+          type="button"
+          aria-label={handleLabel}
+          title={handleLabel}
+          // stopPropagation は必須。外側のスクロール領域は handleEmptyAreaMouseDown で
+          // ネイティブの窓ドラッグを始めるので、そちらへ渡すと窓ごと動いてしまう。
+          onPointerDown={(event) => { event.stopPropagation(); controls.start(event); }}
+          className="text-text-faint hover:text-text absolute top-0 right-0 z-10 cursor-grab p-1 active:cursor-grabbing"
+        >
+          <GripVertical size={14} />
+        </button>
+      )}
+      {children}
+    </Reorder.Item>
   );
 }
 

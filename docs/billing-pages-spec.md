@@ -148,7 +148,6 @@ apps/audience-web/src/app/event-pass/page.tsx
 2. 含まれる機能
    - コメント承認制
    - NGワード
-   - コメント・リアクションの一時停止
    - 入室パスコード
    - 質問時のスライド画像を含むHTML発表レポート
    - ブランドカラー、ロゴ、LayerTalk表記の非表示

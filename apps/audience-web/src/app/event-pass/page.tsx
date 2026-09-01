@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowDown, Check, Clock3, FileDown, KeyRound, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowDown, Check, FileDown, KeyRound, ShieldCheck, Sparkles } from "lucide-react";
 
 import { PhraseText, ProtectedText } from "@/components/public/phrase-text";
 import { PublicShell } from "@/components/public/public-shell";
@@ -16,7 +16,6 @@ export const metadata: Metadata = createPageMetadata({
 const features = [
   [ShieldCheck, "コメント承認制", "表示前に内容を確認し、本番の進行を守ります。"],
   [KeyRound, "NGワードと入室パスコード", "参加者と投稿の入口をイベントに合わせて整えます。"],
-  [Clock3, "コメント・リアクションの一時停止", "必要な瞬間に会場からの表示をすぐ止められます。"],
   [FileDown, "発表レポート", "質問時のスライド画像と質問内容を、見やすいHTMLで振り返れます。"],
   [Sparkles, "ブランド設定", "ブランドカラー、ロゴ、LayerTalk表記を調整できます。"],
 ] as const;

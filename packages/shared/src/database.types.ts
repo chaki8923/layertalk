@@ -80,8 +80,7 @@ export type Database = {
         entitlement_snapshot: Json; started_at: string; ended_at: string | null; created_at: string;
       }>;
       moderation_rules: Table<{
-        room_id: string; comments_paused: boolean; reactions_paused: boolean; question_only: boolean;
-        approval_mode: boolean; display_delay_seconds: number; custom_stamps_enabled: boolean;
+        room_id: string; question_only: boolean; approval_mode: boolean; display_delay_seconds: number;
         entry_passcode_hash: string | null; entry_passcode_entitlement_id: string | null; updated_at: string;
       }>;
       moderation_terms: Table<{

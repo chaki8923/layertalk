@@ -28,12 +28,15 @@ const session = {
 describe("ReportList", () => {
   beforeEach(() => mocks.questionCaptureCount.mockReset());
 
-  it("shows a reason instead of HTML export when no slide images exist", async () => {
+  // キャプチャを OFF にして発表すると全部これになる。行ごと出さないと一覧が
+  // 「出力できません」で埋まって読めなくなる。
+  it("drops the row entirely when no slide images exist", async () => {
     mocks.questionCaptureCount.mockResolvedValue(0);
     render(<ReportList sessions={[session]} locale="ja" roomTitle="Demo" roomCode="ABC123" />);
 
-    await screen.findByText("スライド画像がないため出力できません");
+    await screen.findByText("スライド画像を保存した発表がまだありません。");
     expect(screen.queryByRole("button", { name: "HTML" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/2026/)).not.toBeInTheDocument();
   });
 
   it("offers HTML export when at least one slide image exists", async () => {

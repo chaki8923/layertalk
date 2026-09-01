@@ -26,6 +26,10 @@ export const ja = {
     hidden: "開始するまでオーバーレイはどこにも表示されません。",
   },
 
+  /** セクションのドラッグハンドル。見た目はアイコンだけなので読み上げ用。 */
+  reorder: {
+    handle: "セクションを並び替え",
+  },
   room: {
     section: "ルーム",
     joinCode: "参加コード",
@@ -47,6 +51,16 @@ export const ja = {
     backToPrevious: { before: "直前のルーム", after: "に戻る" } satisfies Split,
     codeLength: "ルームコードは6文字です",
     notFound: "そのコードのルームは見つかりませんでした",
+    /* 参加QRカードの見た目。実物のプレビューが真上に出ているので、操作もここに置く。 */
+    brand: "ブランド",
+    brandHint: "ロゴ・色・LayerTalk表記は、上の参加QRカードに反映されます。",
+    brandColor: "ブランド色",
+    brandHideLayerTalk: "LayerTalk表記を隠す",
+    brandLogoAdd: "ロゴを追加",
+    brandLogoReplace: "ロゴを変更",
+    brandLogoBusy: "処理中…",
+    brandLogoSaved: "ロゴを保存しました",
+    brandLocked: "Event Pass が有効なあいだ変更できます。",
   },
 
   monitor: {

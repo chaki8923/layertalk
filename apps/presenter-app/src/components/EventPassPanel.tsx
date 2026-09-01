@@ -9,21 +9,18 @@ import {
   Plus,
   ReceiptText,
   ShieldCheck,
-  Sparkles,
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import {
   LayerTalkError,
-  ROOM_LOGO_BUCKET,
   fetchActiveEntitlement,
   fetchModerationRules,
   fetchPresentationReport,
   moderateComment,
   resolveErrorMessage,
   setRoomPasscode,
-  toLogoPng,
   updateModerationRules,
   type Comment,
   type DisplayPreset,
@@ -37,7 +34,6 @@ import {
 } from "@layertalk/shared";
 
 import { useMessages } from "../i18n";
-import { audienceUrl as buildAudienceUrl } from "../lib/audience";
 import { patchRoomBranding, type BrandingState } from "../lib/branding";
 import {
   loadQuestionCapturePreference,
@@ -55,7 +51,6 @@ import {
 } from "../lib/tauri";
 import { EventPassPurchaseSheet } from "./EventPassPurchaseSheet";
 import { DisplayPresetPicker } from "./DisplayPresetPicker";
-import { JoinQrCard } from "./JoinQrCard";
 import { RecentComments } from "./RecentComments";
 import { loadCachedEntitlementLease, openAudiencePage, openEntitlementReceipt, refreshEntitlementLease } from "../lib/billing";
 import { supabase } from "../lib/supabase";
@@ -78,9 +73,17 @@ type Props = {
    */
   branding: BrandingState | null;
   onBrandingChange: (branding: BrandingState) => void;
+  /**
+   * このルームで有料機能が使えるかをコントロール窓へ返す。
+   *
+   * 判定を持っているのはここだけ（`load` が entitlement を取っている）で、
+   * ルームカードのブランド操作を出し分けるのに要る。上でもう一度取りに行くと
+   * 15秒ごとのポーリングが二重になるので、取った結果を報告する形にしてある。
+   */
+  onPaidChange: (paid: boolean) => void;
 };
 
-export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comments, onCommentModerated, display, onApplyPreset, branding, onBrandingChange }: Props) {
+export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comments, onCommentModerated, display, onApplyPreset, branding, onBrandingChange, onPaidChange }: Props) {
   const ja = locale === "ja";
   const t = useMessages(locale);
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
@@ -99,15 +102,10 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
   const [newTerm, setNewTerm] = useState("");
   const [termMode, setTermMode] = useState<"contains" | "exact">("contains");
   const [presetName, setPresetName] = useState("");
-  const [logoBusy, setLogoBusy] = useState(false);
-  const [logoDone, setLogoDone] = useState(false);
   const [appliedPresetId, setAppliedPresetId] = useState<string | null>(null);
   const [captureEnabled, setCaptureEnabled] = useState(() => loadQuestionCapturePreference(roomId));
   const [capturePermission, setCapturePermission] = useState<ScreenCapturePermission | null>(null);
 
-  // 署名 URL の解決は `useRoomBranding` が済ませている（バケットが private なので
-  // オーバーレイ側にも同じものが要る）。ここで作り直さない。
-  const logoUrl = branding?.logoUrl ?? null;
   const appliedPreset = presets.find((preset) => preset.id === appliedPresetId) ?? null;
   const captureTargetName = capturePermission
     ? screenCapturePermissionTargetName(capturePermission.permissionTarget, locale)
@@ -196,6 +194,12 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
     return () => { window.removeEventListener("focus", onFocus); window.clearInterval(timer); };
   }, [load]);
 
+  // 有料判定はここでしか取っていないので、ルームカードのブランド操作のために上へ返す。
+  // 早期 return より前に置くこと。無料のときも false が届かないと、あちらが開いたままになる。
+  useEffect(() => {
+    onPaidChange(Boolean(entitlement) || offlineActive);
+  }, [entitlement, offlineActive, onPaidChange]);
+
   const updateRule = async (patch: Parameters<typeof updateModerationRules>[2]) => {
     if (!rules) return;
     const previous = rules;
@@ -227,40 +231,6 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
     } catch (err) {
       onBrandingChange(previous);
       setError(resolveErrorMessage(err, locale));
-    }
-  };
-
-  /**
-   * ロゴを上げる。
-   *
-   * **必ず `toLogoPng` を通してから上げる。** 生ファイルをそのまま渡すと
-   * `room-branding` バケットの image/png・1MB 制限にユーザーが自分で合わせる羽目になり、
-   * 「1MB以下のPNGを選べ」としか言えない行き止まりを作ってしまう。
-   * 再エンコードすれば JPEG も HEIC も 5MB の PNG も数十KB の PNG になって必ず通る。
-   */
-  const uploadLogo = async (file: File) => {
-    if (!branding) return;
-    // ここで消さないと、一度出したエラーがこの画面から二度と消えない
-    setError(null);
-    setLogoDone(false);
-    setLogoBusy(true);
-    try {
-      const png = await toLogoPng(file);
-      const path = `${roomId}/logo.png`;
-      const { error: uploadError } = await supabase.storage.from(ROOM_LOGO_BUCKET).upload(path, png, {
-        // パスが固定で upsert するので、CDN に抱えさせない。
-        // 版付きの名前にすると display_presets が指す旧ファイルを retention が消してしまう。
-        contentType: "image/png", cacheControl: "0", upsert: true,
-      });
-      if (uploadError) throw new LayerTalkError("logo_upload_failed", uploadError.message);
-      // updated_at も進めること（`patchRoomBranding` がやる）。差し替えではパスが変わらないので、
-      // これが無いとプレビューの <img src> が同一のままで古いロゴが残る。
-      onBrandingChange(await patchRoomBranding(roomId, { logo_path: path }));
-      setLogoDone(true);
-    } catch (err) {
-      setError(resolveErrorMessage(err, locale));
-    } finally {
-      setLogoBusy(false);
     }
   };
 
@@ -328,12 +298,10 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
         <div>
           <p className="text-[13px] font-bold">{ja ? "コメント運営" : "Comment controls"}</p>
           <div className="mt-3 space-y-2">
-            <ToggleRow label={ja ? "コメントを一時停止" : "Pause comments"} value={rules?.comments_paused ?? false} onChange={(value) => void updateRule({ comments_paused: value })} />
             <ToggleRow label={ja ? "承認したコメントだけ表示" : "Require approval"} value={rules?.approval_mode ?? false} onChange={(value) => void updateRule({ approval_mode: value })} />
             {/* 承認キューはこのパネルではなく窓の最上部に出る。毎回ここで知らせる。 */}
             {rules?.approval_mode && <p className="text-text-faint pb-1 text-[10px] leading-relaxed">{t.approval.hint}</p>}
             <ToggleRow label={ja ? "質問だけスライドに表示" : "Questions only on slides"} value={rules?.question_only ?? false} onChange={(value) => void updateRule({ question_only: value })} />
-            <ToggleRow label={ja ? "カスタムスタンプを無効化" : "Disable custom stamps"} value={!(rules?.custom_stamps_enabled ?? true)} onChange={(value) => void updateRule({ custom_stamps_enabled: !value })} />
           </div>
           <label className="text-text-muted mt-3 flex items-center justify-between text-[11px]">
             <span>{ja ? "表示ディレイ" : "Display delay"}</span><span className="lt-num">{rules?.display_delay_seconds ?? 0}s</span>
@@ -392,57 +360,6 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
           moderate={(commentId, action) => moderateComment(supabase, commentId, action)}
           onModerated={onCommentModerated}
         />
-
-        {branding && (
-          <div className="border-border border-t pt-4">
-            <p className="flex items-center gap-2 text-[13px] font-bold"><Sparkles size={14} />{ja ? "ブランド" : "Brand"}</p>
-            {/* ブランド設定が効くのは参加QRカードの中だけ。しかもスライドに出るのは
-                発表中に「参加QRを表示」を ON にしたときだけなので、ここで実物を見せる。 */}
-            <p className="text-text-faint mt-1 text-[10px] leading-relaxed">
-              {ja
-                ? "ロゴ・色・LayerTalk表記は、スライドに出る参加QRカードに反映されます。実物は下のプレビューのとおりです。"
-                : "The logo, colour and LayerTalk name apply to the join QR card shown on your slides. The preview below is the real thing."}
-            </p>
-            <div className="mt-2 flex justify-center">
-              <JoinQrCard
-                url={buildAudienceUrl(roomCode) || "https://layertalk.app"}
-                code={roomCode ?? "------"}
-                size={112}
-                label={t.qr.scan}
-                brandColor={branding.brand_color}
-                logoUrl={logoUrl}
-                hideLayerTalk={branding.hide_layertalk_branding}
-              />
-            </div>
-            <p className="text-text-faint mt-2 text-[10px] leading-relaxed">
-              {display.showJoinQr
-                ? (ja ? "「スライドに参加QRを表示」はオンです。発表中は左下に出ます。" : "“Show join QR on slides” is on. It appears at the bottom-left while presenting.")
-                : (ja ? "「スライドに参加QRを表示」がオフのあいだは、スライドには出ません。" : "While “Show join QR on slides” is off, it never appears on the slides.")}
-            </p>
-            <div className="mt-3 flex items-center gap-3">
-              <input type="color" value={branding.brand_color} onChange={(event) =>
-                void patchBranding({ brand_color: event.target.value.toUpperCase() })
-              } className="h-9 w-12 rounded border-0 bg-transparent" />
-              <ToggleRow label={ja ? "LayerTalk表記を隠す" : "Hide LayerTalk name"} value={branding.hide_layertalk_branding} onChange={(value) =>
-                void patchBranding({ hide_layertalk_branding: value })
-              } />
-            </div>
-            <label className={`border-border mt-3 flex items-center justify-center rounded-[12px] border px-3 py-2 text-[10px] font-bold ${logoBusy ? "opacity-50" : "hover:bg-surface-strong cursor-pointer"}`}>
-              {logoBusy
-                ? (ja ? "処理中…" : "Working…")
-                : branding.logo_path ? (ja ? "ロゴを変更" : "Replace logo") : (ja ? "ロゴを追加" : "Add a logo")}
-              {/* accept を PNG に絞らない。toLogoPng が何を渡されても PNG に焼き直すので、
-                  ここで絞ると「変換できるのに選べない」だけになる。 */}
-              <input type="file" accept="image/*" disabled={logoBusy} className="hidden" onChange={(event) => {
-                const file = event.target.files?.[0];
-                // 同じファイルを選び直せるように必ず空にする。残すと2回目の onChange が飛ばない。
-                event.target.value = "";
-                if (file) void uploadLogo(file);
-              }} />
-            </label>
-            {logoDone && <p className="text-online mt-2 text-[10px]">{ja ? "ロゴを保存しました" : "Logo saved"}</p>}
-          </div>
-        )}
 
         <div className="border-border border-t pt-4">
           <p className="text-[13px] font-bold">{ja ? "表示プリセット" : "Display presets"}</p>
@@ -658,15 +575,26 @@ export function ReportList({ sessions, locale, roomTitle, roomCode }: {
     }
   };
 
+  // 枚数が確定するまでは何も並べない。先に全部出してから消えると行が点滅するし、
+  // 「まだありません」が一瞬出てしまう。
+  const counting = finished.some((session) => captureCounts[session.id] === undefined);
+  // 出力できるものと、確認そのものに失敗したものだけ並べる。
+  // 画像が 0 枚の発表は出力しようがないので、行ごと出さない（キャプチャを
+  // OFF にして発表していれば全部これになり、一覧が読めなくなる）。
+  const exportable = counting
+    ? []
+    : finished.filter((session) => {
+      const count = captureCounts[session.id];
+      return count === "error" || (typeof count === "number" && count > 0);
+    });
+
   return (
     <div className="mt-2 space-y-2">
-      {finished.map((session) => {
+      {exportable.map((session) => {
         const captureCount = captureCounts[session.id];
         return <div key={session.id} className="border-border flex items-center gap-2 rounded-[12px] border px-3 py-2">
           <span className="min-w-0 flex-1 truncate text-[11px]">{new Date(session.started_at).toLocaleString(ja ? "ja-JP" : "en-US")}</span>
-          {captureCount === undefined && <span className="text-text-faint text-[9px]">{ja ? "画像を確認中…" : "Checking images…"}</span>}
           {captureCount === "error" && <span className="text-like max-w-36 text-right text-[9px]">{ja ? "画像を確認できません" : "Could not check images"}</span>}
-          {captureCount === 0 && <span className="text-text-faint max-w-40 text-right text-[9px] leading-snug">{ja ? "スライド画像がないため出力できません" : "No slide images; report unavailable"}</span>}
           {typeof captureCount === "number" && captureCount > 0 && (
             <button type="button" disabled={busy !== null} onClick={() => void run(session)}
               className={`flex items-center gap-1 text-[9px] font-bold disabled:opacity-40 ${saved === session.id ? "text-online" : "text-text-muted"}`}>
@@ -676,7 +604,15 @@ export function ReportList({ sessions, locale, roomTitle, roomCode }: {
           )}
         </div>;
       })}
+      {counting && <p className="text-text-faint text-[10px]">{ja ? "画像を確認中…" : "Checking images…"}</p>}
       {finished.length === 0 && <p className="text-text-faint text-[10px]">{ja ? "発表を終了するとここに表示されます。" : "Reports appear after a presentation ends."}</p>}
+      {/* 終わった発表はあるのに1つも出せない、はキャプチャが OFF のときの通常の状態。
+          すぐ上の「質問時のスライドを保存」に繋がるよう、原因の方を書く。 */}
+      {!counting && finished.length > 0 && exportable.length === 0 && (
+        <p className="text-text-faint text-[10px]">
+          {ja ? "スライド画像を保存した発表がまだありません。" : "No presentations with saved slide images yet."}
+        </p>
+      )}
       {saved && <p className="text-online text-[10px]">{ja ? "保存しました" : "Saved"}</p>}
       {error && <p className="text-like text-[10px]">{error}</p>}
     </div>

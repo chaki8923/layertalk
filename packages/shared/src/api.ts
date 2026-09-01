@@ -353,7 +353,7 @@ export async function fetchModerationRules(
 export async function updateModerationRules(
   client: LayerTalkClient,
   roomId: string,
-  patch: Partial<Pick<ModerationRules, "comments_paused" | "reactions_paused" | "question_only" | "approval_mode" | "display_delay_seconds" | "custom_stamps_enabled">>,
+  patch: Partial<Pick<ModerationRules, "question_only" | "approval_mode" | "display_delay_seconds">>,
 ): Promise<ModerationRules> {
   const { data, error } = await client.from("moderation_rules").update({ ...patch, updated_at: new Date().toISOString() })
     .eq("room_id", roomId).select().single();

@@ -131,7 +131,7 @@ export function OverlayWindow() {
 
   const handleInsert = useCallback(
     (comment: Comment) => {
-      if (comment.status !== "approved" || moderation?.comments_paused) return;
+      if (comment.status !== "approved") return;
       if (moderation?.question_only && !comment.is_question) return;
       // 質問は右端のパネルにも積む。流れる演出は通常コメントと同じにする
       // （質問だけ見た目を変えない）。
@@ -183,14 +183,13 @@ export function OverlayWindow() {
    */
   const playStamp = useCallback(
     (key: string, count: number) => {
-      if (moderation?.reactions_paused) return;
       const id = parseCustomStampKey(key);
       if (id === null) {
         stampRef.current?.burst(key, count);
         return;
       }
 
-      if (!settings.allowCustomStamps || moderation?.custom_stamps_enabled === false) return;
+      if (!settings.allowCustomStamps) return;
 
       const roomId = settings.roomId;
       if (!roomId) return;
@@ -215,7 +214,7 @@ export function OverlayWindow() {
         // 通常の絵文字やコメントまで止めない。
       });
     },
-    [moderation, settings.allowCustomStamps, settings.roomId, roomStampsById],
+    [settings.allowCustomStamps, settings.roomId, roomStampsById],
   );
 
   useStampChannel({

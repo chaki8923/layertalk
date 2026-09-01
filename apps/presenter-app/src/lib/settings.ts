@@ -30,7 +30,46 @@ export type PresenterSettings = {
    * 次の起動でも最後に選んだ言語で立ち上がる。
    */
   language: Locale;
+  /**
+   * コントロール窓のセクションの並び。ドラッグで入れ替えられる。
+   *
+   * 発表者ごとに触る頻度が違うので、手元で並べ替えられるようにしてある。
+   * 既定は `SECTION_IDS` の順（表示モニターが開始ボタンの直下、Event Pass が末尾）。
+   */
+  sectionOrder: SectionId[];
 };
+
+/**
+ * 並び替えできるセクション。**この配列の順が既定の並びそのもの。**
+ *
+ * 壇上でよく触る表示モニターを先頭に、ほとんど触らない Event Pass を末尾に置いている。
+ */
+export const SECTION_IDS = ["monitor", "room", "display", "stamp", "customStamp", "eventPass"] as const;
+export type SectionId = (typeof SECTION_IDS)[number];
+
+/**
+ * 保存された並び順を実行時の形に直す。
+ *
+ * 知らない id は捨て、重複も落とし、足りない id は既定の順で末尾に足す。
+ * **足す方が本命** — セクションを増やしたときに、古い localStorage のせいで
+ * 新しいセクションが永久に見えなくなるのを防ぐため。
+ */
+export function normalizeSectionOrder(value: unknown): SectionId[] {
+  const known = new Set<string>(SECTION_IDS);
+  const seen = new Set<SectionId>();
+  const order: SectionId[] = [];
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (typeof item !== "string" || !known.has(item)) continue;
+      const id = item as SectionId;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      order.push(id);
+    }
+  }
+  for (const id of SECTION_IDS) if (!seen.has(id)) order.push(id);
+  return order;
+}
 
 export const DEFAULT_SETTINGS: PresenterSettings = {
   roomId: null,
@@ -44,6 +83,7 @@ export const DEFAULT_SETTINGS: PresenterSettings = {
   displayMode: "flow",
   monitorName: null,
   language: "ja",
+  sectionOrder: [...SECTION_IDS],
 };
 
 /** シンプルな固定表示。コントロール窓からは変更しない。 */
@@ -80,6 +120,7 @@ export function loadSettings(): PresenterSettings {
       displayMode: parsed.displayMode === "bubble" ? "bubble" : "flow",
       monitorName: parsed.monitorName,
       language: parsed.language === "en" ? "en" : "ja",
+      sectionOrder: normalizeSectionOrder(parsed.sectionOrder),
     };
   } catch {
     return DEFAULT_SETTINGS;

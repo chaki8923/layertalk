@@ -20,6 +20,9 @@ export const en: Messages = {
     hidden: "Nothing is shown anywhere until you start.",
   },
 
+  reorder: {
+    handle: "Reorder section",
+  },
   room: {
     section: "Room",
     joinCode: "Join code",
@@ -40,6 +43,15 @@ export const en: Messages = {
     backToPrevious: { before: "Back to room", after: "" },
     codeLength: "Join codes are 6 characters",
     notFound: "No room found for that code",
+    brand: "Brand",
+    brandHint: "The logo, colour and LayerTalk name apply to the join QR card above.",
+    brandColor: "Brand colour",
+    brandHideLayerTalk: "Hide the LayerTalk name",
+    brandLogoAdd: "Add a logo",
+    brandLogoReplace: "Replace the logo",
+    brandLogoBusy: "Working…",
+    brandLogoSaved: "Logo saved",
+    brandLocked: "Editable while an Event Pass is active.",
   },
 
   monitor: {
