@@ -5,6 +5,7 @@ import { motionPresets } from "@layertalk/shared";
 import { motion } from "motion/react";
 
 import { LikeButton } from "@/components/like-button";
+import { ReportButton } from "@/components/report-button";
 import { timeLocale } from "@/i18n";
 import { useLocale, useMessages } from "@/i18n/locale-context";
 
@@ -53,6 +54,8 @@ export function CommentCard({ comment, liked, isMine, onToggleLike }: Props) {
             {formatTime(comment.created_at, locale)}
           </time>
           {isMine && <span className="text-brand text-[11px] font-semibold">{t.comment.mine}</span>}
+          {/* 自分の投稿には出さない。自分を通報する導線は意味が無い。 */}
+          {!isMine && <ReportButton roomId={comment.room_id} target={{ commentId: comment.id }} />}
         </div>
       </div>
 

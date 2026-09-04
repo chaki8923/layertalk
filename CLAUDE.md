@@ -268,6 +268,27 @@ TCC の責任プロセスは起動元（Terminal / iTerm / IDE）になるので
   切り替えると `roomId / roomCode / roomTitle` を null にして作成／参加カードに戻し、
   外したコードは `previousRoomCode` に残して1タップで戻れるようにする。
   **発表中は切り替えさせない**（コメントが流れなくなる事故を防ぐため）
+- **通報（`content_reports`）は無料ルームでも必ず動く。** NG ワードと承認制は Event Pass の
+  機能だが、通報だけは `has_paid_room_features` を通さない。App Store 1.2 が UGC アプリに
+  求める4点（フィルタ／報告手段／ブロック／連絡先）のうち、**報告手段と連絡先を課金の内側に
+  入れると無料ルームが要件を1つも満たさなくなる**ため。書き込みは `report_content` RPC のみで、
+  INSERT ポリシーは作らない（生 INSERT を開けると room_id を偽って他ルームの表を膨らませられる）。
+  読めるのは `is_room_operator` だけ — 観客に自分の通報も見せない（誰が通報したかを
+  推測させないため）。「通報済み」の表示は観客側の localStorage が持つ
+- **通報を捌く操作と、通報を受け取ることを混ぜない。** 受信・表示（`ReportQueue`）は無料でも動くが、
+  コメントの非表示は `moderate_comment` ＝ Event Pass の機能なので落ちる。落ちたときは黙らず
+  理由を出すこと（罠 #16 の「画面は成功・DB は無反応」を作らない）。カスタムスタンプの削除は
+  課金と無関係に通るので、無料ルームでも必ず消せる
+- **カスタムスタンプの通報は長押し。** バーは 44px の丸ボタンが並ぶ横スクロールで、1枚ごとに
+  通報ボタンを足すと列が2倍になり押し間違いも増える。長押しが成立したら、指を離したときの
+  click（＝スタンプ送信）を1回だけ捨てる
+- **退会はアプリ内に必ず置く**（App Store 5.1.1(v)）。`AccountFooter` の削除ダイアログ →
+  `/api/account/delete`。**`moderation_actions.actor_id` を `on delete restrict` に戻さないこと** —
+  戻すと、一度でも承認／非表示を押した発表者だけが FK 違反で退会できなくなる
+  （＝有料で使い込んだ人ほど詰まる。素で試すと気付けない）。Storage のファイルは
+  `on delete cascade` では消えないので、`deleteUser` の**前に**消す
+- **プライバシー・規約・サポートへの導線を購入シートの中だけに置かない**（App Store 5.1.1(i)）。
+  購入画面を開かない利用者が方針にたどり着けなくなる。`AccountFooter` が常設の入口
 - **いいねは `toggle_comment_like` RPC 経由のみ。** anon に `comments` の UPDATE を開けると
   `content` まで書き換えられる。`comment_likes` は RLS ポリシーを一切作らず完全に閉じている
 - **スタンプは DB に保存しない。** Broadcast のみ。連打は 100ms 単位で集約してから送る
@@ -307,6 +328,9 @@ TCC の責任プロセスは起動元（Terminal / iTerm / IDE）になるので
 
 ## 既知の制約
 
+- **「不適切な利用者をブロックする」は原理的に実装できない。** 匿名アプリなので端末は
+  いくらでも新しい identity を作れる。App Store 1.2 の4点のうちこれだけは満たせず、
+  通報 → 発表者が個別に消す、で代替している
 - 匿名アプリなので**いいねの水増しは原理的に防げない**（`client_id` は端末が自由に作れる）
 - 同じ理由で**カスタムスタンプの削除も誰でも呼べる**。`room_stamps` はこのプロジェクトで
   唯一 DELETE ポリシーを開けている表（不適切な画像を消す操作を詰まらせないため）
@@ -315,9 +339,9 @@ TCC の責任プロセスは起動元（Terminal / iTerm / IDE）になるので
 - ルーム作成は anon に開いている
 - 同じ理由で**ルームの表示言語も誰でも変えられる**（`set_room_language` は anon に開いている）。
   観客のスマホの文言が変わるだけで、発表者の手元は `PresenterSettings.language` が正なので影響しない
-- Supabase advisor は9件指摘を出すが、いずれも上記の設計を選んだ結果で意図どおり
-  （うち2件は `set_room_language` が anon / authenticated から呼べるという、
-  `toggle_comment_like` と同じ種類の指摘）
+- Supabase advisor の指摘はいずれも上記の設計を選んだ結果で意図どおり
+  （`set_room_language` や `report_content` が anon / authenticated から呼べるという
+  `toggle_comment_like` と同じ種類の指摘と、匿名ユーザーに開いた RLS ポリシーの2種類しかない）
 - 複数モニター同時表示（ミラー）は未対応。1台を選ぶ方式
 - コード署名・公証なし
 - **`.app` のバンドル説明（`tauri.conf.json` の `shortDescription` / `longDescription`）は

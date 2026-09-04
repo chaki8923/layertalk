@@ -163,6 +163,13 @@
     overflow-wrap: normal;
   }
 
+  /* 下から出るシート型の <dialog>。発表者側の .event-pass-dialog と同じ見た目。
+     観客は暗い会場でスマホを見るので、背後を確実に落として本文を読ませる。 */
+  .lt-sheet::backdrop {
+    background: rgb(0 0 0 / 0.66);
+    backdrop-filter: blur(3px);
+  }
+
   .lt-stage-grid {
     background-image:
       linear-gradient(to right, var(--lt-border) 1px, transparent 1px),

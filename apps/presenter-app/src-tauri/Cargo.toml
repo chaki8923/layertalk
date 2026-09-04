@@ -47,8 +47,31 @@ objc2-app-kit = { version = "0.3", features = [
   "NSResponder",
   "NSScreen",
   "NSView",
+  # 縁取り文字（lt-overlay-text 相当）を NSAttributedString で組むために要る。
+  "NSAttributedString",
+  "NSFont",
+  "NSParagraphStyle",
+  # 組んだ文字列の実寸を測る（`NSAttributedString::size`）。見積もり幅だと
+  # 末尾が切れることがあり、140文字を省略しない方針に反する。
+  "NSStringDrawing",
+  "objc2-core-foundation",
 ] }
 objc2-foundation = "0.3"
+# オーバーレイをネイティブ描画するために使う（App Store 2.5.1）。
+# WKWebView を透過させる公開 API は macOS に存在しない（WebKit bug 200528 が未解決）ので、
+# 透過が要る窓からは webview を外し、Core Animation で直接描く。
+# crate 自体は screencapturekit / objc2-app-kit 経由で既に入っていたが、
+# CALayer / CAAnimation の feature を立てると objc2-metal・block2・libc が新たに増える
+# （Core Animation が Metal 上に載っているため）。ビルド時間と .app のサイズに効く。
+objc2-quartz-core = { version = "0.3", features = [
+  "CALayer",
+  "CATextLayer",
+  "CAAnimation",
+  "CAMediaTiming",
+  "CAMediaTimingFunction",
+  "CATransaction",
+  "objc2-core-foundation",
+] }
 core-graphics = "0.25"
 # `macos_14_0` は `SCScreenshotManager`（質問到着時の単発撮影フォールバック）を出すためだけの
 # **モジュールと Swift の `#if` を開けるフラグ**。デプロイメントターゲットは上がらず、

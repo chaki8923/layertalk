@@ -366,6 +366,7 @@ export function RoomClient({ code, fallbackLocale }: { code: string; fallbackLoc
         <div className="bg-bg pb-safe pointer-events-auto px-4">
           <div className="mx-auto flex w-full max-w-lg flex-col gap-2.5 pb-2">
             <StampBar
+              roomId={roomId}
               onSend={sendStamp}
               stamps={stamps}
               onUpload={handleUploadStamp}

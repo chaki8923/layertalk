@@ -17,6 +17,9 @@ export type ModerationTerm = Tables<"moderation_terms">;
 export type RoomBranding = Tables<"room_branding">;
 export type DisplayPreset = Tables<"display_presets">;
 
+/** 観客からの通報。無料ルームでも必ず動く経路なので、課金判定を足さないこと。 */
+export type ContentReport = Tables<"content_reports">;
+
 export const EVENT_PASS_FEATURES = [
   "moderation",
   "passcode",

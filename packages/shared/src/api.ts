@@ -2,8 +2,10 @@ import type { LayerTalkClient } from "./client";
 import { COMMENT_MAX_LENGTH, ROOM_STAMP_BUCKET, normalizeRoomCode } from "./constants";
 import { LayerTalkError } from "./errors";
 import type { Locale } from "./i18n";
+import type { ReportReason } from "./database.types";
 import type {
   Comment,
+  ContentReport,
   Entitlement,
   ModerationRules,
   PresentationReport,
@@ -364,6 +366,40 @@ export async function updateModerationRules(
 export async function setRoomPasscode(client: LayerTalkClient, roomId: string, passcode?: string) {
   const { error } = await client.rpc("set_room_passcode", { p_room_id: roomId, p_passcode: passcode || null });
   if (error) throw new LayerTalkError("moderation_failed", error.message);
+}
+
+/**
+ * 観客からの通報を送る（App Store 1.2 の「報告する手段」）。
+ *
+ * **課金判定を挟まないこと。** NG ワードと承認制は Event Pass の機能だが、通報は
+ * 無料ルームでも必ず通る必要がある（`report_content` の migration のコメントも参照）。
+ * 2 度目の通報は DB 側が黙って捨てるので、ここでも成功として返る
+ * — エラーにすると「もう通報済み」が観客に漏れる。
+ */
+export async function reportContent(
+  client: LayerTalkClient,
+  roomId: string,
+  target: { commentId: string; stampId?: never } | { commentId?: never; stampId: string },
+  reason: ReportReason = "other",
+): Promise<void> {
+  const { error } = await client.rpc("report_content", {
+    p_room_id: roomId,
+    p_comment_id: target.commentId ?? null,
+    p_room_stamp_id: target.stampId ?? null,
+    p_reason: reason,
+  });
+  if (error) throw new LayerTalkError("content_report_failed", error.message);
+}
+
+/** 発表者が受け取った通報。RLS で room operator だけが読める。 */
+export async function fetchContentReports(
+  client: LayerTalkClient,
+  roomId: string,
+): Promise<ContentReport[]> {
+  const { data, error } = await client.from("content_reports").select("*")
+    .eq("room_id", roomId).order("created_at", { ascending: false }).limit(200);
+  if (error) throw new LayerTalkError("content_report_failed", error.message);
+  return data ?? [];
 }
 
 export async function moderateComment(

@@ -1,3 +1,4 @@
+mod overlay_render;
 mod question_capture;
 
 use std::sync::Mutex;
@@ -310,6 +311,16 @@ mod native_overlay {
         screens.iter().next().map(|screen| screen.frame())
     }
 
+    /// オーバーレイを webview ではなくネイティブ描画にするか。
+    ///
+    /// **移行中の切り替え。** 既定は従来どおり webview で、`LAYERTALK_NATIVE_OVERLAY=1` の
+    /// ときだけ `overlay_render` のホストビューを載せる。フキダシ・スタンプ・QR の移植が
+    /// 済んだらこの分岐ごと消し、`macos-private-api` を落とす（App Store 2.5.1）。
+    pub fn use_native_overlay() -> bool {
+        static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *FLAG.get_or_init(|| std::env::var("LAYERTALK_NATIVE_OVERLAY").as_deref() == Ok("1"))
+    }
+
     /// 表示先の候補一覧。名前は `screen_frame` と同じ実装で作る。
     /// `x` / `y` は AppKit 座標（左下原点）のポイント値。UI では使っていない。
     pub fn monitors() -> Vec<super::MonitorInfo> {
@@ -346,6 +357,35 @@ mod native_overlay {
 
         let window = ensure(kind, mtm, frame);
         let attached = slots(kind).1;
+
+        // ネイティブ描画のオーバーレイは webview を載せない。**contentView は 1 枚しか
+        // 持てない**ので、この経路と下の載せ替えは排他であること。
+        //
+        // 副作用として、オーバーレイの webview は tao 窓（`visible: false` のまま
+        // 一度も show されない）に残って動き続ける。つまりこの分岐を有効にして
+        // コメントが流れれば、**「隠れた WKWebView が Supabase の購読を保てるか」**
+        // という移行計画いちばんの未知数がそのまま検証できる。
+        // 流れないなら購読を Rust 側へ移す必要がある、という判断材料になる。
+        if kind == Hosted::Overlay && use_native_overlay() {
+            // **窓自身から取る。** `SessionState` の monitor 名を引き回すと、
+            // 罠 #12 の名前一致に依存するうえ、窓が実際に居る画面とずれうる。
+            let scale = window.backingScaleFactor();
+            let bounds = NSRect::new(
+                NSPoint::new(0.0, 0.0),
+                NSSize::new(frame.size.width, frame.size.height),
+            );
+            if !attached.load(Ordering::Relaxed) {
+                let host = super::overlay_render::make_host_view(mtm, bounds, scale);
+                window.setContentView(Some(&host));
+                attached.store(true, Ordering::Relaxed);
+                super::debug_log("native/overlay: ネイティブ描画のホストを載せました");
+            } else {
+                super::overlay_render::resize(bounds, scale);
+            }
+            window.setFrame_display(frame, true);
+            window.orderFrontRegardless();
+            return;
+        }
 
         if !attached.load(Ordering::Relaxed) && !tao_ns_window.is_null() {
             unsafe {
@@ -995,6 +1035,61 @@ fn start_question_capture(app: &AppHandle, session_id: &str, monitor: Option<Str
     }
 }
 
+/// オーバーレイがネイティブ描画かどうか。フロント側は自分で環境変数を読めないので聞きに来る。
+/// 移植が済んだらこのコマンドごと消える。
+#[tauri::command]
+fn is_native_overlay() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        native_overlay::use_native_overlay()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+/// ネイティブ描画のオーバーレイへコメントを1件流す（App Store 2.5.1 対応の移行中）。
+///
+/// **AppKit はメインスレッド専用**なので `run_on_main_thread` で入る。同期コマンドは
+/// メインスレッドで走るが（罠 #17 の `capture_question_slide` 参照）、フロントが
+/// どのスレッドから呼ぶかに依存させないため明示する。
+///
+/// `LAYERTALK_NATIVE_OVERLAY=1` で起動していないときは何も起きない
+/// （ホストビューが載っていないので `overlay_render` 側が黙って返る）。
+#[tauri::command]
+fn overlay_push_comment(
+    app: AppHandle,
+    text: String,
+    font_size: f64,
+    opacity: f64,
+    base_duration_sec: f64,
+) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.run_on_main_thread(move || {
+            overlay_render::push_comment(&text, font_size, opacity, base_duration_sec);
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, text, font_size, opacity, base_duration_sec);
+    }
+}
+
+/// ネイティブ描画のオーバーレイを空にする。発表の開始・終了で呼ぶ。
+#[tauri::command]
+fn overlay_clear(app: AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.run_on_main_thread(overlay_render::clear);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+    }
+}
+
 /// 表示先モニターを変更する。発表中なら即座に移動する。
 #[tauri::command]
 fn set_overlay_monitor(app: AppHandle, monitor: Option<String>) {
@@ -1302,6 +1397,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_monitors,
             set_overlay_monitor,
+            is_native_overlay,
+            overlay_push_comment,
+            overlay_clear,
             start_presentation,
             stop_presentation,
             get_presentation_state,

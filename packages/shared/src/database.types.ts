@@ -3,6 +3,9 @@
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
+/** `content_reports.reason` の check 制約と1対1。増やすときは migration も直すこと。 */
+export type ReportReason = "offensive" | "harassment" | "spam" | "other";
+
 type Table<Row, Insert = Partial<Row>, Update = Partial<Insert>> = {
   Row: Row;
   Insert: Insert;
@@ -89,8 +92,13 @@ export type Database = {
         id?: string; room_id: string; term: string; match_mode: "exact" | "contains"; created_at?: string;
       }>;
       moderation_actions: Table<{
-        id: number; room_id: string; comment_id: string | null; actor_id: string;
+        // actor_id は退会で null になる（`on delete set null`）。監査行は残す。
+        id: number; room_id: string; comment_id: string | null; actor_id: string | null;
         action: "approve" | "hide" | "restore" | "mark_answered" | "mark_open"; created_at: string;
+      }>;
+      content_reports: Table<{
+        id: string; room_id: string; comment_id: string | null; room_stamp_id: string | null;
+        reason: ReportReason; reporter_id: string | null; created_at: string;
       }>;
       room_branding: Table<{
         room_id: string; hide_layertalk_branding: boolean; brand_color: string;
@@ -136,6 +144,13 @@ export type Database = {
         Returns: Database["public"]["Tables"]["comments"]["Row"];
       };
       toggle_comment_like: { Args: { p_comment_id: string; p_client_id: string }; Returns: number };
+      report_content: {
+        Args: {
+          p_room_id: string; p_comment_id?: string | null;
+          p_room_stamp_id?: string | null; p_reason?: ReportReason;
+        };
+        Returns: undefined;
+      };
       liked_comment_ids: { Args: { p_room_id: string; p_client_id: string }; Returns: string[] };
       start_presentation: {
         Args: { p_room_id: string };

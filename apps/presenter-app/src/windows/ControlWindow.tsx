@@ -28,7 +28,6 @@ import {
   Copy,
   GripVertical,
   Loader2,
-  LogOut,
   MessageSquareText,
   Play,
   PauseCircle,
@@ -41,10 +40,12 @@ import {
 import { STAMP_EMOJIS } from "@layertalk/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { AccountFooter } from "../components/AccountFooter";
 import { JoinQrCard } from "../components/JoinQrCard";
 import { EventPassPanel } from "../components/EventPassPanel";
 import { PendingApprovalQueue } from "../components/PendingApprovalQueue";
 import { PresenterAuth } from "../components/PresenterAuth";
+import { ReportQueue } from "../components/ReportQueue";
 import { useDocumentLang, useMessages, type Messages } from "../i18n";
 import { audienceUrl as buildAudienceUrl } from "../lib/audience";
 import { patchRoomBranding, useRoomBranding } from "../lib/branding";
@@ -1107,6 +1108,17 @@ export function ControlWindow() {
           onModerated={upsertLocal}
         />
 
+        {/* 観客からの通報。承認待ちと同じ理由でここに置く（壇上で最初に見る場所）。
+            承認制と違って**無料ルームでも届く**ので、Event Pass の有無で出し分けない。 */}
+        <ReportQueue
+          roomId={settings.roomId}
+          locale={settings.language}
+          comments={comments}
+          stamps={stamps}
+          onModerated={upsertLocal}
+          onStampDeleted={removeStampLocal}
+        />
+
         <Reorder.Group
           axis="y"
           as="div"
@@ -1128,10 +1140,19 @@ export function ControlWindow() {
           ))}
         </Reorder.Group>
 
+        {/* 発表中は畳む。退会ダイアログがスライドの前で開くと操作不能になる。 */}
         {!live && (
-          <button type="button" onClick={() => void supabase.auth.signOut()} className="text-text-faint hover:text-text flex w-full items-center justify-center gap-1.5 py-2 text-[11px]">
-            <LogOut size={12} />{settings.language === "ja" ? "ログアウト" : "Sign out"}
-          </button>
+          <AccountFooter
+            locale={settings.language}
+            onDeleted={() => update({
+              roomId: null,
+              roomCode: null,
+              roomTitle: null,
+              presentationSessionId: null,
+              // 消えたルームへ「1タップで戻る」ボタンを出しても踏めないので残さない。
+              previousRoomCode: null,
+            })}
+          />
         )}
 
       </div>

@@ -116,6 +116,39 @@ export const en: Messages = {
     failed: "Could not apply that decision",
   },
 
+  account: {
+    title: "Account",
+    signOut: "Sign out",
+    privacy: "Privacy",
+    terms: "Terms",
+    support: "Support",
+    openFailed: "Could not open that page",
+    delete: "Delete account",
+    deleteTitle: "Delete your account?",
+    deleteBody: "Your rooms, comments, questions, custom stamps, reports, and Event Pass entitlements will all be removed. This cannot be undone.",
+    deleteKeeps: "Payment records stay with Stripe for accounting and fraud prevention.",
+    deleteConfirmLabel: "Type DELETE to confirm",
+    deleteConfirmWord: "DELETE",
+    deleteCancel: "Cancel",
+    deleteSubmit: "Permanently delete",
+    deleteFailed: "Could not delete your account. Please try again in a moment",
+    deleteExpired: "Your session expired. Sign in again before deleting your account",
+    deleteOffline: "Could not delete your account. Check your connection",
+  },
+
+  reports: {
+    title: (n: number) => (n === 1 ? "1 report" : `${n} reports`),
+    reason: {
+      offensive: "Offensive",
+      harassment: "Harassment",
+      spam: "Spam",
+      other: "Other",
+    },
+    stampTarget: "Custom stamp",
+    missingTarget: "Deleted post",
+    needsPass: "Hiding a comment needs an Event Pass. Stamps can be deleted from the list in this window.",
+  },
+
   qr: {
     scan: "SCAN TO JOIN",
   },

@@ -145,6 +145,24 @@ export const en: Messages = {
     unlike: "Remove like",
   },
 
+  report: {
+    open: "Report this post",
+    openStamp: "Report this stamp",
+    title: "Why are you reporting this?",
+    body: "The presenter is notified and will review it. Your identity is not shared.",
+    reasons: {
+      offensive: "Offensive or abusive",
+      harassment: "Targeted harassment",
+      spam: "Spam or advertising",
+      other: "Something else",
+    },
+    cancel: "Cancel",
+    done: "Reported",
+    failed: "Could not send the report",
+    contact: "Contact the operator",
+    stampHint: "Press and hold a custom stamp to report it",
+  },
+
   stamp: {
     added: "Stamp added",
     confirmTitle: "Turn this image into a stamp",

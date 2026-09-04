@@ -30,8 +30,10 @@ import {
 import { clientId, supabase } from "../lib/supabase";
 import {
   getPresentationState,
+  isNativeOverlay,
   onOverlayPeek,
   onPresentationStateChanged,
+  overlayPushComment,
   refitOverlay,
 } from "../lib/tauri";
 
@@ -121,12 +123,36 @@ export function OverlayWindow() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  /**
+   * ネイティブ描画に移行済みか。透過 WKWebView は private API を要求するため
+   * （App Store 2.5.1）、描画は段階的に Rust 側へ移している。
+   *
+   * true のとき、この窓の React ツリーは**どこにも表示されていない**
+   * （webview は tao 窓に残ったまま非表示）。ここは Supabase の購読を持つ
+   * データ供給係として動き、描画そのものは Rust に投げる。
+   */
+  const [nativeOverlay, setNativeOverlay] = useState(false);
+  useEffect(() => {
+    void isNativeOverlay().then(setNativeOverlay).catch(() => setNativeOverlay(false));
+  }, []);
+
   const showComment = useCallback(
     (text: string) => {
+      if (nativeOverlay) {
+        // 横流しのみ移植済み。フキダシはまだ webview 側にしか無いので、
+        // bubble のときは何も出ない（移行中の既知の穴）。
+        void overlayPushComment(
+          text,
+          OVERLAY_DEFAULTS.fontSize,
+          OVERLAY_DEFAULTS.opacity,
+          OVERLAY_DEFAULTS.flowDurationSec,
+        );
+        return;
+      }
       const target = settings.displayMode === "flow" ? flowRef : bubbleRef;
       target.current?.push(text);
     },
-    [settings.displayMode],
+    [nativeOverlay, settings.displayMode],
   );
 
   const handleInsert = useCallback(

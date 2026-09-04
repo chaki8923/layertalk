@@ -78,6 +78,24 @@ export const readQuestionCapture = (sessionId: string, questionId: string) =>
 export const questionCaptureCount = (sessionId: string) =>
   invoke<number>("question_capture_count", { sessionId });
 
+/**
+ * オーバーレイをネイティブ描画（Core Animation）で出しているか。
+ *
+ * 透過 WKWebView は private API を要求する（App Store 2.5.1）ので、透過が要る窓からは
+ * webview を外していく移行中。`LAYERTALK_NATIVE_OVERLAY=1` で起動したときだけ true。
+ * **移植が終わったらこの分岐ごと消える。**
+ */
+export const isNativeOverlay = () => invoke<boolean>("is_native_overlay");
+
+export const overlayPushComment = (
+  text: string,
+  fontSize: number,
+  opacity: number,
+  baseDurationSec: number,
+) => invoke<void>("overlay_push_comment", { text, fontSize, opacity, baseDurationSec });
+
+export const overlayClear = () => invoke<void>("overlay_clear");
+
 export const getPresentationState = () => invoke<boolean>("get_presentation_state");
 
 /** 開始前にオーバーレイを ms ミリ秒だけ見せる。発表中は何もしない。 */

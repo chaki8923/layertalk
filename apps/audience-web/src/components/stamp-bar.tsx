@@ -15,13 +15,14 @@ import { ImagePlus, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { ReportSheet } from "@/components/report-button";
 import { useLocale, useMessages } from "@/i18n/locale-context";
 import { supabase } from "@/lib/supabase";
 
 /** バーに並ぶ一枚。組み込みの絵文字か、このルームにアップロードされた画像。 */
 type BarItem =
   | { kind: "emoji"; key: string; emoji: string }
-  | { kind: "custom"; key: string; url: string };
+  | { kind: "custom"; key: string; url: string; stampId: string };
 
 type FloatingStamp = {
   key: number;
@@ -32,6 +33,8 @@ type FloatingStamp = {
 };
 
 type Props = {
+  /** 通報（App Store 1.2）に要る。カスタムスタンプはルーム単位なので必ず判る。 */
+  roomId: string | null;
   onSend: (key: string) => void;
   stamps: RoomStamp[];
   /** アップロード本体。失敗したら throw する（呼び出し側でロールバックする）。 */
@@ -48,13 +51,43 @@ type Props = {
  * 組み込みの絵文字に続けて、このルームにアップロードされた画像スタンプが並ぶ。
  * 枚数が可変なのでバーは横スクロールする。
  */
-export function StampBar({ onSend, stamps, onUpload, disabled = false }: Props) {
+export function StampBar({ roomId, onSend, stamps, onUpload, disabled = false }: Props) {
   const t = useMessages();
   const locale = useLocale();
   const [floating, setFloating] = useState<FloatingStamp[]>([]);
   const seqRef = useRef(0);
   const barRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * カスタムスタンプの通報は長押しで開く（App Store 1.2）。
+   *
+   * バーは 44px の丸ボタンが並ぶ横スクロールなので、1枚ごとに通報ボタンを足すと
+   * 列が2倍の長さになり、押し間違いも増える。長押しにして列は触らない。
+   * 長押しが成立したら、指を離したときの click（＝スタンプ送信）を1回だけ捨てる。
+   */
+  const [reportStampId, setReportStampId] = useState<string | null>(null);
+  const longPressTimer = useRef<number | null>(null);
+  const longPressFired = useRef(false);
+
+  const cancelLongPress = useCallback(() => {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  const beginLongPress = useCallback((stampId: string) => {
+    cancelLongPress();
+    longPressFired.current = false;
+    longPressTimer.current = window.setTimeout(() => {
+      longPressFired.current = true;
+      setReportStampId(stampId);
+    }, 500);
+  }, [cancelLongPress]);
+
+  // 押しっぱなしのままアンマウントされてもタイマーを残さない。
+  useEffect(() => cancelLongPress, [cancelLongPress]);
 
   // 選んだ画像を「追加する」まで保留しておく。押し間違えてカメラロールの別の写真を
   // そのまま全員に公開してしまわないための一段。native の confirm() は使わない。
@@ -73,6 +106,7 @@ export function StampBar({ onSend, stamps, onUpload, disabled = false }: Props) 
         kind: "custom" as const,
         key: customStampKey(stamp.id),
         url: roomStampUrl(supabase, stamp.path),
+        stampId: stamp.id,
       })),
     ],
     [stamps],
@@ -215,6 +249,11 @@ export function StampBar({ onSend, stamps, onUpload, disabled = false }: Props) 
           </AnimatePresence>
         </div>
 
+        {/* 長押しの導線は見えないと使われない。カスタムが1枚も無いあいだは出さない。 */}
+        {roomId && stamps.length > 0 && (
+          <p className="text-text-faint mb-1 px-1 text-center text-[10px] leading-4">{t.report.stampHint}</p>
+        )}
+
         <div className="lt-glass rounded-sheet shadow-float flex items-center p-1.5">
           {/* スクロールするのはスタンプの列だけ。追加ボタンはこの外に固定する
               （中に入れるとカスタムが増えたぶん右へ流れて、画面外に隠れる） */}
@@ -224,9 +263,19 @@ export function StampBar({ onSend, stamps, onUpload, disabled = false }: Props) 
                 key={item.key}
                 type="button"
                 aria-label={
-                  item.kind === "emoji" ? t.stamp.send(item.emoji) : t.stamp.sendCustom
+                  item.kind === "emoji" ? t.stamp.send(item.emoji) : `${t.stamp.sendCustom} — ${t.report.stampHint}`
                 }
-                onClick={(event) => handleTap(item, event.currentTarget)}
+                title={item.kind === "custom" ? t.report.stampHint : undefined}
+                onClick={(event) => {
+                  // 長押しで通報シートを開いた直後の click は送信ではない。
+                  if (longPressFired.current) { longPressFired.current = false; return; }
+                  handleTap(item, event.currentTarget);
+                }}
+                onPointerDown={() => { if (item.kind === "custom" && roomId) beginLongPress(item.stampId); }}
+                onPointerUp={cancelLongPress}
+                onPointerLeave={cancelLongPress}
+                onPointerCancel={cancelLongPress}
+                onContextMenu={(event) => { if (item.kind === "custom") event.preventDefault(); }}
                 disabled={disabled}
                 whileTap={{ scale: 0.82 }}
                 transition={motionPresets.press}
@@ -275,6 +324,15 @@ export function StampBar({ onSend, stamps, onUpload, disabled = false }: Props) 
           </motion.button>
         </div>
       </div>
+
+      {roomId && (
+        <ReportSheet
+          roomId={roomId}
+          target={reportStampId ? { stampId: reportStampId } : null}
+          open={reportStampId !== null}
+          onClose={() => setReportStampId(null)}
+        />
+      )}
     </div>
   );
 }

@@ -126,6 +126,46 @@ export const ja = {
   },
 
   /** スライドに重ねて**観客が読む**文字列。ルームの言語＝発表者の設定なのでここも連動する。 */
+  /**
+   * アカウント関連。**退会はアプリ内に必ず置くこと**（App Store 5.1.1(v)）。
+   * プライバシー・規約・サポートの導線も、購入シートの中だけでなくここから辿れるようにする
+   * （課金画面を開かない利用者が方針にたどり着けないのは 5.1.1(i) 違反）。
+   */
+  account: {
+    title: "アカウント",
+    signOut: "ログアウト",
+    privacy: "プライバシー",
+    terms: "利用規約",
+    support: "サポート",
+    openFailed: "案内ページを開けませんでした",
+    delete: "アカウントを削除",
+    deleteTitle: "アカウントを削除しますか？",
+    deleteBody: "ルーム、コメント、質問、カスタムスタンプ、通報、Event Pass の権利がすべて消えます。元に戻せません。",
+    deleteKeeps: "支払いの記録は、会計と不正対策のため Stripe 側に残ります。",
+    deleteConfirmLabel: "確認のため DELETE と入力してください",
+    deleteConfirmWord: "DELETE",
+    deleteCancel: "やめる",
+    deleteSubmit: "完全に削除する",
+    deleteFailed: "アカウントを削除できませんでした。時間をおいてもう一度お試しください",
+    deleteExpired: "サインインの有効期限が切れました。ログインし直してから操作してください",
+    deleteOffline: "アカウントを削除できませんでした。接続を確認してください",
+  },
+
+  /** 観客からの通報（App Store 1.2）。無料ルームでも必ず届く。 */
+  reports: {
+    title: (n: number) => `通報 ${n} 件`,
+    reason: {
+      offensive: "不適切",
+      harassment: "嫌がらせ",
+      spam: "スパム",
+      other: "その他",
+    },
+    stampTarget: "カスタムスタンプ",
+    missingTarget: "削除済みの投稿",
+    /** 通報を捌く操作（非表示）は Event Pass の機能なので、無い場合はこれを出す。 */
+    needsPass: "非表示にするには Event Pass が必要です。スタンプはこの窓の一覧から削除できます。",
+  },
+
   qr: {
     scan: "スマホで参加",
   },

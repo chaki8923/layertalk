@@ -50,6 +50,26 @@ export async function openAudiencePage(path: string) {
   await openUrl(`${API_BASE}${path.startsWith("/") ? path : `/${path}`}`);
 }
 
+/**
+ * 退会する。App Store 5.1.1(v) が「アカウントを作れるならアプリ内で消せること」を要求する。
+ *
+ * 課金の話ではないが、この経路が要るものは全部この file が持っている
+ * （`API_BASE` / `bearerHeaders` / `BillingError` / CORS を通した Route Handler）ので
+ * ここに置く。`status` を保つ理由は `BillingError` の doc を参照。
+ *
+ * 権利のキャッシュは**呼び出し側ではなくここで**捨てる。消し忘れると、退会後に
+ * 同じ端末で新しいアカウントを作ったときに前の Event Pass が生きているように見える。
+ */
+export async function deleteAccount(): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/account/delete`, {
+    method: "POST",
+    headers: await bearerHeaders(),
+  });
+  const body = await jsonBody(response);
+  if (!response.ok) throw new BillingError(body.error ?? "Account deletion failed", response.status);
+  try { localStorage.removeItem(LEASE_KEY); } catch { /* Storage が使えなくても退会は済んでいる */ }
+}
+
 export async function openEntitlementReceipt(entitlementId: string) {
   const response = await fetch(`${API_BASE}/api/billing/receipt`, {
     method: "POST",

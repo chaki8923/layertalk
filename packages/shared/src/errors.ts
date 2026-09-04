@@ -39,6 +39,8 @@ export type LayerTalkErrorCode =
   | "logo_upload_failed"
   | "session_failed"
   | "report_failed"
+  /** 観客からの通報が送れなかった。発表レポート（= report_failed）とは別物。 */
+  | "content_report_failed"
   | "image_unreadable"
   | "image_unsupported_device"
   | "image_convert_failed"
@@ -68,6 +70,7 @@ const ja: Record<LayerTalkErrorCode, string> = {
   logo_upload_failed: "ロゴを保存できませんでした",
   session_failed: "発表セッションを更新できませんでした",
   report_failed: "発表レポートを作成できませんでした",
+  content_report_failed: "通報を送信できませんでした。時間をおいてもう一度お試しください",
   image_unreadable: "この画像は読み込めませんでした。別の画像を選んでください",
   image_unsupported_device: "この端末では画像を変換できませんでした",
   image_convert_failed: "画像の変換に失敗しました",
@@ -98,6 +101,7 @@ const en: Record<LayerTalkErrorCode, string> = {
   logo_upload_failed: "Could not save the logo",
   session_failed: "Could not update the presentation session",
   report_failed: "Could not create the presentation report",
+  content_report_failed: "Could not send the report. Please try again in a moment",
   image_unreadable: "That image could not be read. Please choose another one",
   image_unsupported_device: "This device cannot convert images",
   image_convert_failed: "Could not convert the image",
