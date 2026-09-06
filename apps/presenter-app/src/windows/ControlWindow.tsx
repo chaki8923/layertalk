@@ -9,6 +9,8 @@ import {
   resolveErrorMessage,
   ROOM_CODE_PATTERN,
   ROOM_LOGO_BUCKET,
+  parseCustomStampKey,
+  resolveRoomStampImageUrl,
   roomStampUrl,
   resumeRoom,
   setRoomLanguage,
@@ -16,13 +18,16 @@ import {
   toLogoPng,
   useComments,
   useRoomStamps,
+  useStampChannel,
   type Locale,
   type Comment,
+  type ModerationRules,
   type PresentationSession,
   type RoomBranding,
   type RoomStamp,
 } from "@layertalk/shared";
 import { motion, Reorder, useDragControls } from "motion/react";
+import { QRCodeCanvas } from "qrcode.react";
 import {
   Check,
   Copy,
@@ -46,6 +51,7 @@ import { EventPassPanel } from "../components/EventPassPanel";
 import { PendingApprovalQueue } from "../components/PendingApprovalQueue";
 import { PresenterAuth } from "../components/PresenterAuth";
 import { ReportQueue } from "../components/ReportQueue";
+import { SafetyPanel } from "../components/SafetyPanel";
 import { useDocumentLang, useMessages, type Messages } from "../i18n";
 import { audienceUrl as buildAudienceUrl } from "../lib/audience";
 import { patchRoomBranding, useRoomBranding } from "../lib/branding";
@@ -55,18 +61,28 @@ import {
   saveSettings,
   sendTestComment,
   sendTestStamp,
+  onTestComment,
+  onTestStamp,
   type PresenterSettings,
   type SectionId,
 } from "../lib/settings";
-import { supabase } from "../lib/supabase";
+import { clientId, supabase } from "../lib/supabase";
+import { initializeBillingRecovery } from "../lib/billing";
 import { isPaidPresentationSession, loadQuestionCapturePreference, questionCaptureErrorMessage, questionCapturePendingMessage } from "../lib/question-capture";
 import {
   captureQuestionSlide,
   getPresentationState,
   listMonitors,
   onQuestionCaptureError,
+  onOverlayPeek,
   onPresentationStateChanged,
+  overlayClear,
+  overlayPushComment,
+  overlayPushStamp,
+  overlaySetJoinCard,
   peekOverlay,
+  questionPanelPush,
+  questionPanelReset,
   setAppLanguage,
   setOverlayMonitor,
   startCurrentWindowDragging,
@@ -77,6 +93,23 @@ import {
 
 const PEEK_MS = 2600;
 
+const prefersReducedMotion = () =>
+  window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+
+async function canvasPngBytes(canvas: HTMLCanvasElement): Promise<number[]> {
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error("QR PNG conversion failed")), "image/png");
+  });
+  return [...new Uint8Array(await blob.arrayBuffer())];
+}
+
+async function remotePngBytes(url: string | null | undefined): Promise<number[] | null> {
+  if (!url) return null;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Image download failed (${response.status})`);
+  return [...new Uint8Array(await response.arrayBuffer())];
+}
+
 export function ControlWindow() {
   const [settings, setSettings] = useState<PresenterSettings>(loadSettings);
   const [busy, setBusy] = useState(false);
@@ -85,6 +118,8 @@ export function ControlWindow() {
   const [copied, setCopied] = useState(false);
   const [confirmSwitch, setConfirmSwitch] = useState(false);
   const [live, setLive] = useState(false);
+  const [peeking, setPeeking] = useState(false);
+  const [moderation, setModeration] = useState<ModerationRules | null>(null);
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
   const [authReady, setAuthReady] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
@@ -104,9 +139,47 @@ export function ControlWindow() {
     return () => data.subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (!signedIn) return;
+    let cancelled = false;
+    let dispose: (() => void) | undefined;
+    void initializeBillingRecovery().then((cleanup) => {
+      if (cancelled) cleanup();
+      else dispose = cleanup;
+    }).catch(() => undefined);
+    return () => { cancelled = true; dispose?.(); };
+  }, [signedIn]);
+
   // 参加QRカードのロゴ・色・LayerTalk表記。ここが唯一の書き手で、
   // オーバーレイ窓へは `patchRoomBranding` が Tauri イベントで届ける。
   const { branding, setBranding, reload: reloadBranding } = useRoomBranding(settings.roomId);
+
+  useEffect(() => {
+    if (!settings.roomId) { setModeration(null); return; }
+    let cancelled = false;
+    const roomId = settings.roomId;
+    try {
+      const cached = localStorage.getItem(`layertalk:event-controls:${roomId}`);
+      if (cached) setModeration(JSON.parse(cached) as ModerationRules);
+    } catch { /* The server value below replaces corrupt cache data. */ }
+
+    void supabase.from("moderation_rules").select("*").eq("room_id", roomId).single()
+      .then(({ data }) => {
+        if (!cancelled && data) {
+          setModeration(data);
+          localStorage.setItem(`layertalk:event-controls:${roomId}`, JSON.stringify(data));
+        }
+      });
+    const channel = supabase.channel(`moderation:${roomId}`).on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "moderation_rules", filter: `room_id=eq.${roomId}` },
+      ({ new: row }) => {
+        setModeration(row as ModerationRules);
+        localStorage.setItem(`layertalk:event-controls:${roomId}`, JSON.stringify(row));
+      },
+    ).subscribe();
+    return () => { cancelled = true; void supabase.removeChannel(channel); };
+  }, [settings.roomId]);
 
   // ブランド設定の SELECT は authenticated 限定。サインイン前の取得は空振りするので、
   // 通ったところで取り直す（キャッシュのまま古い値で QR を出さないため）。
@@ -170,17 +243,110 @@ export function ControlWindow() {
     });
   }, [reportCaptureFailure, settings.language]);
 
+  const renderEnabledRef = useRef(false);
+  const delayedCommentsRef = useRef<Map<string, number>>(new Map());
+  renderEnabledRef.current = live && !settings.emergencyPaused && Boolean(settings.roomId);
+
+  const showNativeComment = useCallback((text: string) => {
+    const duration = settings.displayMode === "bubble"
+      ? OVERLAY_DEFAULTS.bubbleDurationSec
+      : OVERLAY_DEFAULTS.flowDurationSec;
+    void overlayPushComment(
+      text,
+      settings.displayMode,
+      OVERLAY_DEFAULTS.fontSize,
+      OVERLAY_DEFAULTS.opacity,
+      duration,
+      prefersReducedMotion(),
+    );
+  }, [settings.displayMode]);
+
+  const handleIncomingComment = useCallback((comment: Comment) => {
+    captureIncomingQuestion(comment);
+    if (!renderEnabledRef.current || comment.status !== "approved") return;
+    if (moderation?.question_only && !comment.is_question) return;
+    if (comment.is_question) void questionPanelPush(comment.content);
+
+    const delay = (moderation?.display_delay_seconds ?? 0) * 1000;
+    if (delay > 0) {
+      const timer = window.setTimeout(() => {
+        delayedCommentsRef.current.delete(comment.id);
+        if (renderEnabledRef.current) showNativeComment(comment.content);
+      }, delay);
+      delayedCommentsRef.current.set(comment.id, timer);
+    } else {
+      showNativeComment(comment.content);
+    }
+  }, [captureIncomingQuestion, moderation, showNativeComment]);
+
   const { comments, status, upsertLocal } = useComments({
     client: settings.roomId ? supabase : null,
     roomId: settings.roomId,
     includeModerated: true,
-    onInsert: captureIncomingQuestion,
+    onInsert: handleIncomingComment,
   });
 
-  const { stamps, removeLocal: removeStampLocal, addLocal: addStampLocal } = useRoomStamps({
+  const handleCommentModerated = useCallback((comment: Comment) => {
+    if (comment.status !== "approved") {
+      const timer = delayedCommentsRef.current.get(comment.id);
+      if (timer !== undefined) window.clearTimeout(timer);
+      delayedCommentsRef.current.delete(comment.id);
+    }
+    upsertLocal(comment);
+  }, [upsertLocal]);
+
+  const { stamps, byId: stampsById, removeLocal: removeStampLocal, addLocal: addStampLocal } = useRoomStamps({
     client: settings.roomId ? supabase : null,
     roomId: settings.roomId,
   });
+
+  const playStamp = useCallback((key: string, count: number) => {
+    const stampId = parseCustomStampKey(key);
+    if (stampId === null) {
+      void overlayPushStamp(
+        key,
+        null,
+        count,
+        OVERLAY_DEFAULTS.opacity,
+        OVERLAY_DEFAULTS.stampDurationSec,
+        prefersReducedMotion(),
+      );
+      return;
+    }
+    if (!settings.allowCustomStamps || !settings.roomId) return;
+    void resolveRoomStampImageUrl(supabase, settings.roomId, stampId, stampsById.get(stampId))
+      .then(async (url) => {
+        if (!url) return;
+        const image = await remotePngBytes(url);
+        if (!image) return;
+        await overlayPushStamp(
+          null,
+          image,
+          count,
+          OVERLAY_DEFAULTS.opacity,
+          OVERLAY_DEFAULTS.stampDurationSec,
+          prefersReducedMotion(),
+        );
+      })
+      .catch(() => undefined);
+  }, [settings.allowCustomStamps, settings.roomId, stampsById]);
+
+  useStampChannel({
+    client: renderEnabledRef.current ? supabase : null,
+    roomId: settings.roomId,
+    clientId,
+    onStamp: (payload) => playStamp(payload.emoji, payload.count),
+  });
+
+  useEffect(() => {
+    const unlisten = onTestComment(showNativeComment);
+    return () => { void unlisten.then((off) => off()); };
+  }, [showNativeComment]);
+
+  useEffect(() => {
+    const unlisten = onTestStamp(({ emoji, count }) => playStamp(emoji, count));
+    return () => { void unlisten.then((off) => off()); };
+  }, [playStamp]);
 
   // 発表状態（トレイからの終了もここに届く）
   useEffect(() => {
@@ -190,6 +356,26 @@ export function ControlWindow() {
       void unlisten.then((off) => off());
     };
   }, []);
+
+  useEffect(() => {
+    let timer: number | undefined;
+    const unlisten = onOverlayPeek((ms) => {
+      setPeeking(true);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setPeeking(false), ms);
+    });
+    return () => { window.clearTimeout(timer); void unlisten.then((off) => off()); };
+  }, []);
+
+  useEffect(() => {
+    if (live) void questionPanelReset();
+    if ((!live && !peeking) || settings.emergencyPaused) {
+      for (const timer of delayedCommentsRef.current.values()) window.clearTimeout(timer);
+      delayedCommentsRef.current.clear();
+      void overlayClear();
+      void questionPanelReset();
+    }
+  }, [live, peeking, settings.emergencyPaused]);
 
   useEffect(() => {
     const unlisten = onQuestionCaptureError((captureError) => {
@@ -388,6 +574,60 @@ export function ControlWindow() {
   };
 
   const audienceUrl = buildAudienceUrl(settings.roomCode);
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        const visible = settings.showJoinQr
+          && Boolean(audienceUrl)
+          && Boolean(settings.roomCode)
+          && (live || peeking)
+          && !settings.emergencyPaused;
+        if (!visible) {
+          await overlaySetJoinCard({
+            visible: false,
+            qrPng: [],
+            logoPng: null,
+            code: "",
+            label: "",
+            brandColor: "#6B8AFF",
+            hideLayertalk: false,
+          });
+          return;
+        }
+        const canvas = qrCanvasRef.current;
+        if (!canvas || cancelled) return;
+        const [qrPng, logoPng] = await Promise.all([
+          canvasPngBytes(canvas),
+          remotePngBytes(branding?.logoUrl).catch(() => null),
+        ]);
+        if (cancelled) return;
+        await overlaySetJoinCard({
+          visible: true,
+          qrPng,
+          logoPng,
+          code: settings.roomCode ?? "",
+          label: t.qr.scan,
+          brandColor: branding?.brand_color ?? "#6B8AFF",
+          hideLayertalk: branding?.hide_layertalk_branding ?? false,
+        });
+      })().catch(() => undefined);
+    }, 0);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [
+    audienceUrl,
+    branding?.brand_color,
+    branding?.hide_layertalk_branding,
+    branding?.logoUrl,
+    live,
+    peeking,
+    settings.emergencyPaused,
+    settings.roomCode,
+    settings.showJoinQr,
+    t.qr.scan,
+  ]);
 
   /**
    * ブランド設定の1列だけを書き換える。
@@ -1018,7 +1258,7 @@ export function ControlWindow() {
           locale={settings.language}
           live={live}
           comments={comments}
-          onCommentModerated={upsertLocal}
+          onCommentModerated={handleCommentModerated}
           display={{ displayMode: settings.displayMode, showJoinQr: settings.showJoinQr, allowCustomStamps: settings.allowCustomStamps }}
           onApplyPreset={(preset) => update({
             displayMode: preset.display_mode,
@@ -1035,6 +1275,19 @@ export function ControlWindow() {
 
   return (
     <div className="bg-bg text-text flex h-screen flex-col overflow-hidden">
+      {audienceUrl && (
+        <div aria-hidden className="hidden">
+          <QRCodeCanvas
+            ref={qrCanvasRef}
+            value={audienceUrl}
+            size={220}
+            marginSize={2}
+            level="M"
+            bgColor="#ffffff"
+            fgColor="#0b0d12"
+          />
+        </div>
+      )}
       {/* titleBarStyle: Overlay なので、信号機ボタンぶんの余白と
           ドラッグ領域を自前で用意する */}
       <div
@@ -1105,7 +1358,7 @@ export function ControlWindow() {
         <PendingApprovalQueue
           comments={comments}
           locale={settings.language}
-          onModerated={upsertLocal}
+          onModerated={handleCommentModerated}
         />
 
         {/* 観客からの通報。承認待ちと同じ理由でここに置く（壇上で最初に見る場所）。
@@ -1115,9 +1368,16 @@ export function ControlWindow() {
           locale={settings.language}
           comments={comments}
           stamps={stamps}
-          onModerated={upsertLocal}
+          onModerated={handleCommentModerated}
           onStampDeleted={removeStampLocal}
         />
+
+        {settings.roomId && <SafetyPanel
+          roomId={settings.roomId}
+          locale={settings.language}
+          comments={comments}
+          onCommentBlocked={handleCommentModerated}
+        />}
 
         <Reorder.Group
           axis="y"

@@ -290,7 +290,11 @@ impl QuestionCaptureState {
                 }
                 let status = sample.frame_status();
                 let usable = usable_status(status);
-                let frame = if usable { frame_from_sample(&sample) } else { None };
+                let frame = if usable {
+                    frame_from_sample(&sample)
+                } else {
+                    None
+                };
                 if let Ok(mut health) = health_for_handler.lock() {
                     health.frames_seen += 1;
                     health.last_status = Some(frame_status_name(status));

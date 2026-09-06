@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:mas": "tsc && LAYERTALK_DISTRIBUTION_CHANNEL=mas vite build",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "tauri:build:mas": "LAYERTALK_DISTRIBUTION_CHANNEL=mas tauri build --config src-tauri/tauri.mas.conf.json",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -22,6 +22,7 @@ export type LayerTalkErrorCode =
   | "comment_empty"
   | "comment_too_long"
   | "comment_insert_failed"
+  | "comment_rejected"
   | "like_failed"
   | "liked_ids_failed"
   | "stamp_fetch_failed"
@@ -41,6 +42,7 @@ export type LayerTalkErrorCode =
   | "report_failed"
   /** 観客からの通報が送れなかった。発表レポート（= report_failed）とは別物。 */
   | "content_report_failed"
+  | "participant_block_failed"
   | "image_unreadable"
   | "image_unsupported_device"
   | "image_convert_failed"
@@ -55,6 +57,7 @@ const ja: Record<LayerTalkErrorCode, string> = {
   comment_empty: "コメントが空です",
   comment_too_long: `コメントは${COMMENT_MAX_LENGTH}文字までです`,
   comment_insert_failed: "コメントを送信できませんでした",
+  comment_rejected: "このコメントはルームの安全フィルターにより送信できません",
   like_failed: "いいねを反映できませんでした",
   liked_ids_failed: "いいねの状態を取得できませんでした",
   stamp_fetch_failed: "スタンプの取得に失敗しました",
@@ -71,6 +74,7 @@ const ja: Record<LayerTalkErrorCode, string> = {
   session_failed: "発表セッションを更新できませんでした",
   report_failed: "発表レポートを作成できませんでした",
   content_report_failed: "通報を送信できませんでした。時間をおいてもう一度お試しください",
+  participant_block_failed: "参加者をブロックできませんでした",
   image_unreadable: "この画像は読み込めませんでした。別の画像を選んでください",
   image_unsupported_device: "この端末では画像を変換できませんでした",
   image_convert_failed: "画像の変換に失敗しました",
@@ -86,6 +90,7 @@ const en: Record<LayerTalkErrorCode, string> = {
   comment_empty: "Your comment is empty",
   comment_too_long: `Comments can be up to ${COMMENT_MAX_LENGTH} characters`,
   comment_insert_failed: "Could not send your comment",
+  comment_rejected: "This comment was rejected by the room safety filter",
   like_failed: "Could not register your like",
   liked_ids_failed: "Could not load your likes",
   stamp_fetch_failed: "Could not load the stamps",
@@ -102,6 +107,7 @@ const en: Record<LayerTalkErrorCode, string> = {
   session_failed: "Could not update the presentation session",
   report_failed: "Could not create the presentation report",
   content_report_failed: "Could not send the report. Please try again in a moment",
+  participant_block_failed: "Could not block the participant",
   image_unreadable: "That image could not be read. Please choose another one",
   image_unsupported_device: "This device cannot convert images",
   image_convert_failed: "Could not convert the image",

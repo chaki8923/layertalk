@@ -1,11 +1,11 @@
-import { EyeOff, Flag, Loader2, Trash2 } from "lucide-react";
+import { Ban, Flag, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
-  deleteRoomStamp,
+  banRoomParticipant,
   fetchContentReports,
-  moderateComment,
   resolveErrorMessage,
+  ROOM_STAMP_BUCKET,
   roomStampUrl,
   type Comment,
   type ContentReport,
@@ -15,6 +15,7 @@ import {
 
 import { useMessages } from "../i18n";
 import { supabase } from "../lib/supabase";
+import { PARTICIPANT_BLOCKED_EVENT } from "./SafetyPanel";
 
 type Props = {
   roomId: string | null;
@@ -40,9 +41,8 @@ type Grouped = {
  *
  * **`has_paid_room_features` に依存させないこと。** 通報の受け取りと表示は無料ルームでも
  * 動く（`content_reports` の SELECT は `is_room_operator` だけを見ている）。
- * 一方で「非表示にする」= `moderate_comment` は Event Pass の機能なので、そこだけ落ちる。
- * 落ちたときは黙らず `needsPass` を出す — 罠 #16 の「画面は成功・DB は無反応」を作らない。
- * カスタムスタンプの削除は課金と無関係に通るので、無料でも必ず消せる。
+ * 対応ボタンは対象を削除／非表示にし、投稿者をルーム単位でブロックする。
+ * この安全操作は Event Pass の有無に関係なく必ず動く。
  */
 export function ReportQueue({ roomId, locale, comments, stamps, onModerated, onStampDeleted }: Props) {
   const t = useMessages(locale);
@@ -108,12 +108,7 @@ export function ReportQueue({ roomId, locale, comments, stamps, onModerated, onS
     return [...byTarget.values()];
   }, [reports, commentsById, stampsById]);
 
-  /**
-   * `hint` は「この操作が落ちる一番ありそうな理由」。非表示は Event Pass を要求するので
-   * `needsPass` を添える。スタンプの削除は課金と無関係に通るはずなので、素の理由だけ出す
-   * — ここを一緒くたにすると、通信断を「課金してください」と誤って案内することになる。
-   */
-  const runAction = async (key: string, action: () => Promise<void>, hint?: string) => {
+  const runAction = async (key: string, action: () => Promise<void>) => {
     if (busyKeys.has(key)) return;
     setBusyKeys((current) => new Set(current).add(key));
     setError(null);
@@ -121,7 +116,7 @@ export function ReportQueue({ roomId, locale, comments, stamps, onModerated, onS
       await action();
     } catch (err) {
       const message = resolveErrorMessage(err, locale);
-      setError(hint ? `${message}｜${hint}` : message);
+      setError(message);
     } finally {
       setBusyKeys((current) => {
         const next = new Set(current);
@@ -174,12 +169,20 @@ export function ReportQueue({ roomId, locale, comments, stamps, onModerated, onS
                     type="button"
                     disabled={busy}
                     onClick={() => void runAction(group.key, async () => {
-                      onModerated(await moderateComment(supabase, comment.id, "hide"));
-                    }, t.reports.needsPass)}
+                      await banRoomParticipant(supabase, roomId, { commentId: comment.id }, group.reasons.join(","));
+                      onModerated({
+                        ...comment,
+                        status_before_hidden: comment.status === "hidden"
+                          ? comment.status_before_hidden
+                          : comment.status,
+                        status: "hidden",
+                      });
+                      window.dispatchEvent(new Event(PARTICIPANT_BLOCKED_EVENT));
+                    })}
                     className="lt-tap border-border text-text-muted flex flex-1 items-center justify-center gap-1 rounded-[11px] border px-3 py-1.5 text-[11px] font-bold disabled:opacity-40"
                   >
-                    {busy ? <Loader2 size={12} className="animate-spin" /> : <EyeOff size={12} />}
-                    {t.approval.hide}
+                    {busy ? <Loader2 size={12} className="animate-spin" /> : <Ban size={12} />}
+                    {locale === "ja" ? "非表示＋ブロック" : "Hide & block"}
                   </button>
                 )}
                 {stamp && (
@@ -187,13 +190,18 @@ export function ReportQueue({ roomId, locale, comments, stamps, onModerated, onS
                     type="button"
                     disabled={busy}
                     onClick={() => void runAction(group.key, async () => {
-                      await deleteRoomStamp(supabase, stamp);
+                      await banRoomParticipant(supabase, roomId, { stampId: stamp.id }, group.reasons.join(","));
+                      // The block RPC removes the database row immediately so the image can no
+                      // longer be broadcast. Operators may then remove the private object by its
+                      // room-scoped path; a failure leaves only an unreachable orphan for retention.
+                      await supabase.storage.from(ROOM_STAMP_BUCKET).remove([stamp.path]);
                       onStampDeleted(stamp.id);
+                      window.dispatchEvent(new Event(PARTICIPANT_BLOCKED_EVENT));
                     })}
                     className="lt-tap border-border text-like flex flex-1 items-center justify-center gap-1 rounded-[11px] border px-3 py-1.5 text-[11px] font-bold disabled:opacity-40"
                   >
-                    {busy ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                    {t.customStamp.delete}
+                    {busy ? <Loader2 size={12} className="animate-spin" /> : <Ban size={12} />}
+                    {locale === "ja" ? "削除＋ブロック" : "Delete & block"}
                   </button>
                 )}
               </div>

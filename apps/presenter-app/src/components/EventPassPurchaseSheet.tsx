@@ -3,7 +3,12 @@ import { useEffect, useRef, useState } from "react";
 
 import type { Locale } from "@layertalk/shared";
 
-import { openAudiencePage, startEventPassCheckout } from "../lib/billing";
+import {
+  getEventPassProduct,
+  isMasBuild,
+  openAudiencePage,
+  purchaseEventPass,
+} from "../lib/billing";
 
 type Props = {
   open: boolean;
@@ -69,6 +74,7 @@ export function EventPassPurchaseSheet({ open, roomId, roomTitle, roomCode, loca
   const attemptId = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [displayPrice, setDisplayPrice] = useState<string | null>(null);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -76,7 +82,12 @@ export function EventPassPurchaseSheet({ open, roomId, roomTitle, roomCode, loca
     if (open && !dialog.open) {
       attemptId.current = crypto.randomUUID();
       setError(null);
+      setDisplayPrice(null);
       dialog.showModal();
+      void getEventPassProduct().then((product) => {
+        if (product.status === "ready") setDisplayPrice(product.displayPrice);
+        else if (isMasBuild) setError(ja ? "App Storeの商品情報を取得できませんでした。" : "Could not load the App Store product.");
+      }).catch(() => setError(ja ? "商品情報を取得できませんでした。" : "Could not load the product."));
     } else if (!open && dialog.open) {
       dialog.close();
     }
@@ -96,7 +107,12 @@ export function EventPassPurchaseSheet({ open, roomId, roomTitle, roomCode, loca
     setBusy(true);
     setError(null);
     try {
-      await startEventPassCheckout(roomId, currentAttemptId);
+      const result = await purchaseEventPass(roomId, currentAttemptId);
+      if (result === "pending") {
+        setError(ja ? "購入の承認待ちです。承認後に自動で有効化します。" : "The purchase is pending approval and will activate automatically.");
+        return;
+      }
+      if (result === "cancelled") return;
       dialogRef.current?.close();
       onClose();
     } catch (checkoutError) {
@@ -127,12 +143,12 @@ export function EventPassPurchaseSheet({ open, roomId, roomTitle, roomCode, loca
             [ja ? "数量" : "Quantity", "1"],
             [ja ? "期間" : "Duration", ja ? "購入完了から7日間" : "Seven days after purchase"],
             [ja ? "提供時期" : "Availability", ja ? "決済確認後、通常は即時" : "Usually immediately after payment"],
-            [ja ? "支払方法" : "Payment", ja ? "Stripe Checkoutに表示される方法" : "Methods shown by Stripe Checkout"],
+            [ja ? "支払方法" : "Payment", isMasBuild ? (ja ? "App Store決済" : "App Store payment") : (ja ? "Stripe Checkoutに表示される方法" : "Methods shown by Stripe Checkout")],
           ].map(([term, description]) => <div key={term} className="border-border grid grid-cols-[5.5rem_1fr] gap-3 border-b px-3 py-2.5 last:border-b-0"><dt className="text-text-faint">{term}</dt><dd className="text-right font-semibold">{description}</dd></div>)}
         </dl>
 
-        <div className="mt-5 flex items-end justify-between"><span className="text-text-muted text-[12px]">{ja ? "支払額" : "Total"}</span><p><span className="lt-num text-[26px] font-bold">¥2,980</span><span className="text-text-faint ml-1 text-[10px]">{ja ? "税込" : "tax included"}</span></p></div>
-        <p className="text-text-muted mt-4 text-[11px] leading-5">{ja ? "決済確認後、このルームの承認制、NGワード、入室パスコード、レポート、ブランド設定が利用できるようになります。" : "After payment, moderation, blocked words, a passcode, reports, and branding become available in this room."}</p>
+        <div className="mt-5 flex items-end justify-between"><span className="text-text-muted text-[12px]">{ja ? "支払額" : "Total"}</span><p><span className="lt-num text-[26px] font-bold">{displayPrice ?? "—"}</span>{!isMasBuild && <span className="text-text-faint ml-1 text-[10px]">{ja ? "税込" : "tax included"}</span>}</p></div>
+        <p className="text-text-muted mt-4 text-[11px] leading-5">{ja ? "決済確認後、このルームの承認制、入室パスコード、レポート、ブランド設定が利用できるようになります。" : "After payment, moderation, a passcode, reports, and branding become available in this room."}</p>
 
         <div className="mt-4 flex flex-wrap gap-x-3 gap-y-2">
           {legalLinks.map(([labelJa, labelEn, path]) => <button key={path} type="button" onClick={() => void openAudiencePage(path).catch(() => setError(ja ? "案内ページを開けませんでした。" : "Could not open the information page."))} className="text-brand flex items-center gap-1 text-[10px] font-semibold">{ja ? labelJa : labelEn}<ExternalLink size={10} /></button>)}
@@ -140,7 +156,7 @@ export function EventPassPurchaseSheet({ open, roomId, roomTitle, roomCode, loca
 
         {error && <p role="alert" className="text-like mt-4 text-[11px] leading-5">{error}</p>}
         <div className="mt-5 grid gap-2">
-          <button type="button" onClick={() => void purchase()} disabled={busy || !roomCode} className="lt-tap bg-brand flex min-h-12 items-center justify-center gap-2 rounded-control px-4 text-[12px] font-bold text-white disabled:opacity-40">{busy ? <><Loader2 size={15} className="animate-spin motion-reduce:animate-none" /><span className="sr-only">{ja ? "Stripe Checkoutを準備中" : "Preparing Stripe Checkout"}</span></> : ja ? "Stripeで2,980円を支払う" : "Pay ¥2,980 with Stripe"}</button>
+          <button type="button" onClick={() => void purchase()} disabled={busy || !roomCode || !displayPrice} className="lt-tap bg-brand flex min-h-12 items-center justify-center gap-2 rounded-control px-4 text-[12px] font-bold text-white disabled:opacity-40">{busy ? <><Loader2 size={15} className="animate-spin motion-reduce:animate-none" /><span className="sr-only">{ja ? "購入を処理中" : "Processing purchase"}</span></> : isMasBuild ? (ja ? `${displayPrice ?? ""}で購入` : `Buy for ${displayPrice ?? ""}`) : (ja ? "Stripeで2,980円を支払う" : "Pay ¥2,980 with Stripe")}</button>
           <button type="button" onClick={close} disabled={busy} className="lt-tap border-border min-h-10 rounded-control border text-[11px] font-bold disabled:opacity-40">{ja ? "戻る" : "Back"}</button>
         </div>
       </div>

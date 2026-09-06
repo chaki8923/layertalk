@@ -16,6 +16,8 @@
 
     /* Linting */
     "strict": true,
+    "baseUrl": ".",
+    "paths": { "@layertalk/billing-channel": ["src/lib/billing.direct.ts"] },
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true

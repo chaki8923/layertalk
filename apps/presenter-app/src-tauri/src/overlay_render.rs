@@ -33,12 +33,12 @@ use std::time::{Duration, Instant};
 use objc2::rc::Retained;
 use objc2::MainThreadMarker;
 use objc2_app_kit::{
-    NSAttributedStringNSStringDrawing, NSColor, NSFont, NSFontWeightBold,
+    NSAttributedStringNSStringDrawing, NSColor, NSFont, NSFontWeightBold, NSImage,
     NSStrokeColorAttributeName, NSStrokeWidthAttributeName, NSView,
 };
 use objc2_foundation::{
-    ns_string, NSAttributedString, NSMutableAttributedString, NSNumber, NSPoint, NSRect, NSSize,
-    NSString,
+    ns_string, NSAttributedString, NSData, NSMutableAttributedString, NSNumber, NSPoint, NSRect,
+    NSSize, NSString,
 };
 // `setDuration` / `setFillMode` は CAAnimation 固有ではなく **CAMediaTiming プロトコル**の
 // メソッドなので、トレイトを import しないと生えてこない。
@@ -76,6 +76,7 @@ struct RenderState {
     /// 全部が最上段を流れる）。
     lane_free_at: Vec<Instant>,
     live: Vec<LiveLayer>,
+    join_card: Option<Retained<CALayer>>,
     scale: f64,
 }
 
@@ -116,11 +117,7 @@ fn outlined_string(text: &str, font_size: f64) -> Retained<NSAttributedString> {
 
     unsafe {
         let font = NSFont::systemFontOfSize_weight(font_size, NSFontWeightBold);
-        attributed.addAttribute_value_range(
-            objc2_app_kit::NSFontAttributeName,
-            &*font,
-            full_range,
-        );
+        attributed.addAttribute_value_range(objc2_app_kit::NSFontAttributeName, &*font, full_range);
         attributed.addAttribute_value_range(
             objc2_app_kit::NSForegroundColorAttributeName,
             &*NSColor::whiteColor(),
@@ -161,6 +158,7 @@ pub fn make_host_view(mtm: MainThreadMarker, frame: NSRect, scale: f64) -> Retai
             root,
             lane_free_at: Vec::new(),
             live: Vec::new(),
+            join_card: None,
             scale,
         });
     });
@@ -232,7 +230,13 @@ fn sweep(state: &mut RenderState) {
 ///
 /// レーンの決め方は `FlowLayer.tsx` の移植。**速度は全コメントで一定**にすること
 /// （可変にすると長文が短文を追い越して重なる）。
-pub fn push_comment(text: &str, font_size: f64, opacity: f64, base_duration_sec: f64) {
+fn push_flow_comment(
+    text: &str,
+    font_size: f64,
+    opacity: f64,
+    base_duration_sec: f64,
+    reduced_motion: bool,
+) {
     let Some(_mtm) = MainThreadMarker::new() else {
         return;
     };
@@ -269,7 +273,11 @@ pub fn push_comment(text: &str, font_size: f64, opacity: f64, base_duration_sec:
         let px_per_sec = viewport_w / base_duration_sec;
         let duration_sec = (viewport_w + width) / px_per_sec;
         // 文字列の末尾が右端を抜けきるまで。これを過ぎたらレーンを再利用できる。
-        let clear_after = Duration::from_secs_f64(((width + LANE_GAP_PX) / px_per_sec).max(0.0));
+        let clear_after = if reduced_motion {
+            Duration::from_secs(6)
+        } else {
+            Duration::from_secs_f64(((width + LANE_GAP_PX) / px_per_sec).max(0.0))
+        };
 
         // 空きレーンから抽選する。先頭詰めだと疎なときに全部が最上段を流れる。
         let free: Vec<usize> = (0..lane_count)
@@ -306,18 +314,32 @@ pub fn push_comment(text: &str, font_size: f64, opacity: f64, base_duration_sec:
             let w = measured.width.max(width) + font_size; // 縁のぶん少し広く
             let h = lane_height.max(measured.height);
             let y = top_to_bottom_origin(viewport_h, top, h);
-            layer.setFrame(NSRect::new(
-                NSPoint::new(viewport_w, y),
-                NSSize::new(w, h),
-            ));
+            let x = if reduced_motion {
+                24.0 + pseudo_random_unit() * (viewport_w - w - 48.0).max(0.0)
+            } else {
+                viewport_w
+            };
+            layer.setFrame(NSRect::new(NSPoint::new(x, y), NSSize::new(w, h)));
 
-            let animation = CABasicAnimation::animationWithKeyPath(Some(ns_string!("position.x")));
-            // anchorPoint は既定の (0.5, 0.5) なので position は中心を指す。
-            let from = viewport_w + w / 2.0;
-            let to = -(w / 2.0) - 40.0;
-            animation.setFromValue(Some(&*NSNumber::new_f64(from)));
-            animation.setToValue(Some(&*NSNumber::new_f64(to)));
-            animation.setDuration(duration_sec);
+            let key_path = if reduced_motion {
+                "opacity"
+            } else {
+                "position.x"
+            };
+            let key_path = NSString::from_str(key_path);
+            let animation = CABasicAnimation::animationWithKeyPath(Some(&key_path));
+            if reduced_motion {
+                animation.setFromValue(Some(&*NSNumber::new_f64(opacity)));
+                animation.setToValue(Some(&*NSNumber::new_f64(0.0)));
+            } else {
+                // anchorPoint は既定の (0.5, 0.5) なので position は中心を指す。
+                let from = viewport_w + w / 2.0;
+                let to = -(w / 2.0) - 40.0;
+                animation.setFromValue(Some(&*NSNumber::new_f64(from)));
+                animation.setToValue(Some(&*NSNumber::new_f64(to)));
+            }
+            let effective_duration = if reduced_motion { 6.0 } else { duration_sec };
+            animation.setDuration(effective_duration);
             animation.setTimingFunction(Some(&CAMediaTimingFunction::functionWithName(
                 kCAMediaTimingFunctionLinear,
             )));
@@ -335,10 +357,340 @@ pub fn push_comment(text: &str, font_size: f64, opacity: f64, base_duration_sec:
 
             state.live.push(LiveLayer {
                 layer: Retained::into_super(layer),
-                expires_at: now + Duration::from_secs_f64(duration_sec + 0.2),
+                expires_at: now + Duration::from_secs_f64(effective_duration + 0.2),
             });
         }
     });
+}
+
+fn plain_string(text: &str, font_size: f64, color: &NSColor) -> Retained<NSAttributedString> {
+    let ns_text = NSString::from_str(text);
+    let attributed = NSMutableAttributedString::from_nsstring(&ns_text);
+    let range = objc2_foundation::NSRange {
+        location: 0,
+        length: attributed.length(),
+    };
+    unsafe {
+        let font = NSFont::systemFontOfSize_weight(font_size, NSFontWeightBold);
+        attributed.addAttribute_value_range(objc2_app_kit::NSFontAttributeName, &*font, range);
+        attributed.addAttribute_value_range(
+            objc2_app_kit::NSForegroundColorAttributeName,
+            color,
+            range,
+        );
+    }
+    Retained::into_super(attributed)
+}
+
+fn push_bubble_comment(
+    text: &str,
+    font_size: f64,
+    opacity: f64,
+    duration_sec: f64,
+    reduced_motion: bool,
+) {
+    let Some(_mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    if text.is_empty() {
+        return;
+    }
+    STATE.with(|cell| {
+        let mut borrowed = cell.borrow_mut();
+        let Some(state) = borrowed.as_mut() else {
+            return;
+        };
+        sweep(state);
+        let bounds = state.root.bounds();
+        let width = (estimate_text_width(text, font_size) + 40.0)
+            .clamp(180.0, bounds.size.width / 3.0 - 24.0);
+        let lines = (estimate_text_width(text, font_size) / (width - 32.0))
+            .ceil()
+            .max(1.0);
+        let height = (font_size * 1.35 * lines + 30.0).clamp(70.0, 190.0);
+        let lane = pseudo_random_index(3);
+        let x = lane as f64 * bounds.size.width / 3.0 + 12.0;
+        let start_y = if reduced_motion {
+            bounds.size.height * (0.2 + lane as f64 * 0.2)
+        } else {
+            -height - 30.0
+        };
+        let end_y = if reduced_motion {
+            start_y
+        } else {
+            bounds.size.height + height + 40.0
+        };
+
+        let bubble = CALayer::layer();
+        bubble.setCornerRadius(18.0);
+        bubble.setBackgroundColor(Some(
+            &NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 1.0, 1.0, 0.94).CGColor(),
+        ));
+        bubble.setOpacity(opacity as f32);
+        bubble.setFrame(NSRect::new(
+            NSPoint::new(x, start_y),
+            NSSize::new(width, height),
+        ));
+        let label = CATextLayer::layer();
+        let value = plain_string(
+            text,
+            font_size,
+            &NSColor::colorWithSRGBRed_green_blue_alpha(0.05, 0.06, 0.09, 1.0),
+        );
+        unsafe {
+            label.setString(Some(&*value));
+        }
+        label.setWrapped(true);
+        label.setContentsScale(state.scale);
+        label.setFrame(NSRect::new(
+            NSPoint::new(16.0, 12.0),
+            NSSize::new(width - 32.0, height - 24.0),
+        ));
+        bubble.addSublayer(&label);
+
+        let effective_duration = if reduced_motion { 6.0 } else { duration_sec };
+        let animation = CABasicAnimation::animationWithKeyPath(Some(ns_string!("position.y")));
+        animation.setFromValue(Some(&*NSNumber::new_f64(start_y + height / 2.0)));
+        animation.setToValue(Some(&*NSNumber::new_f64(end_y + height / 2.0)));
+        animation.setDuration(effective_duration);
+        animation.setTimingFunction(Some(&CAMediaTimingFunction::functionWithName(
+            kCAMediaTimingFunctionLinear,
+        )));
+        animation.setRemovedOnCompletion(false);
+        animation.setFillMode(kCAFillModeForwards);
+        CATransaction::begin();
+        CATransaction::setDisableActions(true);
+        state.root.addSublayer(&bubble);
+        bubble.addAnimation_forKey(&animation, Some(ns_string!("bubble")));
+        CATransaction::commit();
+        state.live.push(LiveLayer {
+            layer: bubble,
+            expires_at: Instant::now() + Duration::from_secs_f64(effective_duration + 0.2),
+        });
+    });
+}
+
+pub fn push_comment(
+    text: &str,
+    mode: &str,
+    font_size: f64,
+    opacity: f64,
+    duration_sec: f64,
+    reduced_motion: bool,
+) {
+    if mode == "bubble" {
+        push_bubble_comment(text, font_size, opacity, duration_sec, reduced_motion);
+    } else {
+        push_flow_comment(text, font_size, opacity, duration_sec, reduced_motion);
+    }
+}
+
+pub fn push_stamp(
+    emoji: Option<&str>,
+    image_png: Option<&[u8]>,
+    count: usize,
+    opacity: f64,
+    duration_sec: f64,
+    reduced_motion: bool,
+) {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    if emoji.is_none() && image_png.is_none() {
+        return;
+    }
+    STATE.with(|cell| {
+        let mut borrowed = cell.borrow_mut();
+        let Some(state) = borrowed.as_mut() else {
+            return;
+        };
+        sweep(state);
+        let bounds = state.root.bounds();
+        for _ in 0..count.min(200) {
+            let size = 34.0 + pseudo_random_unit() * 38.0;
+            let x = bounds.size.width * (0.04 + pseudo_random_unit() * 0.92);
+            let start_y = if reduced_motion {
+                bounds.size.height * (0.18 + pseudo_random_unit() * 0.55)
+            } else {
+                -size - 12.0
+            };
+            let end_y = if reduced_motion {
+                start_y
+            } else {
+                bounds.size.height * (0.62 + pseudo_random_unit() * 0.34)
+            };
+            let layer: Retained<CALayer> = if let Some(bytes) = image_png {
+                let data =
+                    unsafe { NSData::dataWithBytes_length(bytes.as_ptr().cast(), bytes.len()) };
+                let Some(image) = NSImage::initWithData(mtm.alloc::<NSImage>(), &data) else {
+                    continue;
+                };
+                let layer = CALayer::layer();
+                unsafe {
+                    layer.setContents(Some(&*image));
+                }
+                layer
+            } else {
+                let text_layer = CATextLayer::layer();
+                let value = plain_string(emoji.unwrap_or(""), size, &NSColor::whiteColor());
+                unsafe {
+                    text_layer.setString(Some(&*value));
+                }
+                text_layer.setContentsScale(state.scale);
+                Retained::into_super(text_layer)
+            };
+            layer.setOpacity(opacity as f32);
+            layer.setFrame(NSRect::new(
+                NSPoint::new(x, start_y),
+                NSSize::new(size, size),
+            ));
+            let effective_duration = if reduced_motion {
+                4.0
+            } else {
+                duration_sec * (0.85 + pseudo_random_unit() * 0.3)
+            };
+            let animation = CABasicAnimation::animationWithKeyPath(Some(ns_string!("position.y")));
+            animation.setFromValue(Some(&*NSNumber::new_f64(start_y + size / 2.0)));
+            animation.setToValue(Some(&*NSNumber::new_f64(end_y + size / 2.0)));
+            animation.setDuration(effective_duration);
+            animation.setTimingFunction(Some(&CAMediaTimingFunction::functionWithName(
+                kCAMediaTimingFunctionLinear,
+            )));
+            animation.setRemovedOnCompletion(false);
+            animation.setFillMode(kCAFillModeForwards);
+            state.root.addSublayer(&layer);
+            layer.addAnimation_forKey(&animation, Some(ns_string!("stamp")));
+            state.live.push(LiveLayer {
+                layer,
+                expires_at: Instant::now() + Duration::from_secs_f64(effective_duration + 0.2),
+            });
+        }
+    });
+}
+
+fn image_sublayer(mtm: MainThreadMarker, bytes: &[u8], frame: NSRect) -> Option<Retained<CALayer>> {
+    let data = unsafe { NSData::dataWithBytes_length(bytes.as_ptr().cast(), bytes.len()) };
+    let image = NSImage::initWithData(mtm.alloc::<NSImage>(), &data)?;
+    let layer = CALayer::layer();
+    unsafe {
+        layer.setContents(Some(&*image));
+    }
+    layer.setFrame(frame);
+    Some(layer)
+}
+
+pub fn set_join_card(
+    visible: bool,
+    qr_png: &[u8],
+    logo_png: Option<&[u8]>,
+    code: &str,
+    label: &str,
+    brand_color: &str,
+    hide_layertalk: bool,
+) {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    STATE.with(|cell| {
+        let mut borrowed = cell.borrow_mut();
+        let Some(state) = borrowed.as_mut() else {
+            return;
+        };
+        if let Some(card) = state.join_card.take() {
+            card.removeFromSuperlayer();
+        }
+        if !visible {
+            return;
+        }
+        let card = CALayer::layer();
+        card.setCornerRadius(20.0);
+        card.setBackgroundColor(Some(&NSColor::whiteColor().CGColor()));
+        card.setFrame(NSRect::new(
+            NSPoint::new(34.0, 34.0),
+            NSSize::new(224.0, 274.0),
+        ));
+        if let Some(qr) = image_sublayer(
+            mtm,
+            qr_png,
+            NSRect::new(NSPoint::new(20.0, 78.0), NSSize::new(184.0, 184.0)),
+        ) {
+            card.addSublayer(&qr);
+        }
+        if let Some(bytes) = logo_png {
+            if let Some(logo) = image_sublayer(
+                mtm,
+                bytes,
+                NSRect::new(NSPoint::new(18.0, 20.0), NSSize::new(38.0, 38.0)),
+            ) {
+                card.addSublayer(&logo);
+            }
+        }
+        let label_layer = CATextLayer::layer();
+        let label_text = plain_string(
+            label,
+            10.0,
+            &NSColor::colorWithSRGBRed_green_blue_alpha(0.2, 0.22, 0.28, 0.7),
+        );
+        unsafe {
+            label_layer.setString(Some(&*label_text));
+        }
+        label_layer.setAlignmentMode(objc2_quartz_core::kCAAlignmentCenter);
+        label_layer.setContentsScale(state.scale);
+        label_layer.setFrame(NSRect::new(
+            NSPoint::new(58.0, 46.0),
+            NSSize::new(150.0, 18.0),
+        ));
+        card.addSublayer(&label_layer);
+        let code_layer = CATextLayer::layer();
+        let code_text = plain_string(
+            code,
+            24.0,
+            &NSColor::colorWithSRGBRed_green_blue_alpha(0.05, 0.06, 0.09, 0.9),
+        );
+        unsafe {
+            code_layer.setString(Some(&*code_text));
+        }
+        code_layer.setAlignmentMode(objc2_quartz_core::kCAAlignmentCenter);
+        code_layer.setContentsScale(state.scale);
+        code_layer.setFrame(NSRect::new(
+            NSPoint::new(58.0, 18.0),
+            NSSize::new(150.0, 30.0),
+        ));
+        card.addSublayer(&code_layer);
+        if !hide_layertalk {
+            let brand = parse_hex_color(brand_color).unwrap_or_else(|| {
+                NSColor::colorWithSRGBRed_green_blue_alpha(0.42, 0.54, 1.0, 1.0)
+            });
+            let brand_layer = CATextLayer::layer();
+            let brand_text = plain_string("LayerTalk", 9.0, &brand);
+            unsafe {
+                brand_layer.setString(Some(&*brand_text));
+            }
+            brand_layer.setAlignmentMode(objc2_quartz_core::kCAAlignmentCenter);
+            brand_layer.setContentsScale(state.scale);
+            brand_layer.setFrame(NSRect::new(
+                NSPoint::new(58.0, 5.0),
+                NSSize::new(150.0, 14.0),
+            ));
+            card.addSublayer(&brand_layer);
+        }
+        state.root.addSublayer(&card);
+        state.join_card = Some(card);
+    });
+}
+
+fn parse_hex_color(value: &str) -> Option<Retained<NSColor>> {
+    let hex = value.strip_prefix('#')?;
+    if hex.len() != 6 {
+        return None;
+    }
+    let rgb = u32::from_str_radix(hex, 16).ok()?;
+    Some(NSColor::colorWithSRGBRed_green_blue_alpha(
+        ((rgb >> 16) & 0xff) as f64 / 255.0,
+        ((rgb >> 8) & 0xff) as f64 / 255.0,
+        (rgb & 0xff) as f64 / 255.0,
+        1.0,
+    ))
 }
 
 /// 乱数。抽選と揺らぎにしか使わないので、依存を足さず時刻から作る。

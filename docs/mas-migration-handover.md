@@ -1,6 +1,10 @@
-# 引き継ぎ — App Store 対応（監査 → 4障害の解消）
+# 引き継ぎ — App Store 対応（4障害の実装完了）
 
-最終更新: 2026-09-04 / ブランチ `main` / この作業の直前のコミット `06c77ce 色々対応`
+最終更新: 2026-09-05
+
+> 2026-09-05更新: 以下に記録されたA1〜A4の「未着手」「移行中」は解消済み。
+> 残るのはApple Developer Program、App Store Connect、署名、実機Sandbox購入、
+> TestFlight相当の外部テスト、審査提出という人手の作業。旧調査記録は判断根拠として残す。
 
 このファイルは**別セッションが続きをやるための引き継ぎ**。プロダクトの仕様書ではないので、
 作業が終わったら消してよい。設計上の決めごとで残すべきものは `CLAUDE.md` 側へ既に書いてある。
@@ -93,10 +97,39 @@ Event Pass の購入シートの中にしかリンクが無く、購入画面を
 
 | # | ガイドライン | 内容 | 状態 |
 |---|---|---|---|
-| A1 | 2.5.1 公開 API のみ | 透過 WKWebView が private API を要求 | **着手中**（横流しのみ移植済み） |
-| A2 | 2.4.5(i) サンドボックス | `.entitlements` が存在しない | 未着手 |
-| A3 | 2.4.5(vi) 独自コピー防止 | Ed25519 オフラインリース | 未着手（A4 に従属） |
-| A4 | 3.1.1 IAP 必須 | Stripe を外部ブラウザで開いている | 未着手 |
+| A1 | 2.5.1 公開 API のみ | 透過 WKWebView が private API を要求 | **実装完了** — AppKit/Core Animationへ移植、private feature削除 |
+| A2 | 2.4.5(i) サンドボックス | `.entitlements` が存在しない | **実装完了** — MAS用entitlements/config追加 |
+| A3 | 2.4.5(vi) 独自コピー防止 | Ed25519 オフラインリース | **実装完了** — MASバンドルからコードごと分離 |
+| A4 | 3.1.1 IAP 必須 | Stripe を外部ブラウザで開いている | **実装完了** — StoreKit 2消耗型IAP + サーバJWS検証 |
+
+### 2026-09-05 実装結果
+
+- macOSオーバーレイはコメント（横流し／フキダシ）、絵文字／画像スタンプ、参加QR、
+  質問パネルをネイティブ描画する。Supabase購読はコントロールWebViewの1接続へ集約した。
+- `macos-private-api`、透過WebView窓定義、MASで不要なウィンドウ権限を削除した。
+- `Entitlements.mas.plist` と `tauri.mas.conf.json` を追加。MASは `npm run tauri:build:mas`
+  で `.app` のみを生成する。
+- MAS課金は自前のSwift StoreKit 2ブリッジを使う。JWSをサーバでApple Root証明書から検証し、
+  `appAccountToken`（購入試行UUID）・所有者・ルーム・bundle/product/typeを照合してから
+  冪等RPCで7日分を付与し、成功後だけtransactionをfinishする。
+- ONE_TIME_CHARGE / REFUND / REFUND_REVERSED通知を処理する。CONSUMPTION_REQUESTは記録するが、
+  利用者の明示同意UIが無いため消費情報はAppleへ送らない。
+- ガイドライン1.2向けに、無料のNGワード拒否、コメント／スタンプからのルーム単位ブロック、
+  ブロック解除、再入室拒否を追加した。
+- 直接配布版はStripe + Ed25519リースを維持する。MAS版はVite aliasでStoreKit実装だけを入り口にし、
+  `jose`、checkout API、公開鍵参照が生成物に無いことをスキャン済み。
+
+### 提出前に人が行う作業
+
+1. App Store Connectでbundle ID `app.layertalk.presenter` と消耗型IAP
+   `app.layertalk.presenter.event_pass` を作り、価格・審査スクリーンショットを登録する。
+2. 数値のApple IDをWebの `APPLE_APP_ID` に設定し、Notifications V2 URLを
+   `/api/billing/app-store/notifications` に設定する。
+3. MAS Distribution証明書／プロビジョニングで署名し、Sandbox testerで購入・Ask to Buy・
+   未完了transaction復旧・返金通知を確認する。
+4. Keynote/PowerPoint/ブラウザ全画面で、透過、Retina、クリック透過、ScreenCaptureKit、
+   グローバルショートカットをsandbox実機確認する。
+5. この変更のSupabase migrationを対象環境へ適用してからWeb/APIをデプロイする。
 
 ### A1 の正体（調べ済み。同じ調査を繰り返さないこと）
 

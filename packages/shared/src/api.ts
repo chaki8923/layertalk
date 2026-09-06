@@ -151,7 +151,10 @@ export async function insertComment(
     p_is_question: comment.is_question,
   });
 
-  if (error) throw new LayerTalkError("comment_insert_failed", error.message);
+  if (error) {
+    const filtered = error.message.includes("comment blocked by safety filter");
+    throw new LayerTalkError(filtered ? "comment_rejected" : "comment_insert_failed", error.message);
+  }
   return data;
 }
 
@@ -400,6 +403,42 @@ export async function fetchContentReports(
     .eq("room_id", roomId).order("created_at", { ascending: false }).limit(200);
   if (error) throw new LayerTalkError("content_report_failed", error.message);
   return data ?? [];
+}
+
+/** 不適切な投稿を消し、その投稿者をこのルームから退出・再入室不可にする。 */
+export async function banRoomParticipant(
+  client: LayerTalkClient,
+  roomId: string,
+  target: { commentId: string; stampId?: never } | { commentId?: never; stampId: string },
+  reason?: string,
+): Promise<string> {
+  const { data, error } = await client.rpc("ban_room_participant", {
+    p_room_id: roomId,
+    p_comment_id: target.commentId ?? null,
+    p_room_stamp_id: target.stampId ?? null,
+    p_reason: reason ?? null,
+  });
+  if (error || !data) throw new LayerTalkError("participant_block_failed", error?.message);
+  return data;
+}
+
+export async function fetchRoomParticipantBlocks(client: LayerTalkClient, roomId: string) {
+  const { data, error } = await client.from("room_participant_blocks").select("*")
+    .eq("room_id", roomId).order("created_at", { ascending: false });
+  if (error) throw new LayerTalkError("participant_block_failed", error.message);
+  return data ?? [];
+}
+
+export async function unblockRoomParticipant(
+  client: LayerTalkClient,
+  roomId: string,
+  userId: string,
+): Promise<void> {
+  const { error } = await client.rpc("unblock_room_participant", {
+    p_room_id: roomId,
+    p_user_id: userId,
+  });
+  if (error) throw new LayerTalkError("participant_block_failed", error.message);
 }
 
 export async function moderateComment(

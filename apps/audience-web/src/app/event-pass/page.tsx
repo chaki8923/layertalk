@@ -15,7 +15,7 @@ export const metadata: Metadata = createPageMetadata({
 
 const features = [
   [ShieldCheck, "コメント承認制", "表示前に内容を確認し、本番の進行を守ります。"],
-  [KeyRound, "NGワードと入室パスコード", "参加者と投稿の入口をイベントに合わせて整えます。"],
+  [KeyRound, "入室パスコード", "参加者の入口をイベントに合わせて整えます。"],
   [FileDown, "発表レポート", "質問時のスライド画像と質問内容を、見やすいHTMLで振り返れます。"],
   [Sparkles, "ブランド設定", "ブランドカラー、ロゴ、LayerTalk表記を調整できます。"],
 ] as const;

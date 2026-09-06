@@ -1,5 +1,9 @@
 mod overlay_render;
 mod question_capture;
+#[cfg(target_os = "macos")]
+mod question_render;
+#[cfg(target_os = "macos")]
+mod storekit;
 
 use std::sync::Mutex;
 use std::time::Duration;
@@ -56,11 +60,7 @@ struct TrayMenu {
 /// この 3 本だけ Rust 側にも持つ。
 fn tray_labels(language: &str) -> (&'static str, &'static str, &'static str) {
     if language == "en" {
-        (
-            "Show Controls  ⇧⌘L",
-            "Stop presenting",
-            "Quit LayerTalk",
-        )
+        ("Show Controls  ⇧⌘L", "Stop presenting", "Quit LayerTalk")
     } else {
         (
             "コントロールを表示  ⇧⌘L",
@@ -147,19 +147,18 @@ fn debug_log(_line: &str) {}
 #[cfg(target_os = "macos")]
 mod native_overlay {
     use objc2::rc::Retained;
-    use objc2::runtime::AnyObject;
     use objc2::{msg_send, MainThreadMarker};
     use objc2_app_kit::{
-        NSBackingStoreType, NSColor, NSPanel, NSScreen, NSView, NSWindow,
-        NSWindowCollectionBehavior, NSWindowOcclusionState, NSWindowStyleMask,
+        NSBackingStoreType, NSColor, NSPanel, NSScreen, NSWindow, NSWindowCollectionBehavior,
+        NSWindowOcclusionState, NSWindowStyleMask,
     };
     use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-    /// 載せ替える窓は 2 つある。性質が違うので作り方も分ける。
+    /// ネイティブ描画を載せる窓は 2 つある。性質が違うので作り方も分ける。
     ///   * `Overlay` — 全面・クリックスルー。素の `NSWindow`
-    ///   * `Panel`   — 右端・クリックを受ける。`NSPanel` の nonactivating にして、
-    ///     触ってもスライドショーからフォーカスを奪わないようにする
+    ///   * `Panel`   — 右端・クリックスルー。`NSPanel` の nonactivating にして、
+    ///     スライドショーからフォーカスを奪わないようにする
     #[derive(Copy, Clone, PartialEq, Eq)]
     pub enum Hosted {
         Overlay,
@@ -179,13 +178,6 @@ mod native_overlay {
         match kind {
             Hosted::Overlay => (&OVERLAY_WINDOW, &OVERLAY_ATTACHED),
             Hosted::Panel => (&PANEL_WINDOW, &PANEL_ATTACHED),
-        }
-    }
-
-    fn label(kind: Hosted) -> &'static str {
-        match kind {
-            Hosted::Overlay => "native/overlay",
-            Hosted::Panel => "native/panel",
         }
     }
 
@@ -230,8 +222,7 @@ mod native_overlay {
                     false,
                 );
                 panel.setFloatingPanel(true);
-                // 入力が必要なときだけキー窓になる。展開／折りたたみのクリックだけなら
-                // キー窓にならず、スライドショーからフォーカスを奪わない。
+                // 将来入力を追加した場合も、必要なときだけキー窓になるようにしておく。
                 panel.setBecomesKeyOnlyIfNeeded(true);
                 Retained::into_super(panel)
             }
@@ -250,8 +241,8 @@ mod native_overlay {
         // 与えていないが、明示しておく。
         unsafe { window.setReleasedWhenClosed(false) };
 
-        // オーバーレイだけクリックスルー。質問パネルは操作を受ける。
-        window.setIgnoresMouseEvents(kind == Hosted::Overlay);
+        // 発表中の操作を妨げないよう、どちらの表示もクリックスルーにする。
+        window.setIgnoresMouseEvents(true);
 
         let raw = Retained::into_raw(window);
         slots(kind).0.store(raw as usize, Ordering::Relaxed);
@@ -290,7 +281,10 @@ mod native_overlay {
                 }
             }
         }
-        screens.iter().next().and_then(|screen| screen_display_id(&screen))
+        screens
+            .iter()
+            .next()
+            .and_then(|screen| screen_display_id(&screen))
     }
 
     /// 選択中のモニターの矩形（AppKit の座標系・ポイント単位）。
@@ -309,16 +303,6 @@ mod native_overlay {
         // `mainScreen` は「キーボードフォーカスがある画面」を返すので使ってはいけない。
         // 発表中は他アプリにフォーカスがあるため、外部モニターへ飛ぶ。
         screens.iter().next().map(|screen| screen.frame())
-    }
-
-    /// オーバーレイを webview ではなくネイティブ描画にするか。
-    ///
-    /// **移行中の切り替え。** 既定は従来どおり webview で、`LAYERTALK_NATIVE_OVERLAY=1` の
-    /// ときだけ `overlay_render` のホストビューを載せる。フキダシ・スタンプ・QR の移植が
-    /// 済んだらこの分岐ごと消し、`macos-private-api` を落とす（App Store 2.5.1）。
-    pub fn use_native_overlay() -> bool {
-        static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        *FLAG.get_or_init(|| std::env::var("LAYERTALK_NATIVE_OVERLAY").as_deref() == Ok("1"))
     }
 
     /// 表示先の候補一覧。名前は `screen_frame` と同じ実装で作る。
@@ -348,9 +332,8 @@ mod native_overlay {
             .collect()
     }
 
-    /// tao 窓の contentView を自前の窓へ移し、指定の矩形に合わせて表示する。
-    /// 何度呼んでもよい（移し替えは初回だけ）。
-    fn show(kind: Hosted, tao_ns_window: *mut AnyObject, frame: NSRect) {
+    /// 公開 AppKit API だけで作った窓へネイティブ描画ビューを載せる。
+    fn show(kind: Hosted, frame: NSRect) {
         let Some(mtm) = MainThreadMarker::new() else {
             return;
         };
@@ -358,54 +341,23 @@ mod native_overlay {
         let window = ensure(kind, mtm, frame);
         let attached = slots(kind).1;
 
-        // ネイティブ描画のオーバーレイは webview を載せない。**contentView は 1 枚しか
-        // 持てない**ので、この経路と下の載せ替えは排他であること。
-        //
-        // 副作用として、オーバーレイの webview は tao 窓（`visible: false` のまま
-        // 一度も show されない）に残って動き続ける。つまりこの分岐を有効にして
-        // コメントが流れれば、**「隠れた WKWebView が Supabase の購読を保てるか」**
-        // という移行計画いちばんの未知数がそのまま検証できる。
-        // 流れないなら購読を Rust 側へ移す必要がある、という判断材料になる。
-        if kind == Hosted::Overlay && use_native_overlay() {
-            // **窓自身から取る。** `SessionState` の monitor 名を引き回すと、
-            // 罠 #12 の名前一致に依存するうえ、窓が実際に居る画面とずれうる。
-            let scale = window.backingScaleFactor();
-            let bounds = NSRect::new(
-                NSPoint::new(0.0, 0.0),
-                NSSize::new(frame.size.width, frame.size.height),
-            );
-            if !attached.load(Ordering::Relaxed) {
-                let host = super::overlay_render::make_host_view(mtm, bounds, scale);
-                window.setContentView(Some(&host));
-                attached.store(true, Ordering::Relaxed);
-                super::debug_log("native/overlay: ネイティブ描画のホストを載せました");
-            } else {
-                super::overlay_render::resize(bounds, scale);
-            }
-            window.setFrame_display(frame, true);
-            window.orderFrontRegardless();
-            return;
-        }
-
-        if !attached.load(Ordering::Relaxed) && !tao_ns_window.is_null() {
-            unsafe {
-                let content: *mut NSView = msg_send![tao_ns_window, contentView];
-                let Some(content) = Retained::retain(content) else {
-                    super::debug_log(&format!("{}: contentView を取得できません", label(kind)));
-                    return;
-                };
-
-                // **tao の窓を空にしたままにしないこと。** tao の `ns_view()` は
-                // `contentView().unwrap()`（`tao-0.35.3/.../window.rs:1568`）なので、
-                // contentView が nil のまま Tauri 側から触られると panic する。
-                // 実際にこれでアプリが落ちた。空のビューを置いて安全にする。
-                let placeholder = NSView::new(mtm);
-                let _: () = msg_send![tao_ns_window, setContentView: &*placeholder];
-
-                window.setContentView(Some(&content));
-            }
+        let scale = window.backingScaleFactor();
+        let bounds = NSRect::new(
+            NSPoint::new(0.0, 0.0),
+            NSSize::new(frame.size.width, frame.size.height),
+        );
+        if !attached.load(Ordering::Relaxed) {
+            let host = match kind {
+                Hosted::Overlay => super::overlay_render::make_host_view(mtm, bounds, scale),
+                Hosted::Panel => super::question_render::make_host_view(mtm, bounds, scale),
+            };
+            window.setContentView(Some(&host));
             attached.store(true, Ordering::Relaxed);
-            super::debug_log(&format!("{}: webview を自前の窓へ移しました", label(kind)));
+        } else {
+            match kind {
+                Hosted::Overlay => super::overlay_render::resize(bounds, scale),
+                Hosted::Panel => super::question_render::resize(bounds, scale),
+            }
         }
 
         window.setFrame_display(frame, true);
@@ -413,7 +365,7 @@ mod native_overlay {
     }
 
     /// オーバーレイ（全面）を表示する。
-    pub fn show_overlay(tao_ns_window: *mut AnyObject, target: Option<&str>) {
+    pub fn show_overlay(target: Option<&str>) {
         let Some(mtm) = MainThreadMarker::new() else {
             return;
         };
@@ -421,11 +373,11 @@ mod native_overlay {
             super::debug_log("native/overlay: 表示できる画面が見つかりません");
             return;
         };
-        show(Hosted::Overlay, tao_ns_window, frame);
+        show(Hosted::Overlay, frame);
     }
 
     /// 質問パネル（右端の縦帯）を表示する。幅はポイント単位。
-    pub fn show_panel(tao_ns_window: *mut AnyObject, target: Option<&str>, width: f64) {
+    pub fn show_panel(target: Option<&str>, width: f64) {
         let Some(mtm) = MainThreadMarker::new() else {
             return;
         };
@@ -437,7 +389,7 @@ mod native_overlay {
             NSPoint::new(screen.origin.x + screen.size.width - width, screen.origin.y),
             NSSize::new(width, screen.size.height),
         );
-        show(Hosted::Panel, tao_ns_window, frame);
+        show(Hosted::Panel, frame);
     }
 
     /// いまの質問パネルの幅（ポイント）。モニターを貼り直すときに、
@@ -453,7 +405,7 @@ mod native_overlay {
         let Some(width) = panel_width() else {
             return;
         };
-        show_panel(std::ptr::null_mut(), target, width);
+        show_panel(target, width);
     }
 
     /// 位置を変えずに最前面へ出し直すだけ。Space の切り替えに追従するために
@@ -726,23 +678,12 @@ fn refit_question_panel(app: &AppHandle) {
 /// macOS ではオーバーレイと同じ理由で自前の窓（nonactivating な `NSPanel`）に
 /// 載せ替える。tao の窓では他アプリの全画面 Space に入れない（罠 #9）。
 fn show_question_panel(app: &AppHandle, logical_width: f64) {
-    let Some(questions) = app.get_webview_window(QUESTIONS) else {
-        return;
-    };
     let monitor = target_monitor(app);
 
     #[cfg(target_os = "macos")]
     {
-        let Some(ns_window) = ns_window_ptr(&questions) else {
-            return;
-        };
-        let ns_window = ns_window as usize;
         let _ = app.run_on_main_thread(move || {
-            native_overlay::show_panel(
-                ns_window as *mut objc2::runtime::AnyObject,
-                monitor.as_deref(),
-                logical_width,
-            );
+            native_overlay::show_panel(monitor.as_deref(), logical_width);
             debug_log(&format!(
                 "native/panel/show: {}",
                 native_overlay::state(native_overlay::Hosted::Panel)
@@ -752,6 +693,9 @@ fn show_question_panel(app: &AppHandle, logical_width: f64) {
 
     #[cfg(not(target_os = "macos"))]
     {
+        let Some(questions) = app.get_webview_window(QUESTIONS) else {
+            return;
+        };
         elevate_overlay_window(&questions);
         fit_question_panel_to_monitor(&questions, monitor.as_deref(), logical_width);
         let _ = questions.show();
@@ -775,26 +719,12 @@ fn apply_overlay_behaviour(window: &WebviewWindow, target: Option<&str>) {
 /// macOS では tao の窓は出さず、`native_overlay` の自前 NSWindow に webview を
 /// 載せ替えて出す（tao の窓は他アプリの全画面 Space に入れないため。罠 #9）。
 fn show_overlay(app: &AppHandle) {
-    let Some(overlay) = app.get_webview_window(OVERLAY) else {
-        return;
-    };
     let monitor = target_monitor(app);
 
-    // macOS では tao の窓に触らない。表示にも配置にも使わないうえ、contentView を
-    // 移してあるので Tauri 側の経路（`ns_view()` など）を踏むと危ない。
     #[cfg(target_os = "macos")]
     {
-        let Some(ns_window) = ns_window_ptr(&overlay) else {
-            return;
-        };
-        // 生ポインタは Send ではないので usize で渡す。
-        let ns_window = ns_window as usize;
-        // AppKit はメインスレッド専用。
         let _ = app.run_on_main_thread(move || {
-            native_overlay::show_overlay(
-                ns_window as *mut objc2::runtime::AnyObject,
-                monitor.as_deref(),
-            );
+            native_overlay::show_overlay(monitor.as_deref());
             debug_log(&format!(
                 "native/overlay/show: {}",
                 native_overlay::state(native_overlay::Hosted::Overlay)
@@ -804,6 +734,9 @@ fn show_overlay(app: &AppHandle) {
 
     #[cfg(not(target_os = "macos"))]
     {
+        let Some(overlay) = app.get_webview_window(OVERLAY) else {
+            return;
+        };
         apply_overlay_behaviour(&overlay, monitor.as_deref());
         let _ = overlay.show();
     }
@@ -1041,7 +974,7 @@ fn start_question_capture(app: &AppHandle, session_id: &str, monitor: Option<Str
 fn is_native_overlay() -> bool {
     #[cfg(target_os = "macos")]
     {
-        native_overlay::use_native_overlay()
+        true
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -1049,31 +982,152 @@ fn is_native_overlay() -> bool {
     }
 }
 
-/// ネイティブ描画のオーバーレイへコメントを1件流す（App Store 2.5.1 対応の移行中）。
+/// ネイティブ描画のオーバーレイへコメントを1件流す。
 ///
 /// **AppKit はメインスレッド専用**なので `run_on_main_thread` で入る。同期コマンドは
 /// メインスレッドで走るが（罠 #17 の `capture_question_slide` 参照）、フロントが
 /// どのスレッドから呼ぶかに依存させないため明示する。
 ///
-/// `LAYERTALK_NATIVE_OVERLAY=1` で起動していないときは何も起きない
-/// （ホストビューが載っていないので `overlay_render` 側が黙って返る）。
+/// macOS 以外では描画処理を行わない。
 #[tauri::command]
 fn overlay_push_comment(
     app: AppHandle,
     text: String,
+    mode: String,
     font_size: f64,
     opacity: f64,
     base_duration_sec: f64,
+    reduced_motion: bool,
 ) {
     #[cfg(target_os = "macos")]
     {
         let _ = app.run_on_main_thread(move || {
-            overlay_render::push_comment(&text, font_size, opacity, base_duration_sec);
+            overlay_render::push_comment(
+                &text,
+                &mode,
+                font_size,
+                opacity,
+                base_duration_sec,
+                reduced_motion,
+            );
         });
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (app, text, font_size, opacity, base_duration_sec);
+        let _ = (
+            app,
+            text,
+            mode,
+            font_size,
+            opacity,
+            base_duration_sec,
+            reduced_motion,
+        );
+    }
+}
+
+#[tauri::command]
+fn overlay_push_stamp(
+    app: AppHandle,
+    emoji: Option<String>,
+    image_png: Option<Vec<u8>>,
+    count: usize,
+    opacity: f64,
+    duration_sec: f64,
+    reduced_motion: bool,
+) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.run_on_main_thread(move || {
+            overlay_render::push_stamp(
+                emoji.as_deref(),
+                image_png.as_deref(),
+                count,
+                opacity,
+                duration_sec,
+                reduced_motion,
+            );
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (
+            app,
+            emoji,
+            image_png,
+            count,
+            opacity,
+            duration_sec,
+            reduced_motion,
+        );
+    }
+}
+
+#[tauri::command]
+fn overlay_set_join_card(
+    app: AppHandle,
+    visible: bool,
+    qr_png: Vec<u8>,
+    logo_png: Option<Vec<u8>>,
+    code: String,
+    label: String,
+    brand_color: String,
+    hide_layertalk: bool,
+) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.run_on_main_thread(move || {
+            overlay_render::set_join_card(
+                visible,
+                &qr_png,
+                logo_png.as_deref(),
+                &code,
+                &label,
+                &brand_color,
+                hide_layertalk,
+            );
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (
+            app,
+            visible,
+            qr_png,
+            logo_png,
+            code,
+            label,
+            brand_color,
+            hide_layertalk,
+        );
+    }
+}
+
+#[tauri::command]
+fn question_panel_push(app: AppHandle, text: String) {
+    #[cfg(target_os = "macos")]
+    {
+        let monitor = target_monitor(&app);
+        let _ = app.run_on_main_thread(move || {
+            native_overlay::show_panel(monitor.as_deref(), QUESTION_PANEL_WIDTH);
+            question_render::push(&text);
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, text);
+    }
+}
+
+#[tauri::command]
+fn question_panel_reset(app: AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.run_on_main_thread(question_render::reset);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
     }
 }
 
@@ -1326,6 +1380,60 @@ fn set_app_language(app: AppHandle, language: String) {
     }
 }
 
+#[tauri::command(async)]
+async fn storekit_product(product_id: String) -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "macos")]
+    {
+        storekit::product(product_id).await
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = product_id;
+        Err("StoreKit is available only on macOS".into())
+    }
+}
+
+#[tauri::command(async)]
+async fn storekit_purchase(
+    product_id: String,
+    attempt_id: String,
+) -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "macos")]
+    {
+        storekit::purchase(product_id, attempt_id).await
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (product_id, attempt_id);
+        Err("StoreKit is available only on macOS".into())
+    }
+}
+
+#[tauri::command(async)]
+async fn storekit_unfinished() -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "macos")]
+    {
+        storekit::unfinished().await
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("StoreKit is available only on macOS".into())
+    }
+}
+
+#[tauri::command(async)]
+async fn storekit_finish(transaction_id: String) -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "macos")]
+    {
+        storekit::finish(transaction_id).await
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = transaction_id;
+        Err("StoreKit is available only on macOS".into())
+    }
+}
+
 // -------------------------------------------------------------------- tray
 
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
@@ -1333,7 +1441,8 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     // set_app_language で正しい言語に直す。
     let (show_control, stop, quit) = tray_labels("ja");
 
-    let show_control_item = MenuItem::with_id(app, "show_control", show_control, true, None::<&str>)?;
+    let show_control_item =
+        MenuItem::with_id(app, "show_control", show_control, true, None::<&str>)?;
     let stop_item = MenuItem::with_id(app, "stop", stop, true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let quit_item = MenuItem::with_id(app, "quit", quit, true, None::<&str>)?;
@@ -1399,7 +1508,11 @@ pub fn run() {
             set_overlay_monitor,
             is_native_overlay,
             overlay_push_comment,
+            overlay_push_stamp,
+            overlay_set_join_card,
             overlay_clear,
+            question_panel_push,
+            question_panel_reset,
             start_presentation,
             stop_presentation,
             get_presentation_state,
@@ -1413,6 +1526,10 @@ pub fn run() {
             capture_question_slide,
             question_capture_count,
             read_question_capture,
+            storekit_product,
+            storekit_purchase,
+            storekit_unfinished,
+            storekit_finish,
         ])
         .setup(|app| {
             if let Ok(app_data) = app.path().app_data_dir() {
@@ -1466,6 +1583,9 @@ pub fn run() {
             }
 
             setup_tray(&handle)?;
+
+            #[cfg(target_os = "macos")]
+            storekit::start_updates(handle.clone());
 
             Ok(())
         })

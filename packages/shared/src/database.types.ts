@@ -58,10 +58,11 @@ export type Database = {
       }>;
       entitlements: Table<{
         id: string; owner_id: string; room_id: string; kind: "event_pass" | "beta";
-        source: "stripe" | "manual" | "promotion"; status: "active" | "revoked";
+        source: "stripe" | "manual" | "promotion" | "app_store"; status: "active" | "revoked";
         starts_at: string; expires_at: string; history_expires_at: string;
         stripe_checkout_session_id: string | null; stripe_payment_intent_id: string | null;
         stripe_price_id: string | null; amount_total: number | null; currency: string | null;
+        app_store_transaction_id: string | null;
         revoked_at: string | null; revoked_reason: string | null; created_at: string; updated_at: string;
       }>;
       checkout_attempts: Table<{
@@ -77,6 +78,27 @@ export type Database = {
         stripe_event_id: string; event_type: string; object_id: string | null; livemode: boolean;
         api_version: string | null; status: "processed" | "ignored" | "failed";
         error_message: string | null; received_at: string; processed_at: string | null;
+      }>;
+      app_store_purchase_attempts: Table<{
+        id: string; owner_id: string; room_id: string; product_id: string;
+        status: "created" | "pending" | "fulfilled" | "failed" | "expired";
+        transaction_id: string | null; expires_at: string; created_at: string; updated_at: string;
+      }, {
+        id: string; owner_id: string; room_id: string; product_id: string;
+        status?: "created" | "pending" | "fulfilled" | "failed" | "expired";
+        transaction_id?: string | null; expires_at?: string; created_at?: string; updated_at?: string;
+      }>;
+      app_store_transactions: Table<{
+        transaction_id: string; original_transaction_id: string | null; app_account_token: string;
+        product_id: string; bundle_id: string; environment: "Sandbox" | "Production";
+        purchase_at: string; signed_transaction: string; status: "purchased" | "refunded";
+        entitlement_id: string | null; revoked_at: string | null; created_at: string; updated_at: string;
+      }>;
+      app_store_events: Table<{
+        notification_uuid: string; notification_type: string; subtype: string | null;
+        transaction_id: string | null; environment: "Sandbox" | "Production" | null;
+        status: "processed" | "ignored" | "failed"; error_message: string | null;
+        received_at: string; processed_at: string | null;
       }>;
       presentation_sessions: Table<{
         id: string; room_id: string; owner_id: string; entitlement_id: string | null;
@@ -99,6 +121,9 @@ export type Database = {
       content_reports: Table<{
         id: string; room_id: string; comment_id: string | null; room_stamp_id: string | null;
         reason: ReportReason; reporter_id: string | null; created_at: string;
+      }>;
+      room_participant_blocks: Table<{
+        room_id: string; user_id: string; blocked_by: string; reason: string | null; created_at: string;
       }>;
       room_branding: Table<{
         room_id: string; hide_layertalk_branding: boolean; brand_color: string;
@@ -151,6 +176,17 @@ export type Database = {
         };
         Returns: undefined;
       };
+      ban_room_participant: {
+        Args: {
+          p_room_id: string; p_comment_id?: string | null;
+          p_room_stamp_id?: string | null; p_reason?: string | null;
+        };
+        Returns: string;
+      };
+      unblock_room_participant: {
+        Args: { p_room_id: string; p_user_id: string };
+        Returns: undefined;
+      };
       liked_comment_ids: { Args: { p_room_id: string; p_client_id: string }; Returns: string[] };
       start_presentation: {
         Args: { p_room_id: string };
@@ -171,6 +207,10 @@ export type Database = {
       };
       fulfill_event_pass: { Args: Record<string, unknown>; Returns: Database["public"]["Tables"]["entitlements"]["Row"] };
       revoke_event_pass: { Args: Record<string, unknown>; Returns: number };
+      fulfill_app_store_event_pass: { Args: Record<string, unknown>; Returns: Database["public"]["Tables"]["entitlements"]["Row"] };
+      record_app_store_event: { Args: Record<string, unknown>; Returns: boolean };
+      refund_app_store_event_pass: { Args: Record<string, unknown>; Returns: number };
+      reverse_app_store_refund: { Args: Record<string, unknown>; Returns: number };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

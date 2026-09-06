@@ -16,4 +16,14 @@ export const serverEnv = {
   entitlementPrivateKey: () => required("ENTITLEMENT_SIGNING_PRIVATE_KEY").replace(/\\n/g, "\n"),
   entitlementKeyId: () => process.env.ENTITLEMENT_SIGNING_KEY_ID ?? "event-pass-v1",
   billingPublicationEnabled: () => process.env.BILLING_PUBLICATION_ENABLED === "true",
+  appleBundleId: () => process.env.APPLE_BUNDLE_ID ?? "app.layertalk.presenter",
+  appleAppId: () => {
+    const raw = process.env.APPLE_APP_ID;
+    if (!raw) return undefined;
+    const value = Number(raw);
+    if (!Number.isSafeInteger(value) || value <= 0) throw new Error("APPLE_APP_ID must be a positive integer");
+    return value;
+  },
+  appleEventPassProductId: () =>
+    process.env.APPLE_EVENT_PASS_PRODUCT_ID ?? "app.layertalk.presenter.event_pass",
 };

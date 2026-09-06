@@ -10,26 +10,8 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "macOSPrivateApi": true,
+    "macOSPrivateApi": false,
     "windows": [
-      {
-        "label": "overlay",
-        "title": "LayerTalk Overlay",
-        "transparent": true,
-        "decorations": false,
-        "alwaysOnTop": true,
-        "shadow": false,
-        "resizable": false,
-        "maximizable": false,
-        "minimizable": false,
-        "closable": false,
-        "skipTaskbar": true,
-        "focus": false,
-        "acceptFirstMouse": false,
-        "visible": false,
-        "width": 1440,
-        "height": 900
-      },
       {
         "label": "control",
         "title": "LayerTalk Control",
@@ -41,24 +23,6 @@
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "center": true
-      },
-      {
-        "label": "questions",
-        "title": "LayerTalk Questions",
-        "transparent": true,
-        "decorations": false,
-        "alwaysOnTop": true,
-        "shadow": false,
-        "resizable": false,
-        "maximizable": false,
-        "minimizable": false,
-        "closable": false,
-        "skipTaskbar": true,
-        "focus": false,
-        "acceptFirstMouse": true,
-        "visible": false,
-        "width": 430,
-        "height": 900
       }
     ],
     "security": {

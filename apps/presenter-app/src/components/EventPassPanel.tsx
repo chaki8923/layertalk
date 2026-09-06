@@ -6,10 +6,8 @@ import {
   Download,
   ExternalLink,
   KeyRound,
-  Plus,
   ReceiptText,
   ShieldCheck,
-  Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -27,7 +25,6 @@ import {
   type Entitlement,
   type Locale,
   type ModerationRules,
-  type ModerationTerm,
   type PresentationSession,
   type PresentationReport,
   type RoomBranding,
@@ -52,7 +49,7 @@ import {
 import { EventPassPurchaseSheet } from "./EventPassPurchaseSheet";
 import { DisplayPresetPicker } from "./DisplayPresetPicker";
 import { RecentComments } from "./RecentComments";
-import { loadCachedEntitlementLease, openAudiencePage, openEntitlementReceipt, refreshEntitlementLease } from "../lib/billing";
+import { isMasBuild, loadCachedEntitlementLease, openAudiencePage, openEntitlementReceipt, refreshEntitlementLease } from "../lib/billing";
 import { supabase } from "../lib/supabase";
 
 type Props = {
@@ -93,14 +90,11 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
     try { return JSON.parse(localStorage.getItem(`layertalk:event-controls:${roomId}`) ?? "null") as ModerationRules | null; }
     catch { return null; }
   });
-  const [terms, setTerms] = useState<ModerationTerm[]>([]);
   const [presets, setPresets] = useState<DisplayPreset[]>([]);
   const [sessions, setSessions] = useState<PresentationSession[]>([]);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [passcode, setPasscode] = useState("");
-  const [newTerm, setNewTerm] = useState("");
-  const [termMode, setTermMode] = useState<"contains" | "exact">("contains");
   const [presetName, setPresetName] = useState("");
   const [appliedPresetId, setAppliedPresetId] = useState<string | null>(null);
   const [captureEnabled, setCaptureEnabled] = useState(() => loadQuestionCapturePreference(roomId));
@@ -172,14 +166,12 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
       setOfflineActive(Boolean(active) || ongoingPaid);
       if (!active && !ongoingPaid) return;
       void refreshEntitlementLease(roomId).catch(() => undefined);
-      const [nextRules, termResult, presetResult] = await Promise.all([
+      const [nextRules, presetResult] = await Promise.all([
         fetchModerationRules(supabase, roomId),
-        supabase.from("moderation_terms").select("*").eq("room_id", roomId).order("created_at"),
         supabase.from("display_presets").select("*").order("created_at"),
       ]);
       setRules(nextRules);
       localStorage.setItem(`layertalk:event-controls:${roomId}`, JSON.stringify(nextRules));
-      setTerms(termResult.data ?? []);
       setPresets(presetResult.data ?? []);
     } catch {
       setError(ja ? "Event Passの状態を読み込めませんでした" : "Could not load Event Pass");
@@ -257,12 +249,12 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
               <div>
                 <h2 className="text-[15px] font-bold">{ja ? "本番を安全に運営" : "Run the room safely"}</h2>
                 <p className="text-text-muted mt-1 text-[11px] leading-relaxed">
-                  {ja ? "承認制、NGワード、入室パスコード、レポート、ブランド設定をこのルームで7日間使えます。" : "Approval, blocked words, a room passcode, reports, and branding for this room for seven days."}
+                  {ja ? "承認制、入室パスコード、レポート、ブランド設定をこのルームで7日間使えます。" : "Approval, a room passcode, reports, and branding for this room for seven days."}
                 </p>
               </div>
             </div>
             <div className="mt-4 flex items-end justify-between">
-              <div><span className="lt-num text-[24px] font-bold">¥2,980</span><span className="text-text-faint ml-1 text-[11px]">{ja ? "税込" : "tax included"}</span></div>
+              <div><span className="lt-num text-[24px] font-bold">{isMasBuild ? "App Store" : "¥2,980"}</span>{!isMasBuild && <span className="text-text-faint ml-1 text-[11px]">{ja ? "税込" : "tax included"}</span>}</div>
               <button type="button" disabled={live} onClick={() => { setError(null); setPurchaseOpen(true); }} className="lt-tap bg-brand rounded-[13px] px-4 py-2.5 text-[12px] font-bold text-white disabled:opacity-40">
                 {ja ? "購入する" : "Buy pass"}
               </button>
@@ -321,34 +313,6 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
             }} className="border-border rounded-[12px] border px-3 text-[11px] font-bold disabled:opacity-40">{ja ? "保存" : "Save"}</button>
           </div>
           {!entitlement && <p className="text-text-faint mt-1.5 text-[10px] leading-relaxed">{ja ? "Event Passの期限切れ後は、新しく参加する人にパスコードを求めません。" : "After the Event Pass expires, new participants are not asked for a passcode."}</p>}
-        </div>
-
-        <div className="border-border border-t pt-4">
-          <p className="text-[13px] font-bold">{ja ? "NGワード" : "Blocked words"}</p>
-          <div className="mt-2 flex gap-2">
-            <input value={newTerm} onChange={(event) => setNewTerm(event.target.value)} className="border-border min-w-0 flex-1 rounded-[12px] border bg-transparent px-3 py-2 text-[12px] outline-none" />
-            <select aria-label={ja ? "一致方法" : "Match mode"} value={termMode} onChange={(event) => setTermMode(event.target.value as "contains" | "exact")} className="border-border rounded-[12px] border bg-transparent px-2 text-[10px] outline-none">
-              <option value="contains">{ja ? "部分" : "Contains"}</option>
-              <option value="exact">{ja ? "完全" : "Exact"}</option>
-            </select>
-            <button type="button" disabled={!newTerm.trim()} onClick={() => {
-              setError(null);
-              void supabase.from("moderation_terms").insert({ room_id: roomId, term: newTerm.trim(), match_mode: termMode }).select().single().then(({ data, error: insertError }) => {
-                if (insertError) { setError(resolveErrorMessage(new LayerTalkError("moderation_failed", insertError.message), locale)); return; }
-                if (data) setTerms((current) => [...current, data]);
-                setNewTerm("");
-              });
-            }} className="border-border rounded-[12px] border px-3"><Plus size={14} /></button>
-          </div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {terms.map((term) => <button key={term.id} type="button" onClick={() => {
-              setError(null);
-              void supabase.from("moderation_terms").delete().eq("id", term.id).then(({ error: deleteError }) => {
-                if (deleteError) { setError(resolveErrorMessage(new LayerTalkError("moderation_failed", deleteError.message), locale)); return; }
-                setTerms((current) => current.filter((item) => item.id !== term.id));
-              });
-            }} className="bg-surface-strong text-text-muted flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px]">{term.term}<Trash2 size={10} /></button>)}
-          </div>
         </div>
 
         {/* 承認待ちのキューは PendingApprovalQueue（コントロール窓の最上部）が持つ。
@@ -465,7 +429,7 @@ function EntitlementDetails({ entitlement, roomTitle, roomCode, ja, onError }: {
     ? entitlement.revoked_reason === "full_refund" ? (ja ? "返金済み" : "Refunded") : (ja ? "取り消し済み" : "Revoked")
     : expired ? (ja ? "期限切れ" : "Expired") : (ja ? "有効" : "Active");
   const statusClass = entitlement.status === "revoked" ? "text-like" : expired ? "text-text-muted" : "text-online";
-  const canOpenReceipt = entitlement.source === "stripe" && Boolean(entitlement.stripe_payment_intent_id);
+  const canOpenReceipt = !isMasBuild && entitlement.source === "stripe" && Boolean(entitlement.stripe_payment_intent_id);
   const amount = entitlement.amount_total === null || !entitlement.currency
     ? "—"
     : new Intl.NumberFormat(ja ? "ja-JP" : "en-US", { style: "currency", currency: entitlement.currency.toUpperCase() })

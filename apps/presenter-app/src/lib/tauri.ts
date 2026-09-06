@@ -48,6 +48,32 @@ export const getScreenCapturePermission = (request = false) =>
 export const openScreenCaptureSettings = () =>
   invoke<void>("open_screen_capture_settings");
 
+export type StoreKitProductResult =
+  | { status: "ready"; productId: string; displayName: string; displayPrice: string }
+  | { status: "unavailable" }
+  | { status: "error"; message?: string };
+
+export type StoreKitTransaction = {
+  status: "success" | "transaction";
+  transactionId: string;
+  productId: string;
+  signedTransaction: string;
+};
+
+export type StoreKitPurchaseResult = StoreKitTransaction
+  | { status: "pending" | "userCancelled" | "unavailable" | "error"; message?: string };
+
+export const storeKitProduct = (productId: string) =>
+  invoke<StoreKitProductResult>("storekit_product", { productId });
+export const storeKitPurchase = (productId: string, attemptId: string) =>
+  invoke<StoreKitPurchaseResult>("storekit_purchase", { productId, attemptId });
+export const storeKitUnfinished = () =>
+  invoke<{ status: "success"; transactions: StoreKitTransaction[] }>("storekit_unfinished");
+export const storeKitFinish = (transactionId: string) =>
+  invoke<{ status: "finished"; transactionId: string }>("storekit_finish", { transactionId });
+export const onStoreKitTransaction = (handler: (transaction: StoreKitTransaction) => void) =>
+  listen<StoreKitTransaction>("storekit-transaction", ({ payload }) => handler(payload));
+
 /**
  * `framePending` になった理由。
  *
@@ -81,20 +107,59 @@ export const questionCaptureCount = (sessionId: string) =>
 /**
  * オーバーレイをネイティブ描画（Core Animation）で出しているか。
  *
- * 透過 WKWebView は private API を要求する（App Store 2.5.1）ので、透過が要る窓からは
- * webview を外していく移行中。`LAYERTALK_NATIVE_OVERLAY=1` で起動したときだけ true。
- * **移植が終わったらこの分岐ごと消える。**
+ * macOS 版は App Store 向け・直接配布版ともに常にネイティブ描画を使う。
+ * macOS 以外では false を返す。
  */
 export const isNativeOverlay = () => invoke<boolean>("is_native_overlay");
 
 export const overlayPushComment = (
   text: string,
+  mode: "flow" | "bubble",
   fontSize: number,
   opacity: number,
   baseDurationSec: number,
-) => invoke<void>("overlay_push_comment", { text, fontSize, opacity, baseDurationSec });
+  reducedMotion: boolean,
+) => invoke<void>("overlay_push_comment", {
+  text,
+  mode,
+  fontSize,
+  opacity,
+  baseDurationSec,
+  reducedMotion,
+});
+
+export const overlayPushStamp = (
+  emoji: string | null,
+  imagePng: number[] | null,
+  count: number,
+  opacity: number,
+  durationSec: number,
+  reducedMotion: boolean,
+) => invoke<void>("overlay_push_stamp", {
+  emoji,
+  imagePng,
+  count,
+  opacity,
+  durationSec,
+  reducedMotion,
+});
+
+export const overlaySetJoinCard = (input: {
+  visible: boolean;
+  qrPng: number[];
+  logoPng: number[] | null;
+  code: string;
+  label: string;
+  brandColor: string;
+  hideLayertalk: boolean;
+}) => invoke<void>("overlay_set_join_card", input);
 
 export const overlayClear = () => invoke<void>("overlay_clear");
+
+export const questionPanelPush = (text: string) =>
+  invoke<void>("question_panel_push", { text });
+
+export const questionPanelReset = () => invoke<void>("question_panel_reset");
 
 export const getPresentationState = () => invoke<boolean>("get_presentation_state");
 

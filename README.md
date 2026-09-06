@@ -102,8 +102,9 @@ npm run smoke:realtime   # Realtime 3経路（INSERT / UPDATE / Broadcast）の�
 Tauri の `alwaysOnTop`（NSFloatingWindowLevel）だけではスライドショーに隠れます。
 `src-tauri/src/lib.rs` で NSWindow のレベルを `kCGScreenSaverWindowLevel` (1000) に上げ、
 `collectionBehavior` に `CanJoinAllSpaces | FullScreenAuxiliary` を立てています。
-`app.macOSPrivateApi` と cargo feature `macos-private-api` は透過に必須です
-（そのぶん Mac App Store 配布はできません）。
+透過部分はWKWebViewではなく、公開APIのAppKit/Core Animationでネイティブ描画します。
+そのため `app.macOSPrivateApi` と cargo feature `macos-private-api` は使用しておらず、
+Mac App Store用サンドボックス構成でも同じ描画経路を使います。
 
 **いいねの改ざん防止**
 `comments` の UPDATE を anon に開けると `content` まで書き換えられるため、ポリシーは作らず

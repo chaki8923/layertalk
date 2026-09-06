@@ -19,6 +19,8 @@ export type DisplayPreset = Tables<"display_presets">;
 
 /** 観客からの通報。無料ルームでも必ず動く経路なので、課金判定を足さないこと。 */
 export type ContentReport = Tables<"content_reports">;
+/** ルーム内の匿名Authユーザーに対するブロック。発表者だけが一覧を読める。 */
+export type RoomParticipantBlock = Tables<"room_participant_blocks">;
 
 export const EVENT_PASS_FEATURES = [
   "moderation",

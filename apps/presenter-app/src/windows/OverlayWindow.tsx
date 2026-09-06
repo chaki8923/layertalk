@@ -143,9 +143,13 @@ export function OverlayWindow() {
         // bubble のときは何も出ない（移行中の既知の穴）。
         void overlayPushComment(
           text,
+          settings.displayMode,
           OVERLAY_DEFAULTS.fontSize,
           OVERLAY_DEFAULTS.opacity,
-          OVERLAY_DEFAULTS.flowDurationSec,
+          settings.displayMode === "bubble"
+            ? OVERLAY_DEFAULTS.bubbleDurationSec
+            : OVERLAY_DEFAULTS.flowDurationSec,
+          window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true,
         );
         return;
       }
