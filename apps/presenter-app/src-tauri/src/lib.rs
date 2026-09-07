@@ -101,15 +101,36 @@ fn ns_window_ptr(window: &WebviewWindow) -> Option<*mut objc2::runtime::AnyObjec
 #[cfg(not(target_os = "macos"))]
 fn elevate_overlay_window(_window: &WebviewWindow) {}
 
-/// 調査用ログの出力先。ターミナルにも出すが、`tauri dev` の親プロセスに環境変数が
-/// 渡っていない・stderr が見えないといった事情に左右されないよう、必ずファイルにも残す。
-/// **原因が判明したら `log_window_state` ごと落とす一時的な仕掛け。**
+/// 調査用ログ。**`LAYERTALK_DEBUG_OVERLAY=1` のときだけ**出す。
+///
+/// 以前は無条件に `/tmp/layertalk-overlay.log` へ書いていた。2つ問題がある:
+/// App Sandbox（Mac App Store 版）では `/tmp` に書けず `if let Ok(..)` で黙って
+/// 失敗し続けるだけになり、直接配布版では**同じ Mac の全ユーザーが読める場所**に
+/// モニター構成が残る。書くのは調査するときだけ、書き先はアプリのコンテナ内へ。
 #[cfg(target_os = "macos")]
-const DEBUG_LOG_PATH: &str = "/tmp/layertalk-overlay.log";
+fn debug_enabled() -> bool {
+    std::env::var("LAYERTALK_DEBUG_OVERLAY").is_ok_and(|value| value != "0")
+}
+
+/// 出力先。`app_data_dir()` と同じ場所に置く（sandbox でもここは書ける）。
+/// `AppHandle` を引き回さずに済ませるため、`debug_log` の呼び出し側ではなく
+/// ここで組み立てている。
+#[cfg(target_os = "macos")]
+fn debug_log_path() -> Option<std::path::PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    let directory = std::path::PathBuf::from(home)
+        .join("Library/Application Support/app.layertalk.presenter");
+    std::fs::create_dir_all(&directory).ok()?;
+    Some(directory.join("overlay-debug.log"))
+}
 
 #[cfg(target_os = "macos")]
 fn debug_log(line: &str) {
     use std::io::Write;
+
+    if !debug_enabled() {
+        return;
+    }
 
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -119,12 +140,10 @@ fn debug_log(line: &str) {
 
     eprintln!("{line}");
 
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(DEBUG_LOG_PATH)
-    {
-        let _ = writeln!(file, "{line}");
+    if let Some(path) = debug_log_path() {
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            let _ = writeln!(file, "{line}");
+        }
     }
 }
 
@@ -173,6 +192,13 @@ mod native_overlay {
 
     /// kCGScreenSaverWindowLevel。tao 窓に当てていたのと同じ条件に揃える。
     const LEVEL: isize = 1000;
+
+    fn label(kind: Hosted) -> &'static str {
+        match kind {
+            Hosted::Overlay => "overlay",
+            Hosted::Panel => "panel",
+        }
+    }
 
     fn slots(kind: Hosted) -> (&'static AtomicUsize, &'static AtomicBool) {
         match kind {
@@ -1220,20 +1246,59 @@ fn screen_capture_permission(request: bool) -> question_capture::CapturePermissi
     question_capture::permission(request)
 }
 
+/// URL を既定のアプリで開く。**`/usr/bin/open` を spawn しないこと。**
+///
+/// App Sandbox（Mac App Store 版）では、子プロセスから Launch Services を叩く経路が
+/// 塞がれていて `open` は黙って失敗する。`tauri-plugin-opener` も内部で
+/// `/usr/bin/open` を spawn する（`open` crate の macos.rs）ので同じ穴に落ちる。
+/// ここに乗っているのは**プライバシーポリシー・利用規約・サポート**への導線で、
+/// App Store 5.1.1(i) が「アプリ内から辿れること」を要求している。無反応にできない。
+///
+/// **`async` を付けないこと。** Tauri の同期コマンドはメインスレッドで走る。
+/// `NSWorkspace` の呼び出しをメインスレッドに寄せるのはこの性質に頼っている。
+#[cfg(target_os = "macos")]
+fn open_url_with_workspace(url: &str) -> Result<(), String> {
+    use objc2_app_kit::NSWorkspace;
+    use objc2_foundation::{NSString, NSURL};
+
+    let string = NSString::from_str(url);
+    let parsed = NSURL::URLWithString(&string)
+        .ok_or_else(|| format!("could not parse URL: {url}"))?;
+    if NSWorkspace::sharedWorkspace().openURL(&parsed) {
+        Ok(())
+    } else {
+        Err(format!("the system refused to open {url}"))
+    }
+}
+
+/// 外部 URL（法務ページ・サポート・領収書）を既定のブラウザで開く。
+///
+/// 受け取った文字列をそのまま `NSURL` に通すので、`http` / `https` に限る。
+/// 任意スキームを許すと、webview 側の不具合が「勝手に別アプリが起動する」に化ける。
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("only http(s) URLs can be opened".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        open_url_with_workspace(&url)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("opening URLs is only implemented on macOS".into())
+    }
+}
+
 #[tauri::command]
 fn open_screen_capture_settings() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        // 固定URLを引数として直接渡す。シェルを介さないので `?` も展開されない。
-        let status = std::process::Command::new("/usr/bin/open")
-            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
-            .status()
-            .map_err(|err| err.to_string())?;
-        if status.success() {
-            Ok(())
-        } else {
-            Err(format!("System Settings exited with {status}"))
-        }
+        // 固定 URL。`open_external_url` を経由しないのは、あちらが http(s) に
+        // 限っているため（x-apple.systempreferences: を通すと穴になる）。
+        open_url_with_workspace(
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+        )
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -1421,6 +1486,24 @@ async fn storekit_unfinished() -> Result<serde_json::Value, String> {
     }
 }
 
+/// 顧客のトランザクション履歴を全部返す（`Transaction.all`）。
+///
+/// `storekit_unfinished` との違いは **finish 済みも入ること**。Event Pass は
+/// Non-Renewing Subscription なので、Apple は「同じ Apple ID の全デバイスへ
+/// 届ける責任は開発者にある」としている。未完了だけを見ていると、
+/// 「別の Mac にサインインしたら Pass が無い」を救えない。
+#[tauri::command(async)]
+async fn storekit_all() -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "macos")]
+    {
+        storekit::all().await
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("StoreKit is available only on macOS".into())
+    }
+}
+
 #[tauri::command(async)]
 async fn storekit_finish(transaction_id: String) -> Result<serde_json::Value, String> {
     #[cfg(target_os = "macos")]
@@ -1485,7 +1568,8 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
+        // `tauri-plugin-opener` は入れていない。あれは `/usr/bin/open` を spawn するので
+        // App Sandbox で黙って失敗する。URL は `open_external_url`（NSWorkspace）が開く。
         // 発表レポートの書き出し用。WKWebView は <a download> を一切処理しないので、
         // ブラウザ流儀の Blob ダウンロードでは 1 バイトも保存されない。
         .plugin(tauri_plugin_dialog::init())
@@ -1523,12 +1607,14 @@ pub fn run() {
             set_app_language,
             screen_capture_permission,
             open_screen_capture_settings,
+            open_external_url,
             capture_question_slide,
             question_capture_count,
             read_question_capture,
             storekit_product,
             storekit_purchase,
             storekit_unfinished,
+            storekit_all,
             storekit_finish,
         ])
         .setup(|app| {

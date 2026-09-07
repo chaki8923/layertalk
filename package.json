@@ -15,7 +15,9 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "test": "vitest run",
+    "verify:mas-bundle": "node scripts/verify-mas-bundle.mjs",
     "configure:supabase-auth": "node scripts/configure-supabase-auth.mjs",
+    "create:review-account": "node scripts/create-review-account.mjs",
     "smoke:realtime": "node scripts/realtime-smoke.mjs"
   },
   "engines": {

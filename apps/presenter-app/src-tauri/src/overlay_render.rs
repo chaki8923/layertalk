@@ -450,14 +450,20 @@ fn push_bubble_comment(
 
         let effective_duration = if reduced_motion { 6.0 } else { duration_sec };
         let animation = CABasicAnimation::animationWithKeyPath(Some(ns_string!("position.y")));
-        animation.setFromValue(Some(&*NSNumber::new_f64(start_y + height / 2.0)));
-        animation.setToValue(Some(&*NSNumber::new_f64(end_y + height / 2.0)));
+        // SAFETY: position.y is a scalar property, so both values have the required NSNumber type.
+        unsafe {
+            animation.setFromValue(Some(&*NSNumber::new_f64(start_y + height / 2.0)));
+            animation.setToValue(Some(&*NSNumber::new_f64(end_y + height / 2.0)));
+        }
         animation.setDuration(effective_duration);
-        animation.setTimingFunction(Some(&CAMediaTimingFunction::functionWithName(
-            kCAMediaTimingFunctionLinear,
-        )));
+        // SAFETY: These immutable constants are provided by the linked QuartzCore framework.
+        unsafe {
+            animation.setTimingFunction(Some(&CAMediaTimingFunction::functionWithName(
+                kCAMediaTimingFunctionLinear,
+            )));
+            animation.setFillMode(kCAFillModeForwards);
+        }
         animation.setRemovedOnCompletion(false);
-        animation.setFillMode(kCAFillModeForwards);
         CATransaction::begin();
         CATransaction::setDisableActions(true);
         state.root.addSublayer(&bubble);
@@ -550,14 +556,20 @@ pub fn push_stamp(
                 duration_sec * (0.85 + pseudo_random_unit() * 0.3)
             };
             let animation = CABasicAnimation::animationWithKeyPath(Some(ns_string!("position.y")));
-            animation.setFromValue(Some(&*NSNumber::new_f64(start_y + size / 2.0)));
-            animation.setToValue(Some(&*NSNumber::new_f64(end_y + size / 2.0)));
+            // SAFETY: position.y is a scalar property, so both values have the required NSNumber type.
+            unsafe {
+                animation.setFromValue(Some(&*NSNumber::new_f64(start_y + size / 2.0)));
+                animation.setToValue(Some(&*NSNumber::new_f64(end_y + size / 2.0)));
+            }
             animation.setDuration(effective_duration);
-            animation.setTimingFunction(Some(&CAMediaTimingFunction::functionWithName(
-                kCAMediaTimingFunctionLinear,
-            )));
+            // SAFETY: These immutable constants are provided by the linked QuartzCore framework.
+            unsafe {
+                animation.setTimingFunction(Some(&CAMediaTimingFunction::functionWithName(
+                    kCAMediaTimingFunctionLinear,
+                )));
+                animation.setFillMode(kCAFillModeForwards);
+            }
             animation.setRemovedOnCompletion(false);
-            animation.setFillMode(kCAFillModeForwards);
             state.root.addSublayer(&layer);
             layer.addAnimation_forKey(&animation, Some(ns_string!("stamp")));
             state.live.push(LiveLayer {
@@ -634,7 +646,8 @@ pub fn set_join_card(
         unsafe {
             label_layer.setString(Some(&*label_text));
         }
-        label_layer.setAlignmentMode(objc2_quartz_core::kCAAlignmentCenter);
+        // SAFETY: The linked QuartzCore framework provides this immutable alignment constant.
+        label_layer.setAlignmentMode(unsafe { objc2_quartz_core::kCAAlignmentCenter });
         label_layer.setContentsScale(state.scale);
         label_layer.setFrame(NSRect::new(
             NSPoint::new(58.0, 46.0),
@@ -650,7 +663,8 @@ pub fn set_join_card(
         unsafe {
             code_layer.setString(Some(&*code_text));
         }
-        code_layer.setAlignmentMode(objc2_quartz_core::kCAAlignmentCenter);
+        // SAFETY: The linked QuartzCore framework provides this immutable alignment constant.
+        code_layer.setAlignmentMode(unsafe { objc2_quartz_core::kCAAlignmentCenter });
         code_layer.setContentsScale(state.scale);
         code_layer.setFrame(NSRect::new(
             NSPoint::new(58.0, 18.0),
@@ -666,7 +680,8 @@ pub fn set_join_card(
             unsafe {
                 brand_layer.setString(Some(&*brand_text));
             }
-            brand_layer.setAlignmentMode(objc2_quartz_core::kCAAlignmentCenter);
+            // SAFETY: The linked QuartzCore framework provides this immutable alignment constant.
+            brand_layer.setAlignmentMode(unsafe { objc2_quartz_core::kCAAlignmentCenter });
             brand_layer.setContentsScale(state.scale);
             brand_layer.setFrame(NSRect::new(
                 NSPoint::new(58.0, 5.0),

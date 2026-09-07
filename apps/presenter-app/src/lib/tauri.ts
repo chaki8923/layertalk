@@ -48,6 +48,18 @@ export const getScreenCapturePermission = (request = false) =>
 export const openScreenCaptureSettings = () =>
   invoke<void>("open_screen_capture_settings");
 
+/**
+ * 外部 URL を既定のブラウザで開く。
+ *
+ * **`@tauri-apps/plugin-opener` の `openUrl` を使わないこと。** あれは Rust 側で
+ * `/usr/bin/open` を spawn する（`open` crate）ので、App Sandbox（Mac App Store 版）
+ * では黙って失敗する。ここに乗っているのはプライバシーポリシー・利用規約・サポートで、
+ * App Store 5.1.1(i) が「アプリ内から辿れること」を要求している導線そのもの。
+ * Rust 側は `NSWorkspace` を直接叩いている。
+ */
+export const openExternalUrl = (url: string) =>
+  invoke<void>("open_external_url", { url });
+
 export type StoreKitProductResult =
   | { status: "ready"; productId: string; displayName: string; displayPrice: string }
   | { status: "unavailable" }
@@ -69,6 +81,9 @@ export const storeKitPurchase = (productId: string, attemptId: string) =>
   invoke<StoreKitPurchaseResult>("storekit_purchase", { productId, attemptId });
 export const storeKitUnfinished = () =>
   invoke<{ status: "success"; transactions: StoreKitTransaction[] }>("storekit_unfinished");
+/** finish 済みを含む全トランザクション。別の Mac での復元に使う。 */
+export const storeKitAll = () =>
+  invoke<{ status: "success"; transactions: StoreKitTransaction[] }>("storekit_all");
 export const storeKitFinish = (transactionId: string) =>
   invoke<{ status: "finished"; transactionId: string }>("storekit_finish", { transactionId });
 export const onStoreKitTransaction = (handler: (transaction: StoreKitTransaction) => void) =>

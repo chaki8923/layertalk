@@ -101,10 +101,26 @@ const TEST_STAMP_EVENT = "test-stamp";
 const TEST_COMMENT_EVENT = "test-comment";
 const QUESTION_RECEIVED_EVENT = "question-received";
 
+/**
+ * 初回起動だけの表示言語。
+ *
+ * 「表示言語を決めるのは発表者だけ」という方針は変えていない。**保存値が無いとき
+ * だけ**の初期値で、一度でも選べばそちらが正になる。既定を日本語に固定していると、
+ * 日本語を読まない相手（App Review を含む）は最初の画面から何も読めない。
+ * `navigator.language` は WKWebView でも OS の設定を返す。
+ */
+function initialLanguage(): Locale {
+  try {
+    return navigator.language?.toLowerCase().startsWith("ja") ? "ja" : "en";
+  } catch {
+    return DEFAULT_SETTINGS.language;
+  }
+}
+
 export function loadSettings(): PresenterSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_SETTINGS;
+    if (!raw) return { ...DEFAULT_SETTINGS, language: initialLanguage() };
     const parsed = { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<PresenterSettings>) };
     // 廃止した表示設定をlocalStorageから実行時へ持ち込まない。
     // ここに書き忘れたフィールドは読み込みで捨てられる。
@@ -119,11 +135,12 @@ export function loadSettings(): PresenterSettings {
       allowCustomStamps: parsed.allowCustomStamps !== false,
       displayMode: parsed.displayMode === "bubble" ? "bubble" : "flow",
       monitorName: parsed.monitorName,
-      language: parsed.language === "en" ? "en" : "ja",
+      // 保存値が正。壊れた値・未知の値だけ初回と同じ判定へ落とす。
+      language: parsed.language === "en" || parsed.language === "ja" ? parsed.language : initialLanguage(),
       sectionOrder: normalizeSectionOrder(parsed.sectionOrder),
     };
   } catch {
-    return DEFAULT_SETTINGS;
+    return { ...DEFAULT_SETTINGS, language: initialLanguage() };
   }
 }
 

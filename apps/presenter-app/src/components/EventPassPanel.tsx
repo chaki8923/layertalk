@@ -6,7 +6,9 @@ import {
   Download,
   ExternalLink,
   KeyRound,
+  Loader2,
   ReceiptText,
+  RotateCcw,
   ShieldCheck,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -49,7 +51,7 @@ import {
 import { EventPassPurchaseSheet } from "./EventPassPurchaseSheet";
 import { DisplayPresetPicker } from "./DisplayPresetPicker";
 import { RecentComments } from "./RecentComments";
-import { isMasBuild, loadCachedEntitlementLease, openAudiencePage, openEntitlementReceipt, refreshEntitlementLease } from "../lib/billing";
+import { getEventPassProduct, isMasBuild, loadCachedEntitlementLease, openAudiencePage, openEntitlementReceipt, refreshEntitlementLease, restorePurchases } from "../lib/billing";
 import { supabase } from "../lib/supabase";
 
 type Props = {
@@ -99,6 +101,25 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
   const [appliedPresetId, setAppliedPresetId] = useState<string | null>(null);
   const [captureEnabled, setCaptureEnabled] = useState(() => loadQuestionCapturePreference(roomId));
   const [capturePermission, setCapturePermission] = useState<ScreenCapturePermission | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreNotice, setRestoreNotice] = useState<string | null>(null);
+  /**
+   * 購入前カードに出す価格。**MAS 版では定数にできない。**
+   *
+   * App Store の実売価格は Apple の価格表と地域で決まるので、「¥2,980」と刷り込むと
+   * 表示と請求額がずれる。ここは `Product.displayPrice`（StoreKit がロケールごとに
+   * 整形した文字列）をそのまま出す。取れるまでは何も断言しない。
+   */
+  const [listPrice, setListPrice] = useState<string | null>(isMasBuild ? null : "¥2,980");
+
+  useEffect(() => {
+    if (!isMasBuild) return;
+    let cancelled = false;
+    void getEventPassProduct()
+      .then((product) => { if (!cancelled && product.status === "ready") setListPrice(product.displayPrice); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
 
   const appliedPreset = presets.find((preset) => preset.id === appliedPresetId) ?? null;
   const captureTargetName = capturePermission
@@ -192,6 +213,33 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
     onPaidChange(Boolean(entitlement) || offlineActive);
   }, [entitlement, offlineActive, onPaidChange]);
 
+  /**
+   * 購入を復元する（MAS 版のみ）。
+   *
+   * Event Pass は Non-Renewing Subscription なので、Apple は「同じ Apple ID の
+   * 全デバイスへ届ける責任は開発者にある」としている。2 台目の Mac には
+   * StoreKit の履歴しか手がかりが無いので、そこからサーバへ検証を投げ直す。
+   * 成否にかかわらず最後に `load()` する — 画面の正はあくまでサーバの権利行で、
+   * 復元できた件数ではない。
+   */
+  const restore = async () => {
+    if (restoring) return;
+    setRestoring(true);
+    setError(null);
+    setRestoreNotice(null);
+    try {
+      const restored = await restorePurchases();
+      setRestoreNotice(restored > 0
+        ? (ja ? "購入を確認しました。" : "Purchases restored.")
+        : (ja ? "復元できる購入は見つかりませんでした。" : "No purchases to restore."));
+    } catch {
+      setError(ja ? "購入を復元できませんでした。接続を確認してください。" : "Could not restore purchases. Check your connection.");
+    } finally {
+      setRestoring(false);
+      await load();
+    }
+  };
+
   const updateRule = async (patch: Parameters<typeof updateModerationRules>[2]) => {
     if (!rules) return;
     const previous = rules;
@@ -254,12 +302,26 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
               </div>
             </div>
             <div className="mt-4 flex items-end justify-between">
-              <div><span className="lt-num text-[24px] font-bold">{isMasBuild ? "App Store" : "¥2,980"}</span>{!isMasBuild && <span className="text-text-faint ml-1 text-[11px]">{ja ? "税込" : "tax included"}</span>}</div>
+              <div>
+                <span className="lt-num text-[24px] font-bold">{listPrice ?? "—"}</span>
+                <span className="text-text-faint ml-1 text-[11px]">
+                  {isMasBuild ? (ja ? "App Store決済" : "via App Store") : (ja ? "税込" : "tax included")}
+                </span>
+              </div>
               <button type="button" disabled={live} onClick={() => { setError(null); setPurchaseOpen(true); }} className="lt-tap bg-brand rounded-[13px] px-4 py-2.5 text-[12px] font-bold text-white disabled:opacity-40">
                 {ja ? "購入する" : "Buy pass"}
               </button>
             </div>
             {live && <p className="text-text-faint mt-2 text-[10px]">{ja ? "発表中は購入画面を開きません。終了後に購入できます。" : "Checkout stays out of the way while presenting."}</p>}
+            {/* App Store 版だけ。Stripe 版の権利はサインインした時点でサーバから戻るので
+                「復元」という操作が存在しない。 */}
+            {isMasBuild && (
+              <button type="button" disabled={restoring} onClick={() => void restore()} className="text-text-muted mt-3 flex items-center gap-1.5 text-[10px] font-bold disabled:opacity-40">
+                {restoring ? <Loader2 size={11} className="animate-spin motion-reduce:animate-none" /> : <RotateCcw size={11} />}
+                {ja ? "購入を復元" : "Restore purchases"}
+              </button>
+            )}
+            {restoreNotice && <p role="status" className="text-text-faint mt-2 text-[10px]">{restoreNotice}</p>}
             {error && <p className="text-like mt-2 text-[11px]">{error}</p>}
           </div>
         </div>
@@ -455,7 +517,7 @@ function EntitlementDetails({ entitlement, roomTitle, roomCode, ja, onError }: {
       </dl>
       <div className="mt-4 flex flex-wrap gap-2">
         {canOpenReceipt && <button type="button" disabled={receiptBusy} onClick={() => void openReceipt()} className="border-border text-text-muted flex items-center gap-1.5 rounded-control border px-3 py-2 text-[9px] font-bold disabled:opacity-40"><ReceiptText size={12} />{receiptBusy ? (ja ? "取得中" : "Loading") : (ja ? "領収書を開く" : "Open receipt")}</button>}
-        <button type="button" onClick={() => void openAudiencePage("/support").catch(() => onError(ja ? "サポートページを開けませんでした" : "Could not open support"))} className="border-border text-text-muted flex items-center gap-1.5 rounded-control border px-3 py-2 text-[9px] font-bold">{ja ? "サポート" : "Support"}<ExternalLink size={11} /></button>
+        <button type="button" onClick={() => void openAudiencePage(isMasBuild ? "/support?channel=app-store" : "/support").catch(() => onError(ja ? "サポートページを開けませんでした" : "Could not open support"))} className="border-border text-text-muted flex items-center gap-1.5 rounded-control border px-3 py-2 text-[9px] font-bold">{ja ? "サポート" : "Support"}<ExternalLink size={11} /></button>
       </div>
     </div>
   );

@@ -1,9 +1,9 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { importSPKI, jwtVerify } from "jose";
 
 import type { EntitlementLease } from "@layertalk/shared";
 
 import { BILLING_API_BASE, BillingError, billingBearerHeaders, billingJson, type EventPassProduct, type EventPassPurchaseResult } from "./billing-http";
+import { openExternalUrl } from "./tauri";
 
 const LEASE_KEY = "layertalk:event-pass-lease";
 
@@ -23,7 +23,7 @@ export async function purchaseEventPass(roomId: string, attemptId: string): Prom
   if (!response.ok || typeof body.url !== "string") {
     throw new BillingError(typeof body.error === "string" ? body.error : "Checkout failed", response.status);
   }
-  await openUrl(body.url);
+  await openExternalUrl(body.url);
   return "started";
 }
 
@@ -57,3 +57,10 @@ export async function verifyEntitlementLease(lease: EntitlementLease, roomId: st
 }
 
 export async function initializeBillingRecovery() { return () => undefined; }
+
+/**
+ * 直接配布版に「購入を復元」は無い。Stripe の権利はサーバ側の `entitlements` にあり、
+ * サインインした時点で `fetchActiveEntitlement` が拾うので、復元という操作が要らない。
+ * 形を揃えるためだけに置いてある（バレルが両チャネルで同じ形を再輸出している）。
+ */
+export async function restorePurchases(): Promise<number> { return 0; }

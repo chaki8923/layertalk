@@ -1,11 +1,10 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
-
 import {
   BILLING_API_BASE,
   BillingError,
   billingBearerHeaders,
   billingJson,
 } from "./billing-http";
+import { openExternalUrl } from "./tauri";
 
 export {
   getEventPassProduct,
@@ -14,6 +13,7 @@ export {
   loadCachedEntitlementLease,
   purchaseEventPass,
   refreshEntitlementLease,
+  restorePurchases,
   verifyEntitlementLease,
 } from "@layertalk/billing-channel";
 
@@ -29,7 +29,7 @@ export { BillingError } from "./billing-http";
  */
 export async function openAudiencePage(path: string) {
   if (!BILLING_API_BASE) throw new Error("Audience URL is not configured");
-  await openUrl(`${BILLING_API_BASE}${path.startsWith("/") ? path : `/${path}`}`);
+  await openExternalUrl(`${BILLING_API_BASE}${path.startsWith("/") ? path : `/${path}`}`);
 }
 
 /**
@@ -60,5 +60,5 @@ export async function openEntitlementReceipt(entitlementId: string) {
   });
   const body = await billingJson(response);
   if (!response.ok || typeof body.url !== "string") throw new BillingError(typeof body.error === "string" ? body.error : "Receipt failed", response.status);
-  await openUrl(body.url);
+  await openExternalUrl(body.url);
 }

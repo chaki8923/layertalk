@@ -2,12 +2,13 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "コントロール窓が使う権限。オーバーレイはWebViewではなくネイティブ描画。",
-  "windows": ["control"],
+  "windows": [
+    "control"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
     "core:event:default",
-    "opener:default",
     "dialog:allow-save",
     "fs:allow-write-text-file"
   ]

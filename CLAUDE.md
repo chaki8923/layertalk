@@ -13,7 +13,12 @@ scripts/realtime-smoke.mjs  Realtime 疎通テスト
 ```
 
 - Supabase project: `layertalk` / ref `xnqduwlagmfaxzsaaicj`（ap-northeast-1、Pro $10/月）
-- 認証なし。anon(publishable) キーのみ（公開前提のキー）。`.env.local` は
+- **発表者はメール認証、観客は匿名認証。** クライアントが持つのは anon(publishable) キー
+  だけ（公開前提のキー）だが、**`auth.uid()` が無いと何もできない**。観客も
+  `signInAnonymously` を通ってから `join_room` を呼ぶ。「認証なし」ではないので、
+  RLS を読むときにここを取り違えないこと。発表者のサインインは**確認コードと
+  パスワードの2通り**（`PresenterAuth`）。パスワードを残してあるのは、コードの受信箱を
+  持てない相手（App Review）にアカウントを渡すため。`.env.local` は
   `*.local` で **gitignore されている**ので、キーを増やしたら `.env.example` の方も直す
 - git リポジトリ。`origin` は `git@github.com:chaki8923/layertalk.git`、既定ブランチは `main`
 
@@ -115,9 +120,10 @@ tao の窓は表示しないまま残す。オーバーレイは素の `NSWindow
 - 発表**開始後**に全画面にされると新しい Space が後から生まれるので、発表中だけ 1 秒ごとに
   当て直すウォッチドッグ（`start_front_watchdog`）を回している。本筋は
   `NSWorkspace.activeSpaceDidChangeNotification` だが `block2` の依存追加が要るので採らなかった
-- 切り分けの計測は残してある。`LAYERTALK_DEBUG_OVERLAY=1` で起動すると `log_window_state` が
-  `isVisible` / `isOnActiveSpace` / `occlusionState` を 1 秒ごとに出す
-  （`onActiveSpace=false` → Space、`occluded=true` → 描画停止）
+- 切り分けの計測は `LAYERTALK_DEBUG_OVERLAY=1` で出る（`debug_log`）。出力先は
+  `~/Library/Application Support/app.layertalk.presenter/overlay-debug.log`。
+  **`/tmp` へは書かない** — sandbox では書けずに黙って失敗し、直接配布版では
+  同じ Mac の全ユーザーから読めてしまうため
 
 **10. `postgres_changes` の DELETE は old に主キーしか載せない**
 `replica identity full` にしても実測で `{"id": "…"}` だけだった（`comments` の UPDATE で
@@ -236,6 +242,19 @@ TCC の責任プロセスは起動元（Terminal / iTerm / IDE）になるので
 署名が無いので `.app` 側も**リビルドで TCC の照合が外れる**ことがある。効かないときは
 システム設定で LayerTalk を一度 `−` で外してから `+` で入れ直す。
 
+**18. App Sandbox では `/usr/bin/open` の子プロセスが通らない — `tauri-plugin-opener` ごと外した**
+`tauri-plugin-opener` の `openUrl` は Rust 側で `/usr/bin/open` を spawn する
+（`tauri-plugin-opener/src/open.rs` → `open` crate の `macos.rs`）。Mac App Store 版は
+sandbox なので Launch Services を子プロセスから叩けず、**エラーも出ないまま何も開かない**。
+これに乗っていたのは**プライバシーポリシー・利用規約・サポート・領収書・画面収録の設定**で、
+App Store 5.1.1(i) が「アプリ内からポリシーへ辿れること」を要求している導線そのもの。
+`lib.rs` の `open_external_url` が `NSWorkspace::sharedWorkspace().openURL()` を直接叩く。
+プラグインは依存ごと外してある（残すと同じ穴に落ちる経路が残る）。
+**`@tauri-apps/plugin-opener` を入れ直さないこと。** URL は `lib/tauri.ts` の
+`openExternalUrl` を通す。`open_external_url` は http(s) しか受け取らない
+（任意スキームを許すと webview の不具合が「勝手に別アプリが起動する」に化ける）。
+`x-apple.systempreferences:` を開く `open_screen_capture_settings` だけは別入口にしてある。
+
 ## 設計上の決めごと
 
 - **コメント／スタンプの全面オーバーレイはクリックスルー常時 ON。** 切り替え UI も
@@ -304,6 +323,19 @@ TCC の責任プロセスは起動元（Terminal / iTerm / IDE）になるので
   `allowCustomStamps` なら DB に依存せず必ず効く
 - **アップロードは静止画のみ。** ブラウザ側で 128px 四方の PNG に正規化してから上げる
   （会場の Wi-Fi に数MBを流させない。アニメーションGIFは対象外）
+- **法務ページは配布チャネルで出し分ける。** `/legal/terms`・`/legal/tokusho`・`/support` は
+  `?channel=app-store` を受け取り、支払方法・返金の窓口・価格の書き方を切り替える
+  （`content/legal/channel.ts`）。**MAS 版から Stripe 前提の販売条件を開かせないため** —
+  App Store 決済のアプリ内から別の決済手段の条件へ誘導する形になり 3.1.1 の指摘対象になる。
+  価格も Apple の価格表で決まるので「2,980円」固定はそもそも嘘になる。クエリを足すのは
+  `EventPassPurchaseSheet` と `AccountFooter` と `EventPassPanel`（`isMasBuild` のときだけ）。
+  **プライバシーポリシーだけはチャネルで変えない** — App Store Connect に登録する URL は
+  1 本で、クエリ違いで内容が変わるのは筋が悪い。両チャネルの記述を 1 枚に持たせてある
+- **Event Pass は App Store では Non-Renewing Subscription。** 期間限定アクセスを
+  Consumable で売ると Purchasability Type で差し戻される。この型は「同じ Apple ID の
+  全デバイスへ届ける責任は開発者にある」ので、**`Transaction.all` を見る「購入を復元」が要る**
+  （`storeKitAll` → `restorePurchases`）。`Transaction.unfinished` だけでは、
+  1 台目で finish 済みの購入を 2 台目に戻せない
 - **audience-web はダークファースト。** 観客は暗い会場でスマホを見る
 - **日本語 Web フォントは読み込まない。** 数MBあり会場の Wi-Fi で初期表示が壊れる
 - **表示言語を決めるのは発表者だけ。** コントロール窓のタイトルバーの JA/EN トグルが唯一の入口で、
@@ -328,9 +360,13 @@ TCC の責任プロセスは起動元（Terminal / iTerm / IDE）になるので
 
 ## 既知の制約
 
-- **「不適切な利用者をブロックする」は原理的に実装できない。** 匿名アプリなので端末は
-  いくらでも新しい identity を作れる。App Store 1.2 の4点のうちこれだけは満たせず、
-  通報 → 発表者が個別に消す、で代替している
+- **ブロックはルーム単位で実装済み**（`ban_room_participant` / `SafetyPanel`）。
+  `private.comment_authors` が投稿者の `auth.uid()` を持っていて、`has_room_access` が
+  ブロック済みの identity の再入室も拒否する。ただし**匿名アプリなので端末は新しい
+  identity をいくらでも作れる**ので、ブロックは「その identity を締め出す」までしか効かない。
+  App Store 1.2 の4点（フィルタ／通報／ブロック／連絡先）は**すべて無料ルームで動く**。
+  ここを「実装できない」と書き戻さないこと — Review Notes をそこから書くと、
+  満たしている要件を自分で未達と申告することになる
 - 匿名アプリなので**いいねの水増しは原理的に防げない**（`client_id` は端末が自由に作れる）
 - 同じ理由で**カスタムスタンプの削除も誰でも呼べる**。`room_stamps` はこのプロジェクトで
   唯一 DELETE ポリシーを開けている表（不適切な画像を消す操作を詰まらせないため）

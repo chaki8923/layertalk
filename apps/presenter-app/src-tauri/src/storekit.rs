@@ -24,6 +24,7 @@ mod imp {
             callback: Callback,
         );
         fn layertalk_storekit_unfinished(context: *mut c_void, callback: Callback);
+        fn layertalk_storekit_all(context: *mut c_void, callback: Callback);
         fn layertalk_storekit_finish(
             transaction_id: *const c_char,
             context: *mut c_void,
@@ -48,7 +49,7 @@ mod imp {
     }
 
     async fn call(start: impl FnOnce(*mut c_void, Callback)) -> Result<Value, String> {
-        let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = mpsc::channel::<String>();
         start(Box::into_raw(Box::new(sender)).cast(), once_callback);
         let json = tauri::async_runtime::spawn_blocking(move || {
             receiver.recv_timeout(Duration::from_secs(120))
@@ -82,6 +83,12 @@ mod imp {
 
     pub async fn unfinished() -> Result<Value, String> {
         call(|context, callback| unsafe { layertalk_storekit_unfinished(context, callback) }).await
+    }
+
+    /// finish 済みを含む全トランザクション。Non-Renewing Subscription の
+    /// 「全デバイスへ届ける」責任を果たすための復元経路で使う。
+    pub async fn all() -> Result<Value, String> {
+        call(|context, callback| unsafe { layertalk_storekit_all(context, callback) }).await
     }
 
     pub async fn finish(transaction_id: String) -> Result<Value, String> {

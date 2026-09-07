@@ -94,7 +94,9 @@ export const ja = {
       tax: "税込",
       duration: "1ルーム・7日間",
       cta: "Event Passの詳細を見る",
-      note: "購入はPresenterアプリから開始します。",
+      // Mac App Store 版は Apple の価格表で価格が決まるので、上の「2,980円」と一致しない。
+      // LP は App Store のマーケティング URL になるため、食い違いを放置しない。
+      note: "購入はPresenterアプリから開始します。Mac App Store版の価格は、App Storeの表示に従います。",
     },
     finalCta: {
       title: "次の発表を、会場との対話に変える。",

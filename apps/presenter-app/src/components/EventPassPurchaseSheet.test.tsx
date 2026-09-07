@@ -20,6 +20,20 @@ vi.mock("../lib/billing", () => ({
   openAudiencePage: (...args: unknown[]) => openAudiencePage(...args),
 }));
 
+/**
+ * 押せるようになるまで待ってから購入ボタンを返す。
+ *
+ * ラベルは価格が入る前から確定している（「Stripeで2,980円を支払う」は定数）のに、
+ * ボタン自体は `getEventPassProduct()` が解決するまで disabled のままなので、
+ * `findByRole` の直後に click すると**何も起きないまま素通りする**。
+ * フルスイートだと数回に1回これを踏んで落ちていた。
+ */
+async function findPurchaseButton() {
+  const purchase = await screen.findByRole("button", { name: "Stripeで2,980円を支払う" });
+  await waitFor(() => expect(purchase).not.toBeDisabled());
+  return purchase;
+}
+
 describe("EventPassPurchaseSheet", () => {
   beforeEach(() => {
     startCheckout.mockReset();
@@ -37,7 +51,7 @@ describe("EventPassPurchaseSheet", () => {
   it("reuses one attempt id when checkout opening is retried", async () => {
     startCheckout.mockRejectedValue(new Error("cannot open"));
     render(<EventPassPurchaseSheet open roomId="room-1" roomTitle="本番ルーム" roomCode="ABC123" locale="ja" onClose={() => undefined} />);
-    const purchase = await screen.findByRole("button", { name: "Stripeで2,980円を支払う" });
+    const purchase = await findPurchaseButton();
     fireEvent.click(purchase);
     await waitFor(() => expect(startCheckout).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(purchase).not.toBeDisabled());
@@ -57,7 +71,7 @@ describe("EventPassPurchaseSheet", () => {
   ])("explains a %i instead of blaming the connection", async (status, expected) => {
     startCheckout.mockRejectedValue(Object.assign(new Error("Checkout failed"), { status }));
     render(<EventPassPurchaseSheet open roomId="room-1" roomTitle="本番ルーム" roomCode="ABC123" locale="ja" onClose={() => undefined} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Stripeで2,980円を支払う" }));
+    fireEvent.click(await findPurchaseButton());
     expect(await screen.findByRole("alert")).toHaveTextContent(expected);
   });
 
@@ -65,7 +79,7 @@ describe("EventPassPurchaseSheet", () => {
   it("blames the connection when the request never left the app", async () => {
     startCheckout.mockRejectedValue(new TypeError("Load failed"));
     render(<EventPassPurchaseSheet open roomId="room-1" roomTitle="本番ルーム" roomCode="ABC123" locale="ja" onClose={() => undefined} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Stripeで2,980円を支払う" }));
+    fireEvent.click(await findPurchaseButton());
     expect(await screen.findByRole("alert"))
       .toHaveTextContent("購入画面を開けませんでした。接続を確認してもう一度お試しください。");
   });
@@ -73,7 +87,7 @@ describe("EventPassPurchaseSheet", () => {
   it("prevents a second checkout while the first request is pending", async () => {
     startCheckout.mockImplementation(() => new Promise(() => undefined));
     render(<EventPassPurchaseSheet open roomId="room-1" roomTitle="本番ルーム" roomCode="ABC123" locale="ja" onClose={() => undefined} />);
-    const purchase = await screen.findByRole("button", { name: "Stripeで2,980円を支払う" });
+    const purchase = await findPurchaseButton();
     fireEvent.click(purchase);
     fireEvent.click(purchase);
     expect(startCheckout).toHaveBeenCalledTimes(1);

@@ -3,6 +3,7 @@ import type { EntitlementLease } from "@layertalk/shared";
 import { BILLING_API_BASE, BillingError, billingBearerHeaders, billingJson, type EventPassProduct, type EventPassPurchaseResult } from "./billing-http";
 import {
   onStoreKitTransaction,
+  storeKitAll,
   storeKitFinish,
   storeKitProduct,
   storeKitPurchase,
@@ -57,6 +58,32 @@ async function recover() {
     try { await fulfill(transaction); }
     catch { /* Leave unfinished so StoreKit offers it again on the next recovery. */ }
   }
+}
+
+/**
+ * 購入を復元する。**`recover()` とは見る先が違う。**
+ *
+ * `recover()` が見る `Transaction.unfinished` には、**一度 finish したものは入らない**。
+ * Event Pass は Non-Renewing Subscription で、Apple は「同じ Apple ID の全デバイスへ
+ * 届ける責任は開発者にある」としているので、2 台目の Mac では `Transaction.all` を
+ * 見に行かないと何も戻せない。
+ *
+ * 1 件ずつ握り潰しているのは、履歴には**別の LayerTalk アカウントで買った Pass**も
+ * 入っているため（Apple ID は同じでもアプリのアカウントは別でありうる）。サーバは
+ * 所有者不一致を 400 で弾く。それは異常ではないので、成功した数だけ数える。
+ * 付与そのものは `app_store_transaction_id` の一意制約で冪等なので、何度押しても増えない。
+ */
+export async function restorePurchases(): Promise<number> {
+  const result = await storeKitAll();
+  let restored = 0;
+  for (const transaction of result.transactions) {
+    if (transaction.productId !== PRODUCT_ID) continue;
+    try {
+      await fulfill(transaction);
+      restored += 1;
+    } catch { /* 他アカウントの購入・検証失敗。次の1件へ進む。 */ }
+  }
+  return restored;
 }
 
 export async function initializeBillingRecovery() {

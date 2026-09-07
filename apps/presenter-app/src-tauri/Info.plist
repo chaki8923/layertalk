@@ -2,6 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <!--
+    輸出コンプライアンス。使っている暗号は HTTPS と Apple / Supabase の標準実装だけで、
+    独自の暗号は積んでいないので「非対象」に当たる。
+    ここに書いておかないと **提出のたびに App Store Connect で手作業の回答を求められ**、
+    答え忘れたビルドは審査へ進まないまま止まる。
+  -->
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
   <key>NSScreenCaptureUsageDescription</key>
   <string>LayerTalk captures the presentation slide when an audience question arrives.</string>
 </dict>

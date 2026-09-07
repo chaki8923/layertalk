@@ -19,11 +19,23 @@ type Props = {
   onClose: () => void;
 };
 
+/**
+ * 法務ページは配布チャネルで中身が変わる。
+ *
+ * MAS 版から Stripe 前提の規約・特商法（「支払方法: Stripe Checkout」「2,980円」）を
+ * 開かせると、App Store 決済のアプリ内から**別の決済手段の販売条件へ誘導している**
+ * 形になり、3.1.1 の指摘対象になる。価格も Apple の価格表で決まるので、
+ * 固定の円建て表記はそもそも嘘になる。`?channel=app-store` で出し分ける。
+ * プライバシーポリシーだけは両チャネルの記述を1枚に持たせてあるので付けない
+ * （App Store Connect に登録する URL は1本で、クエリ違いで内容が変わるのは筋が悪い）。
+ */
+const LEGAL_CHANNEL_QUERY = isMasBuild ? "?channel=app-store" : "";
+
 const legalLinks = [
-  ["返金・キャンセル", "Refunds and cancellation", "/support#refunds"],
-  ["利用規約", "Terms", "/legal/terms"],
+  ["返金・キャンセル", "Refunds and cancellation", `/support${LEGAL_CHANNEL_QUERY}#refunds`],
+  ["利用規約", "Terms", `/legal/terms${LEGAL_CHANNEL_QUERY}`],
   ["プライバシー", "Privacy", "/legal/privacy"],
-  ["特商法表記", "Commerce disclosure", "/legal/tokusho"],
+  ["特商法表記", "Commerce disclosure", `/legal/tokusho${LEGAL_CHANNEL_QUERY}`],
 ] as const;
 
 /**

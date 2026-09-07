@@ -92,7 +92,7 @@ export const en: Messages = {
       tax: "tax included",
       duration: "1 room · 7 days",
       cta: "View Event Pass details",
-      note: "Purchases start in the Presenter app.",
+      note: "Purchases start in the Presenter app. On the Mac App Store, the price shown by the App Store applies.",
     },
     finalCta: {
       title: "Turn your next presentation into a conversation.",

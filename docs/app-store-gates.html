@@ -1,0 +1,937 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LayerTalk 審査ゲート</title>
+<style>
+/* LayerTalk のデザイントークンをそのまま使う（packages/shared/styles/theme.css）。
+ * 日本語 Web フォントは読み込まない — プロダクト側と同じ制約で作る。
+ * DIFFERENTIATION.html と同じ作法。 */
+:root {
+  color-scheme: dark;
+  --bg: #0a0c11;
+  --bg-elev: #10141c;
+  --surface: rgb(255 255 255 / 0.045);
+  --surface-strong: rgb(255 255 255 / 0.08);
+  --border: rgb(255 255 255 / 0.1);
+  --border-strong: rgb(255 255 255 / 0.18);
+  --text: #eef1f7;
+  --text-muted: #9aa3b7;
+  --text-faint: #646e85;
+  --brand: #6b8aff;
+  --brand-2: #b47cff;
+  --like: #ff4d6d;
+  --online: #3dd68c;
+  --rail: rgb(255 255 255 / 0.12);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.5);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP",
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  --r-chip: 8px;
+  --r-control: 14px;
+  --r-card: 20px;
+
+  --measure: 68ch;
+  --wide: 1060px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #f4f6fb;
+    --bg-elev: #ffffff;
+    --surface: rgb(15 20 32 / 0.03);
+    --surface-strong: rgb(15 20 32 / 0.06);
+    --border: rgb(15 20 32 / 0.1);
+    --border-strong: rgb(15 20 32 / 0.16);
+    --text: #0f1420;
+    --text-muted: #5a6479;
+    --text-faint: #8a93a6;
+    --rail: rgb(15 20 32 / 0.12);
+    --shadow-card: 0 1px 2px rgb(15 20 32 / 0.04), 0 8px 24px -12px rgb(15 20 32 / 0.16);
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f6fb;
+  --bg-elev: #ffffff;
+  --surface: rgb(15 20 32 / 0.03);
+  --surface-strong: rgb(15 20 32 / 0.06);
+  --border: rgb(15 20 32 / 0.1);
+  --border-strong: rgb(15 20 32 / 0.16);
+  --text: #0f1420;
+  --text-muted: #5a6479;
+  --text-faint: #8a93a6;
+  --rail: rgb(15 20 32 / 0.12);
+  --shadow-card: 0 1px 2px rgb(15 20 32 / 0.04), 0 8px 24px -12px rgb(15 20 32 / 0.16);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  width: min(100% - 36px, var(--wide));
+  margin-inline: auto;
+  padding-block: 52px 96px;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 0;
+}
+
+/* ------------------------------------------------------------------ header */
+
+.head { display: flex; flex-direction: column; gap: 14px; }
+
+h1 {
+  font-size: clamp(1.9rem, 5.2vw, 2.9rem);
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+  font-weight: 700;
+  margin: 0;
+  text-wrap: balance;
+}
+
+.lede {
+  max-width: var(--measure);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.overall {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.meter {
+  flex: 1 1 220px;
+  min-width: 180px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--rail);
+  overflow: hidden;
+}
+
+.meter > i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  transition: width 260ms ease-out;
+}
+
+.count {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* ------------------------------------------------------------------ stages */
+
+.stages {
+  margin-top: 52px;
+  display: flex;
+  flex-direction: column;
+  gap: 44px;
+}
+
+/* 段は本当に順序を持つ（前の段が済むまで次に着手できない）ので、
+   番号は装飾ではなく依存関係そのもの。 */
+.stage { display: grid; grid-template-columns: 46px 1fr; gap: 0 18px; }
+
+.stage-num {
+  grid-row: 1 / -1;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+  padding-top: 2px;
+  position: relative;
+}
+
+.stage-num::after {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 30px;
+  bottom: -44px;
+  width: 1px;
+  background: var(--rail);
+}
+
+.stage:last-child .stage-num::after { display: none; }
+
+.stage-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+
+.stage-title {
+  font-size: 1.18rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.gate {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.gate.now { color: var(--online); border-color: color-mix(in srgb, var(--online) 40%, transparent); }
+.gate.locked { color: var(--text-faint); }
+
+.stage-note { color: var(--text-muted); font-size: 13.5px; margin: 0; max-width: var(--measure); }
+
+/* ------------------------------------------------------------------ tasks */
+
+.tasks { display: flex; flex-direction: column; gap: 10px; }
+
+.task {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  align-items: start;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  transition: border-color 160ms ease-out, background 160ms ease-out;
+}
+
+.task:hover { border-color: var(--border-strong); }
+
+.task[data-done="true"] { background: transparent; border-color: var(--border); }
+.task[data-done="true"] .task-title { color: var(--text-faint); text-decoration: line-through; }
+.task[data-done="true"] .task-body { color: var(--text-faint); }
+
+.task input[type="checkbox"] {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin: 3px 0 0;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  display: grid;
+  place-content: center;
+  flex: none;
+  transition: background 140ms ease-out, border-color 140ms ease-out;
+}
+
+.task input[type="checkbox"]::after {
+  content: "";
+  width: 9px;
+  height: 5px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg) scale(0);
+  transition: transform 140ms ease-out;
+}
+
+.task input[type="checkbox"]:checked {
+  background: var(--online);
+  border-color: var(--online);
+}
+
+.task input[type="checkbox"]:checked::after { transform: rotate(-45deg) scale(1); }
+
+.task input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.task-title {
+  grid-column: 2;
+  font-weight: 600;
+  font-size: 14.5px;
+  line-height: 1.5;
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.task-body {
+  grid-column: 2;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.68;
+  margin: 0;
+}
+
+.task-body + .task-body { margin-top: 4px; }
+
+/* ガイドライン番号は Apple 側の識別子。文言ではないので等幅で出す。 */
+.gl {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  padding: 2px 6px;
+  border-radius: var(--r-chip);
+  background: color-mix(in srgb, var(--brand) 15%, transparent);
+  color: var(--brand);
+  white-space: nowrap;
+}
+
+.task.blocker { border-left: 3px solid var(--like); }
+.task.blocker .task-title::before {
+  content: "要注意";
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--like);
+  border: 1px solid color-mix(in srgb, var(--like) 40%, transparent);
+  border-radius: var(--r-chip);
+  padding: 1px 6px;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--surface-strong);
+  border-radius: 5px;
+  padding: 1px 5px;
+  word-break: break-word;
+}
+
+/* ------------------------------------------------------------------ values */
+
+.values {
+  margin-top: 56px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--bg-elev);
+  box-shadow: var(--shadow-card);
+  padding: 24px 26px;
+}
+
+.values h2 { font-size: 1.02rem; margin: 0 0 4px; letter-spacing: -0.015em; }
+.values p.sub { color: var(--text-muted); font-size: 13px; margin: 0 0 18px; max-width: var(--measure); }
+.values h3 {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 26px 0 10px;
+  font-weight: 600;
+}
+
+/* 表は横に伸びる。ページ本体は絶対に横スクロールさせない。 */
+.scroller { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 560px;
+  font-size: 13px;
+}
+
+th, td {
+  text-align: left;
+  vertical-align: top;
+  padding: 10px 14px 10px 0;
+  border-bottom: 1px solid var(--border);
+  line-height: 1.62;
+}
+
+th {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-weight: 600;
+  white-space: nowrap;
+  border-bottom-color: var(--border-strong);
+}
+
+td:first-child { white-space: nowrap; padding-right: 20px; }
+td:last-child, th:last-child { padding-right: 0; }
+tbody tr:last-child td { border-bottom: none; }
+td .where { color: var(--text-faint); font-size: 12px; }
+
+.sample {
+  margin: 10px 0 0;
+  padding: 14px 16px;
+  border-radius: var(--r-control);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.85;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+.values ul.notes { margin: 18px 0 0; padding-left: 18px; color: var(--text-muted); font-size: 13px; line-height: 1.7; }
+.values ul.notes li + li { margin-top: 8px; }
+
+/* ------------------------------------------------------------------ traps */
+
+.traps {
+  margin-top: 56px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--bg-elev);
+  box-shadow: var(--shadow-card);
+  padding: 24px 26px;
+}
+
+.traps h2 { font-size: 1.02rem; margin: 0 0 4px; letter-spacing: -0.015em; }
+.traps p.sub { color: var(--text-muted); font-size: 13px; margin: 0 0 18px; }
+.traps dl { margin: 0; display: flex; flex-direction: column; gap: 16px; }
+.traps dt { font-weight: 650; font-size: 14px; }
+.traps dd { margin: 3px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.68; }
+
+/* ------------------------------------------------------------------ done */
+
+.done-already {
+  margin-top: 32px;
+  padding: 20px 24px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-card);
+}
+
+.done-already h2 { font-size: 0.95rem; margin: 0 0 10px; color: var(--text-muted); letter-spacing: -0.01em; }
+.done-already ul { margin: 0; padding-left: 18px; color: var(--text-faint); font-size: 13px; line-height: 1.75; }
+
+footer {
+  margin-top: 44px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.saving {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  min-height: 1em;
+}
+
+@media (max-width: 640px) {
+  .stage { grid-template-columns: 30px 1fr; gap: 0 12px; }
+  .stage-num::after { left: 5px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 1ms !important; animation-duration: 1ms !important; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="head">
+    <p class="eyebrow">Mac App Store · app.layertalk.presenter</p>
+    <h1>審査までに残っていること</h1>
+    <p class="lede">
+      コードの是正は済んでいる。ここに並ぶのは<strong>人にしかできない作業</strong>で、
+      Apple Developer Program の登録を挟んで前後に分かれる。上から順に片付く。
+    </p>
+    <div class="overall">
+      <div class="meter" role="progressbar" aria-label="全体の進捗" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="overall-meter"><i style="width:0%"></i></div>
+      <span class="count" id="overall-count">0 / 0</span>
+      <span class="saving" id="saving" role="status"></span>
+    </div>
+  </header>
+
+  <div class="stages" id="stages"></div>
+
+  <section class="values">
+    <h2>設定する値</h2>
+    <p class="sub">
+      Vercel の環境変数に入れる。<strong>ビルド時に注入されるので、入れたら再デプロイが要る。</strong>
+      未設定だと法務ページに <code>［販売事業者名を公開前に設定］</code> がそのまま出る。
+    </p>
+
+    <h3>特定商取引法・規約の表示値</h3>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>環境変数</th><th>入れるもの</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>LEGAL_SELLER_NAME</code></td>
+            <td>販売事業者の名称。法人なら登記上の商号、個人事業主なら<strong>戸籍上の氏名</strong>（屋号だけでは足りない）。<strong>Apple Developer Program の登録名義と揃えること</strong>。<span class="where">特商法ページ「販売事業者」</span></td>
+          </tr>
+          <tr>
+            <td><code>LEGAL_OPERATOR_NAME</code></td>
+            <td>運営統括責任者の氏名。法人なら代表者、個人事業主なら本人。<span class="where">特商法ページ「運営責任者」</span></td>
+          </tr>
+          <tr>
+            <td><code>LEGAL_ADDRESS</code></td>
+            <td>事業所の所在地。郵便番号から書く。<span class="where">特商法ページ「所在地」</span></td>
+          </tr>
+          <tr>
+            <td><code>LEGAL_PHONE</code></td>
+            <td>日中に連絡が取れる電話番号。<span class="where">特商法ページ「電話番号」</span></td>
+          </tr>
+          <tr>
+            <td><code>LEGAL_SUPPORT_EMAIL</code></td>
+            <td>サポート窓口。<strong>App Store Connect のサポート連絡先と同じアドレスにする</strong>（ガイドライン 1.2 が求める「公開された連絡先」もこれ）。<span class="where">特商法・サポートページ・規約15条・プライバシー10条と13条・<code>mailto:</code> リンク</span></td>
+          </tr>
+          <tr>
+            <td><code>LEGAL_RESPONSE_TIME</code></td>
+            <td>問い合わせへの返信目安。守れる範囲で書く。<span class="where">サポートページ「返信目安」</span></td>
+          </tr>
+          <tr>
+            <td><code>LEGAL_REFUND_POLICY</code></td>
+            <td>返金・キャンセル条件の本文。<strong>直接配布（Stripe）版の文面</strong>で、App Store 版には出ない（あちらは「返金は Apple が受け付ける」という固定文に差し替わる）。<span class="where">特商法「キャンセル・返金」・規約6条・サポートページ</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>書き方の例</h3>
+    <p class="sample">LEGAL_SELLER_NAME=山田 太郎
+LEGAL_OPERATOR_NAME=山田 太郎
+LEGAL_ADDRESS=〒150-0001 東京都渋谷区神宮前1-2-3 ○○ビル4F
+LEGAL_PHONE=03-1234-5678
+LEGAL_SUPPORT_EMAIL=support@layer-talk.com
+LEGAL_RESPONSE_TIME=2〜3営業日以内
+LEGAL_REFUND_POLICY=デジタルコンテンツの性質上、決済完了後の返金は原則としてお受けできません。ただし、システム障害により購入したルームで有料機能をご利用いただけなかった場合は、購入日から14日以内にサポート窓口へご連絡ください。状況を確認のうえ、全額または一部を返金します。</p>
+
+    <ul class="notes">
+      <li><strong>「返金しない」なら、しないと書く。</strong> 特商法は返品・返金の条件を明示することを求めていて、書いていないと不利に扱われる。空欄にしないこと。</li>
+      <li><strong>個人事業主の住所と電話番号は、公開するかどうかが論点になる。</strong> 自宅を出したくない場合の扱いは法務の判断なので、ここでは決められない。バーチャルオフィスを使う例が多い。決めてから入れること。</li>
+      <li><strong>App Store 版でも、販売事業者・運営責任者・所在地・電話番号の4行は出る。</strong> 決済の当事者が Apple でも、サービスを提供しているのは LayerTalk なので消していない。変わるのは支払方法・提供時期・返金の窓口だけ。</li>
+    </ul>
+
+    <h3>アプリとサイトの URL</h3>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>環境変数</th><th>入れるもの</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>VITE_AUDIENCE_BASE_URL</code></td>
+            <td><code>https://www.layer-talk.com</code>。参加 QR と観客用 URL、法務ページとサポートを開く先。末尾のスラッシュは付いていても剥がされる。<span class="where">MAS ビルド時に注入。空だとビルドが落ちる</span></td>
+          </tr>
+          <tr>
+            <td><code>NEXT_PUBLIC_APP_URL</code></td>
+            <td>同じホスト。<span class="where">Stripe の成功・キャンセル URL と構造化データ。設定済み</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <ul class="notes">
+      <li><strong><code>www</code> を付けること。</strong> <code>layer-talk.com</code> は <code>www.layer-talk.com</code> へ 308 で転送される。転送を挟むホストを API の宛先にすると、余計な往復が増えるうえ、将来リダイレクトの種類が変わったときに POST が静かに壊れる。実測で <code>www</code> 側が直接 200 を返している。</li>
+      <li>App Store Connect のプライバシーポリシー URL・サポート URL・マーケティング URL も同じホストで揃える。</li>
+    </ul>
+  </section>
+
+  <section class="traps">
+    <h2>取り返しがつかない / 気付きにくいもの</h2>
+    <p class="sub">あとから直せない決定と、画面に何も出ないまま壊れる箇所。</p>
+    <dl>
+      <div>
+        <dt>IAP のタイプと商品 ID は後から変えられない</dt>
+        <dd>Non-Renewing Subscription で作ること。消耗型で作ってしまうと、タイプ変更も同じ商品 ID の再利用もできず、新しい ID を採り直すことになる。7日間の期間限定アクセスを消耗型で出すと Purchasability Type で差し戻される。</dd>
+      </div>
+      <div>
+        <dt>Individual で登録すると、App Store の販売者名が本名になる</dt>
+        <dd>法人名で出すなら Organization。D-U-N-S 番号の取得に日数がかかるので、そちらを選ぶなら登録より先に着手する。<code>LEGAL_SELLER_NAME</code>（特商法ページの販売事業者名）と食い違わないよう、先に決めてしまうこと。</dd>
+      </div>
+      <div>
+        <dt>Vercel の環境変数はビルド時に注入される</dt>
+        <dd>設定しただけでは効かない。<code>LEGAL_*</code> や <code>APPLE_APP_ID</code> を入れたら<strong>必ず再デプロイ</strong>する。</dd>
+      </div>
+      <div>
+        <dt>法務リンクが死んでも画面には何も出ない</dt>
+        <dd>プライバシー・規約・サポートのボタンは、押しても無反応になるだけでエラーを出さない。sandbox 署名済みの <code>.app</code> で実際に開くことを目で確かめるまで、通っている証拠はない。</dd>
+      </div>
+      <div>
+        <dt>署名 identity の名前は発行時期で変わる</dt>
+        <dd><code>3rd Party Mac Developer Application:</code> ではなく <code>Apple Distribution:</code> になっていることがある。<code>security find-identity -v -p codesigning</code> で実物を確認して <code>build-mas.sh</code> に渡す。</dd>
+      </div>
+    </dl>
+  </section>
+
+  <section class="done-already">
+    <h2>もう済んでいること（再確認は不要）</h2>
+    <ul>
+      <li>private API の排除・sandbox 用 entitlements・Ed25519 リースの MAS からの分離・StoreKit 2 + JWS サーバ検証</li>
+      <li>1.2 の4要件（NG ワード／通報／ブロック／連絡先）— すべて無料ルームで動く</li>
+      <li>退会導線、パスワードログイン、法務ページのチャネル別出し分け、プライバシーポリシーの更新</li>
+      <li><code>open_external_url</code>（NSWorkspace）への置き換えと <code>tauri-plugin-opener</code> の除去</li>
+      <li><code>scripts/build-mas.sh</code> / <code>verify-mas-bundle</code> / <code>create-review-account</code></li>
+      <li><code>docs/app-store-listing.md</code>（日英の文面・App Privacy の回答案）と <code>docs/app-store-review-notes.md</code></li>
+    </ul>
+  </section>
+
+  <footer>
+    <span>詳細は <code>docs/app-store-review-notes.md</code> と <code>docs/app-store-listing.md</code></span>
+    <span>チェックはこのブラウザに保存される</span>
+  </footer>
+</div>
+
+<script id="tasks" type="application/json">
+[
+  {
+    "id": "now",
+    "num": "01",
+    "title": "登録を待たずに終わらせる",
+    "gate": "いま着手できる",
+    "gateKind": "now",
+    "note": "Apple 側を一切触らずに済むもの。登録の審査を待っている間に片付く。",
+    "tasks": [
+      {
+        "id": "paste",
+        "title": "⌘C / ⌘V が効くか実機で確認",
+        "gl": "2.1",
+        "blocker": true,
+        "body": [
+          "<code>npm run dev:presenter</code> を起動し、サインイン画面のメール欄に何か貼り付けてみる。10 秒で済む。",
+          "効かないと、審査員がデモ用のメールとパスワードを貼れずサインインで詰まる。Accessory ポリシーでメニューバーが出ないため未実測。効く見込みは高いが、確かめるまでは分からない。"
+        ]
+      },
+      {
+        "id": "legal-values",
+        "title": "特商法・規約の表示値を決めて Vercel に入れる",
+        "gl": "5.1.1(i)",
+        "blocker": true,
+        "body": [
+          "<code>LEGAL_SELLER_NAME</code> / <code>OPERATOR_NAME</code> / <code>ADDRESS</code> / <code>PHONE</code> / <code>SUPPORT_EMAIL</code> / <code>RESPONSE_TIME</code> / <code>REFUND_POLICY</code> の 7 つ。",
+          "未設定だと法務ページに <code>［販売事業者名を公開前に設定］</code> がそのまま出る。入れたら再デプロイすること。現在の設定状況はこちらからは確認できていない。"
+        ]
+      },
+      {
+        "id": "review-account",
+        "title": "審査用アカウントを作る",
+        "gl": "2.1",
+        "body": [
+          "<code>npm run create:review-account</code>。サービスロールキー（<code>SUPABASE_SECRET_KEY</code>）が要る。",
+          "出力された Email / Password を <code>docs/app-store-review-notes.md</code> の <code>&lt;REVIEW_EMAIL&gt;</code> / <code>&lt;REVIEW_PASSWORD&gt;</code> へ。審査後は <code>-- --delete</code> で消せる。"
+        ]
+      },
+      {
+        "id": "screenshots",
+        "title": "スクリーンショットを撮る",
+        "body": [
+          "6 枚（コメントが流れる画面 → 質問パネル → 参加 QR → コントロール窓 → 安全管理 → Event Pass）と、IAP 審査用に 1 枚。",
+          "1280×800 など規定サイズ。下に敷くスライドは自作のものにする（他社テンプレートや実在企業の資料を写さない）。"
+        ]
+      },
+      {
+        "id": "listing-review",
+        "title": "ストアの文面を確定させる",
+        "body": [
+          "<code>docs/app-store-listing.md</code> の日英の下書きに目を通し、自分の言葉に直す。文字数は上限内で計算済み。"
+        ]
+      },
+      {
+        "id": "mas-env",
+        "title": "MAS ビルド用の env を用意",
+        "body": [
+          "<code>VITE_AUDIENCE_BASE_URL</code>（デプロイ先のホスト）。空のままだと MAS ビルドは<strong>ビルド時に落ちる</strong>ようにしてあるので、気付かず出荷することはない。"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "enroll",
+    "num": "02",
+    "title": "Apple Developer Program に登録",
+    "gate": "ここが関門",
+    "gateKind": "now",
+    "note": "年 $99（円建て請求）。登録審査に数日かかることがある。",
+    "tasks": [
+      {
+        "id": "entity",
+        "title": "Individual か Organization かを決める",
+        "blocker": true,
+        "body": [
+          "Individual は本名が App Store に公開される。法人名で出すなら Organization で、D-U-N-S 番号の取得が先。",
+          "この決定は <code>LEGAL_SELLER_NAME</code> と揃っている必要がある。"
+        ]
+      },
+      {
+        "id": "enroll-do",
+        "title": "登録する",
+        "body": ["developer.apple.com/programs から。Apple ID に 2 ファクタ認証が要る。"]
+      }
+    ]
+  },
+  {
+    "id": "apple-setup",
+    "num": "03",
+    "title": "Apple 側の設定",
+    "gate": "登録が要る",
+    "gateKind": "locked",
+    "note": "証明書と App Store Connect。文面は 01 で用意したものを貼るだけになっている。",
+    "tasks": [
+      {
+        "id": "certs",
+        "title": "証明書 2 枚とプロビジョニングプロファイル",
+        "body": [
+          "アプリ署名用とインストーラ署名用。App ID は <code>app.layertalk.presenter</code>。Mac App Store 用のプロファイルを作る。"
+        ]
+      },
+      {
+        "id": "asc-app",
+        "title": "App Store Connect にアプリを作り、メタデータを入れる",
+        "body": [
+          "<code>docs/app-store-listing.md</code> のとおりに。名前・サブタイトル・説明文・キーワード・カテゴリ・プライバシーポリシー URL・サポート URL。"
+        ]
+      },
+      {
+        "id": "iap",
+        "title": "IAP を Non-Renewing Subscription で作る",
+        "gl": "3.1.1",
+        "blocker": true,
+        "body": [
+          "消耗型で作らないこと。作った商品 ID を <code>APPLE_EVENT_PASS_PRODUCT_ID</code>（Vercel）と <code>VITE_APPLE_EVENT_PASS_PRODUCT_ID</code>（MAS ビルド）の<strong>両方</strong>へ。",
+          "ずれると <code>/attempt</code> は通るのに <code>fulfill</code> が product mismatch で落ちる。"
+        ]
+      },
+      {
+        "id": "app-id-env",
+        "title": "APPLE_APP_ID と通知 URL を設定",
+        "body": [
+          "数値の Apple ID を Vercel の <code>APPLE_APP_ID</code> へ（本番の署名検証に必須）。App Store Server Notifications V2 の宛先に <code>/api/billing/app-store/notifications</code> を登録する。設定後は再デプロイ。"
+        ]
+      },
+      {
+        "id": "sandbox-tester",
+        "title": "Sandbox tester アカウントを作る",
+        "body": ["App Store Connect の Users and Access から。購入テストに要る。"]
+      },
+      {
+        "id": "privacy-rating",
+        "title": "App Privacy と年齢レーティングを入力",
+        "gl": "5.1.1(i)",
+        "body": [
+          "回答案と根拠は <code>docs/app-store-listing.md</code> に用意してある。トラッキングは「なし」。質問スライドの画像は端末から出ないので「収集」に当たらない。"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "verify",
+    "num": "04",
+    "title": "署名済みビルドで実機確認",
+    "gate": "登録が要る",
+    "gateKind": "locked",
+    "note": "ここでしか分からないことが集まっている。sandbox でしか再現しない不具合は全部この段で出る。",
+    "tasks": [
+      {
+        "id": "pkg",
+        "title": "build-mas.sh で .pkg を作る",
+        "body": [
+          "<code>MAS_APP_IDENTITY</code> / <code>MAS_INSTALLER_IDENTITY</code> / <code>MAS_PROVISION_PROFILE</code> / <code>VITE_AUDIENCE_BASE_URL</code> を渡す。identity の実物は <code>security find-identity -v -p codesigning</code> で確認。"
+        ]
+      },
+      {
+        "id": "links",
+        "title": "法務リンク 4 つが実際に開くか",
+        "gl": "5.1.1(i)",
+        "blocker": true,
+        "body": [
+          "プライバシー / 利用規約 / サポート / 画面収録の設定。<strong>この段で最も重要</strong>。sandbox では <code>/usr/bin/open</code> が通らないため NSWorkspace へ置き換えてあるが、署名済みビルドでしか検証できない。",
+          "開かないときは <code>log stream --predicate 'process == \"sandboxd\"'</code> に deny が出る。"
+        ]
+      },
+      {
+        "id": "channel",
+        "title": "法務ページに Stripe の文字が出ないこと",
+        "gl": "3.1.1",
+        "body": [
+          "MAS ビルドから開いた規約・特商法・サポートに <code>?channel=app-store</code> が付いていること。付いていないと Stripe 前提の販売条件が出る。"
+        ]
+      },
+      {
+        "id": "overlay",
+        "title": "オーバーレイと画面収録が sandbox で動くか",
+        "body": [
+          "Keynote / PowerPoint / ブラウザの全画面プレゼンに重なるか。Retina でぼやけないか。⇧⌘L が効くか。質問時のスライド保存が撮れるか。"
+        ]
+      },
+      {
+        "id": "storekit",
+        "title": "StoreKit を一通り通す",
+        "gl": "3.1.1",
+        "body": [
+          "通常購入 / Ask to Buy の承認待ち→承認 / 購入直後に通信を切って再起動しての回収 / 返金通知で権利が revoked になること。",
+          "そして<strong>別の Mac で「購入を復元」</strong>。Non-Renewing Subscription は全デバイス配信が開発者責任なので、ここは必須。"
+        ]
+      },
+      {
+        "id": "bundle-guard",
+        "title": "verify:mas-bundle が緑",
+        "gl": "2.4.5(vi)",
+        "body": [
+          "<code>npm run verify:mas-bundle</code>。Ed25519 の鍵と Stripe の checkout 経路が MAS バンドルに 1 件も無いことを機械的に確認する。提出前にもう一度。"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "submit",
+    "num": "05",
+    "title": "提出",
+    "gate": "登録が要る",
+    "gateKind": "locked",
+    "note": "",
+    "tasks": [
+      {
+        "id": "notes",
+        "title": "Review Notes のプレースホルダを埋める",
+        "gl": "2.1",
+        "body": [
+          "<code>docs/app-store-review-notes.md</code> の <code>&lt;REVIEW_EMAIL&gt;</code> / <code>&lt;REVIEW_PASSWORD&gt;</code> / <code>&lt;AUDIENCE_URL&gt;</code> / <code>&lt;PRODUCT_ID&gt;</code>。",
+          "「Dock アイコンが出ないのは設計」「開始を押すまで何も描かれない」を書き忘れないこと。書かないと『起動しない』『機能しない』と読まれる。"
+        ]
+      },
+      {
+        "id": "upload",
+        "title": "Transporter でアップロードして提出",
+        "body": ["IAP は初回のみアプリ本体と一緒に審査へ出す。"]
+      }
+    ]
+  }
+]
+</script>
+<script>
+(() => {
+  "use strict";
+
+  const TASKS = JSON.parse(document.getElementById("tasks").textContent);
+
+  /**
+   * チェックの保存先。
+   *
+   * claude.ai で公開している版はページ自身を新しいバージョンとして publish するので
+   * 端末をまたいで残るが、こちらは `file://` で開くこともある単体の HTML なので
+   * localStorage に置く。読むだけなら保存できなくても支障はない。
+   */
+  const STORAGE_KEY = "layertalk:app-store-gates";
+
+  function restore() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return new Set(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  const done = restore();
+
+  const stagesEl = document.getElementById("stages");
+  const meterEl = document.getElementById("overall-meter");
+  const countEl = document.getElementById("overall-count");
+  const savingEl = document.getElementById("saving");
+
+  const escape = (value) => String(value)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  /**
+   * 本文は信頼できる自前の文字列で、<code> と <strong> だけ使っている。
+   * データは埋め込みなので外部入力は無い。
+   */
+  function taskMarkup(stageId, task) {
+    const id = `${stageId}.${task.id}`;
+    const checked = done.has(id);
+    const gl = task.gl ? `<span class="gl">${escape(task.gl)}</span>` : "";
+    const body = (task.body || []).map((line) => `<p class="task-body">${line}</p>`).join("");
+    return `<div class="task${task.blocker ? " blocker" : ""}" data-done="${checked}">
+      <input type="checkbox" id="cb-${escape(id)}" data-id="${escape(id)}"${checked ? " checked" : ""}>
+      <label class="task-title" for="cb-${escape(id)}">${escape(task.title)}${gl}</label>
+      ${body}
+    </div>`;
+  }
+
+  function render() {
+    stagesEl.innerHTML = TASKS.map((stage) => {
+      const total = stage.tasks.length;
+      const finished = stage.tasks.filter((task) => done.has(`${stage.id}.${task.id}`)).length;
+      const note = stage.note ? `<p class="stage-note">${escape(stage.note)}</p>` : "";
+      return `<section class="stage">
+        <div class="stage-num">${escape(stage.num)}</div>
+        <div>
+          <div class="stage-head">
+            <h2 class="stage-title">${escape(stage.title)}
+              <span class="gate ${stage.gateKind}">${escape(stage.gate)}</span>
+              <span class="count">${finished} / ${total}</span>
+            </h2>
+            ${note}
+          </div>
+          <div class="tasks">${stage.tasks.map((task) => taskMarkup(stage.id, task)).join("")}</div>
+        </div>
+      </section>`;
+    }).join("");
+
+    const all = TASKS.reduce((sum, stage) => sum + stage.tasks.length, 0);
+    const percent = all === 0 ? 0 : Math.round((done.size / all) * 100);
+    meterEl.firstElementChild.style.width = `${percent}%`;
+    meterEl.setAttribute("aria-valuenow", String(percent));
+    countEl.textContent = `${done.size} / ${all} 完了`;
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([...done]));
+      savingEl.textContent = "保存しました";
+      window.setTimeout(() => { savingEl.textContent = ""; }, 1600);
+    } catch {
+      // プライベートウィンドウやサイトデータを止めている環境。読む分には支障がない。
+      savingEl.textContent = "この環境ではチェックを保存できません";
+    }
+  }
+
+  render();
+
+  stagesEl.addEventListener("change", (event) => {
+    const input = event.target.closest("input[type=checkbox]");
+    if (!input) return;
+    if (input.checked) done.add(input.dataset.id); else done.delete(input.dataset.id);
+    render();
+    save();
+  });
+})();
+</script>
+</body>
+</html>

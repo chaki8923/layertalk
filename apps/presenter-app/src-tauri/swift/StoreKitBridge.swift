@@ -91,16 +91,35 @@ public func layertalkStoreKitPurchase(
     }
 }
 
+private func describe(_ verification: VerificationResult<Transaction>, _ transaction: Transaction) -> [String: Any] {
+    [
+        "status": "transaction",
+        "transactionId": String(transaction.id),
+        "productId": transaction.productID,
+        "signedTransaction": verification.jwsRepresentation,
+    ]
+}
+
 private func unfinishedTransactions() async -> [[String: Any]] {
     var values: [[String: Any]] = []
     for await verification in Transaction.unfinished {
         guard case .verified(let transaction) = verification else { continue }
-        values.append([
-            "status": "transaction",
-            "transactionId": String(transaction.id),
-            "productId": transaction.productID,
-            "signedTransaction": verification.jwsRepresentation,
-        ])
+        values.append(describe(verification, transaction))
+    }
+    return values
+}
+
+/// Every transaction StoreKit still knows about for this customer, including
+/// finished ones. `Transaction.unfinished` cannot restore a non-renewing
+/// subscription onto a second Mac, because the original purchase was finished
+/// on the first one. Revoked transactions are dropped here so a refunded pass
+/// is never re-applied.
+private func allTransactions() async -> [[String: Any]] {
+    var values: [[String: Any]] = []
+    for await verification in Transaction.all {
+        guard case .verified(let transaction) = verification else { continue }
+        if transaction.revocationDate != nil { continue }
+        values.append(describe(verification, transaction))
     }
     return values
 }
@@ -112,6 +131,17 @@ public func layertalkStoreKitUnfinished(
 ) {
     Task {
         let transactions = await unfinishedTransactions()
+        send(["status": "success", "transactions": transactions], context: context, callback: callback)
+    }
+}
+
+@_cdecl("layertalk_storekit_all")
+public func layertalkStoreKitAll(
+    _ context: UnsafeMutableRawPointer?,
+    _ callback: LayerTalkStoreKitCallback?
+) {
+    Task {
+        let transactions = await allTransactions()
         send(["status": "success", "transactions": transactions], context: context, callback: callback)
     }
 }

@@ -53,6 +53,10 @@ export default function EventPassPage() {
               LayerTalkアプリで購入する <ArrowDown size={16} aria-hidden="true" />
             </a>
             <p className="text-text-faint mt-3 text-[11px]"><ProtectedText text="購入は対象ルームを開いたPresenterアプリから開始します。" /></p>
+            {/* 上の「2,980円」は直接配布版の価格。Mac App Store 版は Apple の価格表で
+                決まるので一致しない。このページは App Store のマーケティング URL に
+                なるため、食い違いを黙って置いておかない。 */}
+            <p className="text-text-faint mt-1 text-[11px]"><ProtectedText text="Mac App Store版の価格は、App Storeの表示に従います。" terms={["Mac App Store版"]} /></p>
           </div>
 
           <div aria-label="Event Passの利用範囲" className="border-border bg-bg-elev shadow-card overflow-hidden rounded-sheet border p-5 sm:p-7">

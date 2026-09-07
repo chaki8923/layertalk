@@ -119,14 +119,45 @@ Event Pass の購入シートの中にしかリンクが無く、購入画面を
 - 直接配布版はStripe + Ed25519リースを維持する。MAS版はVite aliasでStoreKit実装だけを入り口にし、
   `jose`、checkout API、公開鍵参照が生成物に無いことをスキャン済み。
 
+### 2026-09-06 追記 — App Store 審査監査の是正ぶん
+
+上の A1〜A4 とは別に、「実装はあるが審査員がそこへ到達できない」層を潰した。
+
+- **サインイン**: 確認コードに加えて**パスワード**でも入れるようにした（`PresenterAuth`）。
+  Supabase にメールのテスト OTP は**存在しない**（`auth.sms.test_otp` は SMS 専用・ローカル限定）
+  ので、審査員に受信箱を渡さずに済ませる手段がこれしか無い。手順は
+  `docs/app-store-review-notes.md`
+- **アプリ内の外部リンク**: `tauri-plugin-opener` を**依存ごと外した**。あれは
+  `/usr/bin/open` を spawn するので sandbox では黙って失敗し、プライバシーポリシー・
+  規約・サポート・領収書・画面収録設定が全部無反応になる。`open_external_url`
+  （`NSWorkspace`）へ置き換え済み。詳細は `CLAUDE.md` の罠 #18
+- **法務ページ**: `?channel=app-store` で Stripe / App Store の販売条件を出し分けるようにした。
+  プライバシーポリシーには App Store 決済とスライド画像の記述を足した
+- **IAP タイプ**: Consumable → **Non-Renewing Subscription**。`Transaction.all` を見る
+  「購入を復元」を追加した（`storeKitAll` → `restorePurchases`）
+- **法務値の検査**: `verify-billing-publication.mjs` は `VERCEL_ENV=production` でも走る。
+  以前は `BILLING_PUBLICATION_ENABLED=false` だと丸ごとスキップしていたが、
+  あのフラグは Stripe の checkout ルートしか止めないので、
+  「App Store では売っている・法務ページは下書きのまま」が成立していた
+- **提出パッケージ**: `./scripts/build-mas.sh` が `.app` → プロファイル埋め込み →
+  MAS Distribution 署名 → `productbuild` で `.pkg` までやる
+
+### 残作業の一覧
+
+**`docs/app-store-gates.html`**（ブラウザで開く）に、登録前に片付くものと登録後にしか
+できないものを段で分けて置いてある。チェックを付けて進捗を追える。設定する値
+（`LEGAL_*` の7つと URL）の意味と例もそこにある。以下はその要約。
+
 ### 提出前に人が行う作業
 
-1. App Store Connectでbundle ID `app.layertalk.presenter` と消耗型IAP
-   `app.layertalk.presenter.event_pass` を作り、価格・審査スクリーンショットを登録する。
+1. App Store Connectでbundle ID `app.layertalk.presenter` と、**Non-Renewing Subscription**の
+   IAPを作り、価格・審査スクリーンショットを登録する。**消耗型で作らないこと**（7日間の
+   期間限定アクセスはPurchasability Typeで差し戻される）。作った商品IDを
+   `APPLE_EVENT_PASS_PRODUCT_ID`（Vercel）と`VITE_APPLE_EVENT_PASS_PRODUCT_ID`（MASビルド）へ。
 2. 数値のApple IDをWebの `APPLE_APP_ID` に設定し、Notifications V2 URLを
    `/api/billing/app-store/notifications` に設定する。
-3. MAS Distribution証明書／プロビジョニングで署名し、Sandbox testerで購入・Ask to Buy・
-   未完了transaction復旧・返金通知を確認する。
+3. `./scripts/build-mas.sh` で署名と`.pkg`化を行い、Sandbox testerで購入・Ask to Buy・
+   未完了transaction復旧・返金通知・**別Macでの「購入を復元」**を確認する。
 4. Keynote/PowerPoint/ブラウザ全画面で、透過、Retina、クリック透過、ScreenCaptureKit、
    グローバルショートカットをsandbox実機確認する。
 5. この変更のSupabase migrationを対象環境へ適用してからWeb/APIをデプロイする。
