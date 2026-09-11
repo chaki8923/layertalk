@@ -12,6 +12,19 @@ function isRateLimitError(error: { status?: number; message?: string }) {
 }
 
 export function PresenterAuth({ locale, onSignedIn }: { locale: Locale; onSignedIn: () => void }) {
+  /**
+   * 匿名セッションを**昇格**するのか、新しくサインインするのか。
+   *
+   * 5.1.1(v) 対応でサインイン無しでも使えるようにしたので、ここへ来る人はたいてい
+   * 匿名セッションを持っている。`signInWithOtp` を呼ぶと**別のユーザーになり、
+   * 匿名のうちに作ったルームが本人から見えなくなる**。
+   * `updateUser({ email })` なら identity linking なので **user id が変わらず**、
+   * ルームも購入履歴もそのまま残る。
+   *
+   * ⚠️ この経路は Supabase の **Manual linking**（Authentication > Providers、既定は無効・beta）
+   * が有効でないと失敗する。無効のままだと「匿名のまま課金できない人」が生まれる。
+   */
+  const [upgrading, setUpgrading] = useState<boolean | null>(null);
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
   const [sent, setSent] = useState(false);
@@ -21,6 +34,12 @@ export function PresenterAuth({ locale, onSignedIn }: { locale: Locale; onSigned
   const [resendAvailableAt, setResendAvailableAt] = useState<number | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const ja = locale === "ja";
+
+  useEffect(() => {
+    void supabase.auth.getSession().then(({ data }) => {
+      setUpgrading(Boolean(data.session?.user.is_anonymous));
+    });
+  }, []);
 
   useEffect(() => {
     if (!resendAvailableAt) { setRemainingSeconds(0); return; }
@@ -39,10 +58,13 @@ export function PresenterAuth({ locale, onSignedIn }: { locale: Locale; onSigned
   const requestCode = async (resend = false) => {
     const normalizedEmail = email.trim().toLowerCase();
     setBusy(true); setError(null); setNotice(null);
-    const { error: authError } = await supabase.auth.signInWithOtp({
-      email: normalizedEmail,
-      options: { shouldCreateUser: true },
-    });
+    // 匿名セッションは昇格させる（user id を変えない）。それ以外は通常のサインイン。
+    const authError = upgrading
+      ? (await supabase.auth.updateUser({ email: normalizedEmail })).error
+      : (await supabase.auth.signInWithOtp({
+          email: normalizedEmail,
+          options: { shouldCreateUser: true },
+        })).error;
     setBusy(false);
     if (authError) {
       if (isRateLimitError(authError)) {
@@ -67,7 +89,12 @@ export function PresenterAuth({ locale, onSignedIn }: { locale: Locale; onSigned
 
   const verify = async () => {
     setBusy(true); setError(null);
-    const { error: authError } = await supabase.auth.verifyOtp({ email: email.trim(), token: token.trim(), type: "email" });
+    // 昇格のときは type が違う。`email` のままだと必ず「コードが無効」になる。
+    const { error: authError } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token: token.trim(),
+      type: upgrading ? "email_change" : "email",
+    });
     setBusy(false);
     if (authError) setError(ja ? "確認コードが無効か、期限が切れています。再送してお試しください。" : "The code is invalid or expired. Request a new one and try again.");
     else onSignedIn();
@@ -89,7 +116,9 @@ export function PresenterAuth({ locale, onSignedIn }: { locale: Locale; onSigned
         </div>
         <h1 className="mt-4 text-[20px] font-bold tracking-[-0.02em]">{ja ? "発表者としてログイン" : "Presenter sign in"}</h1>
         <p className="text-text-muted mt-2 text-[12px] leading-relaxed">
-          {ja ? "ルームと購入内容を安全に管理するため、メールへ6桁のコードを送ります。" : "We’ll email a six-digit code to protect your rooms and purchases."}
+          {ja
+            ? "購入とレポートにはアカウントが要ります。メールへ6桁のコードを送ります。いま作ったルームはそのまま引き継がれます。"
+            : "An account is needed for purchases and reports. We’ll email a six-digit code. The rooms you already made stay yours."}
         </p>
         <label className="text-text-faint mt-5 block text-[11px] font-semibold">EMAIL</label>
         <div className="border-border mt-1 flex items-center gap-2 rounded-[14px] border px-3">
@@ -124,7 +153,7 @@ export function PresenterAuth({ locale, onSignedIn }: { locale: Locale; onSigned
         )}
         {notice && <p role="status" className="text-online mt-3 text-[12px]">{notice}</p>}
         {error && <p className="text-like mt-3 text-[12px]">{error}</p>}
-        <button type="button" disabled={busy || !email.includes("@") || (sent && token.length !== 6)}
+        <button type="button" disabled={busy || upgrading === null || !email.includes("@") || (sent && token.length !== 6)}
           onClick={() => void (sent ? verify() : requestCode())}
           className="lt-tap mt-4 flex w-full items-center justify-center rounded-[14px] bg-[linear-gradient(135deg,#6b8aff,#b47cff)] px-4 py-3 text-[14px] font-bold text-white disabled:opacity-40">
           {busy ? <Loader2 size={16} className="animate-spin" /> : sent ? (ja ? "ログイン" : "Sign in") : (ja ? "確認コードを送る" : "Send code")}

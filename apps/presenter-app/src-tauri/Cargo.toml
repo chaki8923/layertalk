@@ -16,9 +16,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-# macos-private-api: tauri.conf.json の app.macOSPrivateApi と対で必要。
-# これが無いと macOS で背景を本当に透過できない（Mac App Store 配布は不可になる）。
-tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
+# **`macos-private-api` は落とした（App Store 2.5.1）。**
+# あの feature は wry に `setValue:forKey:@"drawsBackground"` という private な KVC キーを
+# 使わせるためのもので、透過 WKWebView の正体だった。いまは透過が要る窓から webview を外し、
+# Core Animation で直接描いている（`overlay_render.rs`）。**戻さないこと。**
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-opener = "2"
 # 発表レポートの保存先を選ばせて書き出すため。WKWebView は <a download> を
@@ -54,9 +56,20 @@ objc2-app-kit = { version = "0.3", features = [
   # 組んだ文字列の実寸を測る（`NSAttributedString::size`）。見積もり幅だと
   # 末尾が切れることがあり、140文字を省略しない方針に反する。
   "NSStringDrawing",
+  # システム設定（画面収録）を開くのに使う。`/usr/bin/open` のサブプロセス起動は
+  # App Sandbox が拒否するので、NSWorkspace の openURL: に寄せてある。
+  "NSWorkspace",
+  # prefers-reduced-motion 相当（`NSWorkspace::accessibilityDisplayShouldReduceMotion`）。
+  # フキダシは移植元が静止表示へ分岐するので、同じ判定が要る。
+  "NSAccessibility",
+  # カスタムスタンプの PNG を復号して CGImage にする。**画像デコーダは足さない** —
+  # JS が bytes を base64 で渡し、復号は NSImage に任せる。
+  "NSImage",
+  "NSGraphicsContext",
   "objc2-core-foundation",
 ] }
-objc2-foundation = "0.3"
+# NSWorkspace へ渡す NSURL。既定 feature には入っていない。
+objc2-foundation = { version = "0.3", features = ["NSURL"] }
 # オーバーレイをネイティブ描画するために使う（App Store 2.5.1）。
 # WKWebView を透過させる公開 API は macOS に存在しない（WebKit bug 200528 が未解決）ので、
 # 透過が要る窓からは webview を外し、Core Animation で直接描く。
@@ -70,9 +83,15 @@ objc2-quartz-core = { version = "0.3", features = [
   "CAMediaTiming",
   "CAMediaTimingFunction",
   "CATransaction",
+  # フキダシの左下のしっぽ（三角形）。CALayer の角丸では作れないので CGPath を引く。
+  "CAShapeLayer",
   "objc2-core-foundation",
 ] }
 core-graphics = "0.25"
+# フキダシのしっぽ（三角形）の CGPath を引くため。`CAShapeLayer::setPath` が要求するのは
+# **`objc2-core-graphics` の CGPath** で、上の `core-graphics` crate のものとは別型。
+# 既に objc2-quartz-core 経由で Cargo.lock に入っているので、直接依存にしても lock は動かない。
+objc2-core-graphics = { version = "0.3", features = ["CGPath"] }
 # `macos_14_0` は `SCScreenshotManager`（質問到着時の単発撮影フォールバック）を出すためだけの
 # **モジュールと Swift の `#if` を開けるフラグ**。デプロイメントターゲットは上がらず、
 # Swift 側に `#available(macOS 14.0, *)` があるので macOS 13 では Err が返るだけ。

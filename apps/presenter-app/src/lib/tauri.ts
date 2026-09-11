@@ -78,21 +78,80 @@ export const readQuestionCapture = (sessionId: string, questionId: string) =>
 export const questionCaptureCount = (sessionId: string) =>
   invoke<number>("question_capture_count", { sessionId });
 
-/**
- * オーバーレイをネイティブ描画（Core Animation）で出しているか。
- *
- * 透過 WKWebView は private API を要求する（App Store 2.5.1）ので、透過が要る窓からは
- * webview を外していく移行中。`LAYERTALK_NATIVE_OVERLAY=1` で起動したときだけ true。
- * **移植が終わったらこの分岐ごと消える。**
- */
-export const isNativeOverlay = () => invoke<boolean>("is_native_overlay");
-
 export const overlayPushComment = (
   text: string,
   fontSize: number,
   opacity: number,
   baseDurationSec: number,
 ) => invoke<void>("overlay_push_comment", { text, fontSize, opacity, baseDurationSec });
+
+/** フキダシ表示。横流しとはレーンの規則が別物なので、コマンドも分けてある。 */
+export const overlayPushBubble = (
+  text: string,
+  fontSize: number,
+  opacity: number,
+  baseDurationSec: number,
+) => invoke<void>("overlay_push_bubble", { text, fontSize, opacity, baseDurationSec });
+
+export const overlayBurstEmoji = (
+  emoji: string,
+  count: number,
+  opacity: number,
+  baseDurationSec: number,
+) => invoke<void>("overlay_burst_emoji", { emoji, count, opacity, baseDurationSec });
+
+/**
+ * カスタムスタンプの PNG を Rust 側へ覚えさせる。
+ *
+ * **Broadcast に URL は載らない**（誰でも任意の画像をスライド最前面に描画できてしまう）。
+ * 署名 URL の解決は JS 側に残したまま、bytes だけを Rust へ渡す。
+ */
+export const overlayCacheStampImage = (id: string, pngBase64: string) =>
+  invoke<void>("overlay_cache_stamp_image", { id, pngBase64 });
+
+export const overlayBurstImage = (
+  id: string,
+  count: number,
+  opacity: number,
+  baseDurationSec: number,
+) => invoke<void>("overlay_burst_image", { id, count, opacity, baseDurationSec });
+
+/**
+ * セルフテスト（`LAYERTALK_OVERLAY_SELFTEST`）が走っているか。
+ *
+ * 常設レイヤ（参加QR・モニターカード）は普段この窓が出し入れを持っているが、
+ * セルフテストはルーム無しで走るので、**放っておくと置いた直後に消しに行く**。
+ */
+export const isOverlaySelftest = () => invoke<string | null>("is_overlay_selftest");
+
+/**
+ * 発表中に Rust から 1 秒ごとに届く「起きていろ」の合図。
+ *
+ * オーバーレイ窓の webview は一度も表示されない tao 窓に載っているので、macOS が
+ * **起動から約 6 秒でページごと凍らせる**（実測）。凍ると `setInterval` が止まり、
+ * Supabase の購読は繋がったままコメントが1件も届かなくなる。外から来た broadcast では
+ * 起きず、**ネイティブ側からの IPC だけが起こせる**ので、`start_front_watchdog` が突いている。
+ * ここで受けているのは「配達されたことを JS 側でも確かめられるように」。
+ */
+export const onOverlayKeepalive = (handler: (seq: number) => void) =>
+  listen<number>("overlay-keepalive", (event) => handler(event.payload));
+
+/** セルフテストのプローブからの通報。`LAYERTALK_DEBUG_OVERLAY` のログに落ちる。 */
+export const selftestHeartbeat = (kind: string, seq: number, detail: string) =>
+  invoke<void>("selftest_heartbeat", { kind, seq, detail });
+
+/**
+ * 参加QR を左下に出す。`null` で消す。
+ *
+ * **カードは JS 側で `<canvas>` に描いて PNG にする。** QR は1ピクセル狂うと
+ * 読み取れないので、`qrcode.react` の出力をそのまま焼く。
+ */
+export const overlaySetJoinQr = (pngBase64: string | null) =>
+  invoke<void>("overlay_set_join_qr", { pngBase64 });
+
+/** モニター確認カード。両方 null で消す。`monitor` は訳さない（罠 #12）。 */
+export const overlaySetPeekCard = (caption: string | null, monitor: string | null) =>
+  invoke<void>("overlay_set_peek_card", { caption, monitor });
 
 export const overlayClear = () => invoke<void>("overlay_clear");
 
@@ -111,9 +170,15 @@ export const peekOverlay = (monitor: string | null, ms: number) =>
  */
 export const refitOverlay = () => invoke<void>("refit_overlay");
 
-/** 質問窓を右端のパネル幅／タブ幅へ切り替える。表示先は Rust が持っている。 */
-export const setQuestionPanelExpanded = (expanded: boolean) =>
-  invoke<void>("set_question_panel_expanded", { expanded });
+/**
+ * 質問窓の大きさを Rust へ伝える。表示先（どのモニターか）は Rust が持っている。
+ *
+ * **webview が不透明になったので「窓＝見えているパネル」。** 中身より大きい窓を出すと
+ * 縦に伸びた黒帯になるので、展開中は高さを実測して渡す（`ResizeObserver`）。
+ * 折りたたみ中はタブの寸法が固定なので `height` は無視される。
+ */
+export const setQuestionPanelSize = (expanded: boolean, height: number | null) =>
+  invoke<void>("set_question_panel_size", { expanded, height });
 
 export const showControlWindow = () => invoke<void>("show_control");
 

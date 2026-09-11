@@ -10,12 +10,10 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "overlay",
         "title": "LayerTalk Overlay",
-        "transparent": true,
         "decorations": false,
         "alwaysOnTop": true,
         "shadow": false,
@@ -45,7 +43,6 @@
       {
         "label": "questions",
         "title": "LayerTalk Questions",
-        "transparent": true,
         "decorations": false,
         "alwaysOnTop": true,
         "shadow": false,
@@ -57,8 +54,8 @@
         "focus": false,
         "acceptFirstMouse": true,
         "visible": false,
-        "width": 430,
-        "height": 900
+        "width": 406,
+        "height": 400
       }
     ],
     "security": {
@@ -76,8 +73,7 @@
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
+      "icons/icon.icns"
     ],
     "category": "Productivity",
     "publisher": "LayerTalk",
@@ -85,7 +81,8 @@
     "shortDescription": "スライドに観客のコメントとスタンプを重ねる",
     "longDescription": "発表中のスライド最前面に、観客からのリアルタイムコメント／スタンプを背景透過・クリックスルーで重ねて表示します。観客は参加 QR を読むだけで、アプリのインストールも登録もなしに参加できます。",
     "macOS": {
-      "minimumSystemVersion": "13.0"
+      "minimumSystemVersion": "13.0",
+      "entitlements": "Entitlements.plist"
     }
   }
 }

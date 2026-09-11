@@ -43,8 +43,11 @@ export type PresenterSettings = {
  * 並び替えできるセクション。**この配列の順が既定の並びそのもの。**
  *
  * 壇上でよく触る表示モニターを先頭に、ほとんど触らない Event Pass を末尾に置いている。
+ *
+ * **ここに足した id は、保存済みの並びを持つ既存ユーザーには末尾で現れる**
+ * （`normalizeSectionOrder` が知らない id を後ろへ足すため）。順を意識するのは新規だけ。
  */
-export const SECTION_IDS = ["monitor", "room", "display", "stamp", "customStamp", "eventPass"] as const;
+export const SECTION_IDS = ["monitor", "room", "display", "stamp", "customStamp", "moderation", "eventPass"] as const;
 export type SectionId = (typeof SECTION_IDS)[number];
 
 /**

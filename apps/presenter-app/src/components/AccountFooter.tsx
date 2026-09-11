@@ -1,16 +1,28 @@
-import { ExternalLink, Loader2, LogOut, Trash2 } from "lucide-react";
+import { ExternalLink, Loader2, LogIn, LogOut, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { Locale } from "@layertalk/shared";
 
 import { useMessages } from "../i18n";
 import { deleteAccount, openAudiencePage } from "../lib/billing";
+import { SignInDialog } from "./SignInDialog";
 import { supabase } from "../lib/supabase";
 
 type Props = {
   locale: Locale;
   /** 退会が通ったあとの後始末（ルーム設定を外す）。サインアウトはこの中でやる。 */
   onDeleted: () => void;
+  /**
+   * 発表中か。**法務リンクは発表中も出したまま**にする（5.1.1(i) はアプリ内から
+   * 常に到達できることを求める）。畳むのはサインアウトと退会だけ — どちらも
+   * 壇上で誤爆すると発表そのものが止まるうえ、退会ダイアログはスライドの前で開くと操作できない。
+   */
+  live: boolean;
+  /**
+   * 本会員（匿名でない）か。匿名のあいだは退会するアカウントがまだ無いので、
+   * 削除の代わりにサインインへの導線を出す。法務リンクは**どちらでも常に出す**。
+   */
+  isPermanent: boolean;
 };
 
 /**
@@ -25,10 +37,11 @@ type Props = {
  * 呼び出し側で `{!live && …}` に包むこと。発表中に退会ダイアログが開くと、
  * スライドの前で操作不能になる。
  */
-export function AccountFooter({ locale, onDeleted }: Props) {
+export function AccountFooter({ locale, live, isPermanent, onDeleted }: Props) {
   const t = useMessages(locale);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
+  const [signInOpen, setSignInOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,22 +111,44 @@ export function AccountFooter({ locale, onDeleted }: Props) {
         ))}
       </div>
 
-      <div className="mt-4 grid gap-1">
-        <button
-          type="button"
-          onClick={() => void supabase.auth.signOut()}
-          className="text-text-faint hover:text-text flex w-full items-center justify-center gap-1.5 py-2 text-[11px]"
-        >
-          <LogOut size={12} />{t.account.signOut}
-        </button>
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="text-text-faint hover:text-like flex w-full items-center justify-center gap-1.5 py-2 text-[11px]"
-        >
-          <Trash2 size={12} />{t.account.delete}
-        </button>
-      </div>
+      {!live && !isPermanent && (
+        <div className="mt-4">
+          <p className="text-text-faint text-[10px] leading-relaxed">{t.account.signInHint}</p>
+          <button
+            type="button"
+            onClick={() => setSignInOpen(true)}
+            className="lt-tap border-border mt-2 flex w-full items-center justify-center gap-1.5 rounded-[13px] border py-2.5 text-[11px] font-bold"
+          >
+            <LogIn size={12} />{t.account.signIn}
+          </button>
+        </div>
+      )}
+
+      {!live && isPermanent && (
+        <div className="mt-4 grid gap-1">
+          <button
+            type="button"
+            onClick={() => void supabase.auth.signOut()}
+            className="text-text-faint hover:text-text flex w-full items-center justify-center gap-1.5 py-2 text-[11px]"
+          >
+            <LogOut size={12} />{t.account.signOut}
+          </button>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="text-text-faint hover:text-like flex w-full items-center justify-center gap-1.5 py-2 text-[11px]"
+          >
+            <Trash2 size={12} />{t.account.delete}
+          </button>
+        </div>
+      )}
+
+      <SignInDialog
+        open={signInOpen}
+        locale={locale}
+        onClose={() => setSignInOpen(false)}
+        onSignedIn={() => { /* 反映は ControlWindow の onAuthStateChange が受ける */ }}
+      />
 
       {error && !open && <p role="alert" className="text-like mt-2 text-center text-[11px]">{error}</p>}
 

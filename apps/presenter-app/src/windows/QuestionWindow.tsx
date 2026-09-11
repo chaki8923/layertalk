@@ -12,9 +12,11 @@ import {
 } from "../lib/settings";
 import {
   getPresentationState,
+  isOverlaySelftest,
   onPresentationStateChanged,
-  setQuestionPanelExpanded,
+  setQuestionPanelSize,
 } from "../lib/tauri";
+import { startSelftestPump } from "../lib/selftest-pump";
 
 const MAX_QUESTIONS = 5;
 
@@ -37,15 +39,50 @@ export function QuestionWindow() {
     };
   }, []);
 
+  // `pump` セルフテストのとき、**見えている窓**でも同じ計測を回す。
+  // オーバーレイ窓（一度も表示されない）との差が、購読の置き場所の答えになる。
+  useEffect(() => {
+    let stop: (() => void) | null = null;
+    void isOverlaySelftest()
+      .then((mode) => {
+        if (mode === "pump") stop = startSelftestPump("questions");
+      })
+      .catch(() => {});
+    return () => stop?.();
+  }, []);
+
   const liveRef = useRef(false);
   const expandedRef = useRef(true);
   const hasQuestionsRef = useRef(false);
+
+  /**
+   * 窓の大きさを Rust へ渡す。**窓＝見えているパネルそのもの**なので、
+   * 中身が変わるたびに測り直さないと縦に伸びた黒帯になる。
+   */
+  const panelRef = useRef<HTMLDivElement>(null);
+  const reportSize = (isExpanded: boolean) => {
+    if (!isExpanded) {
+      void setQuestionPanelSize(false, null);
+      return;
+    }
+    const height = panelRef.current?.getBoundingClientRect().height ?? null;
+    void setQuestionPanelSize(true, height ? Math.ceil(height) : null);
+  };
+
+  // 質問が増減しても・折りたたみが変わっても追従させる。
+  useEffect(() => {
+    const element = panelRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => reportSize(expandedRef.current));
+    observer.observe(element);
+    return () => observer.disconnect();
+  });
 
   const applyExpanded = (next: boolean) => {
     expandedRef.current = next;
     setExpanded(next);
     setUnreadCount(0);
-    void setQuestionPanelExpanded(next);
+    reportSize(next);
   };
 
   useEffect(() => {
@@ -80,7 +117,7 @@ export function QuestionWindow() {
         expandedRef.current = true;
         setExpanded(true);
         setUnreadCount(0);
-        void setQuestionPanelExpanded(true);
+        reportSize(true);
       } else if (!expandedRef.current) {
         setUnreadCount((count) => count + 1);
       }
@@ -90,14 +127,17 @@ export function QuestionWindow() {
     };
   }, []);
 
+  // **どちらの状態でも、ルートが窓いっぱいに広がって面を塗る。**
+  // 角丸は Rust が webview のレイヤに当てている（`PANEL_RADIUS`）ので、ここでは付けない
+  // — CSS 側にも付けると角が二重に落ちて線が出る。
   if (!expanded) {
     return (
-      <div className="relative h-screen w-screen bg-transparent">
+      <div className="bg-[var(--lt-question-surface)] flex h-screen w-screen items-center justify-center">
         <button
           type="button"
           aria-label={t.questions.show(unreadCount)}
           onClick={() => applyExpanded(true)}
-          className="lt-tap absolute top-[5vh] right-0 flex min-h-28 w-12 flex-col items-center justify-center gap-2 rounded-l-[18px] border border-r-0 border-white/18 bg-black/80 text-white shadow-[0_12px_34px_rgb(0_0_0/0.38)]"
+          className="lt-tap flex h-full w-full flex-col items-center justify-center gap-2 text-white"
         >
           <ChevronLeft size={17} aria-hidden />
           <span className="text-[15px] font-black">Q</span>
@@ -113,8 +153,9 @@ export function QuestionWindow() {
 
   return (
     <motion.aside
+      ref={panelRef}
       aria-label={t.questions.title}
-      className="absolute top-[5vh] right-3 bottom-[5vh] left-3 flex flex-col gap-3 overflow-hidden"
+      className="bg-[var(--lt-question-surface)] flex w-screen flex-col gap-3 overflow-hidden px-3 py-3"
       initial={{ opacity: 0, x: reduceMotion ? 0 : 20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: reduceMotion ? 0.1 : 0.22, ease: [0.22, 1, 0.36, 1] }}

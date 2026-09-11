@@ -132,7 +132,7 @@ export function EventPassPurchaseSheet({ open, roomId, roomTitle, roomCode, loca
         </dl>
 
         <div className="mt-5 flex items-end justify-between"><span className="text-text-muted text-[12px]">{ja ? "支払額" : "Total"}</span><p><span className="lt-num text-[26px] font-bold">¥2,980</span><span className="text-text-faint ml-1 text-[10px]">{ja ? "税込" : "tax included"}</span></p></div>
-        <p className="text-text-muted mt-4 text-[11px] leading-5">{ja ? "決済確認後、このルームの承認制、NGワード、入室パスコード、レポート、ブランド設定が利用できるようになります。" : "After payment, moderation, blocked words, a passcode, reports, and branding become available in this room."}</p>
+        <p className="text-text-muted mt-4 text-[11px] leading-5">{ja ? "決済確認後、このルームの承認制、入室パスコード、表示ディレイ、発表レポート、ブランド設定が利用できるようになります。NGワードとコメントの非表示は無料で使えます。" : "After payment, approval mode, a passcode, display delay, presentation reports, and branding become available in this room. Blocked words and hiding a comment are free."}</p>
 
         <div className="mt-4 flex flex-wrap gap-x-3 gap-y-2">
           {legalLinks.map(([labelJa, labelEn, path]) => <button key={path} type="button" onClick={() => void openAudiencePage(path).catch(() => setError(ja ? "案内ページを開けませんでした。" : "Could not open the information page."))} className="text-brand flex items-center gap-1 text-[10px] font-semibold">{ja ? labelJa : labelEn}<ExternalLink size={10} /></button>)}

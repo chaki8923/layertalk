@@ -6,10 +6,8 @@ import {
   Download,
   ExternalLink,
   KeyRound,
-  Plus,
   ReceiptText,
   ShieldCheck,
-  Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -18,16 +16,13 @@ import {
   fetchActiveEntitlement,
   fetchModerationRules,
   fetchPresentationReport,
-  moderateComment,
   resolveErrorMessage,
   setRoomPasscode,
   updateModerationRules,
-  type Comment,
   type DisplayPreset,
   type Entitlement,
   type Locale,
   type ModerationRules,
-  type ModerationTerm,
   type PresentationSession,
   type PresentationReport,
   type RoomBranding,
@@ -50,8 +45,8 @@ import {
   type ScreenCapturePermission,
 } from "../lib/tauri";
 import { EventPassPurchaseSheet } from "./EventPassPurchaseSheet";
+import { SignInDialog } from "./SignInDialog";
 import { DisplayPresetPicker } from "./DisplayPresetPicker";
-import { RecentComments } from "./RecentComments";
 import { loadCachedEntitlementLease, openAudiencePage, openEntitlementReceipt, refreshEntitlementLease } from "../lib/billing";
 import { supabase } from "../lib/supabase";
 
@@ -61,8 +56,6 @@ type Props = {
   roomTitle: string | null;
   locale: Locale;
   live: boolean;
-  comments: Comment[];
-  onCommentModerated: (comment: Comment) => void;
   display: { displayMode: "flow" | "bubble"; showJoinQr: boolean; allowCustomStamps: boolean };
   onApplyPreset: (preset: DisplayPreset) => void;
   /**
@@ -81,9 +74,14 @@ type Props = {
    * 15秒ごとのポーリングが二重になるので、取った結果を報告する形にしてある。
    */
   onPaidChange: (paid: boolean) => void;
+  /**
+   * 本会員（匿名でない）か。**購入はサーバ側で匿名を弾く**（`requirePresenter`）ので、
+   * 匿名のまま Checkout を開くと 401 で落ちる。押す前にサインインへ回す。
+   */
+  isPermanent: boolean;
 };
 
-export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comments, onCommentModerated, display, onApplyPreset, branding, onBrandingChange, onPaidChange }: Props) {
+export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, display, onApplyPreset, branding, onBrandingChange, onPaidChange, isPermanent }: Props) {
   const ja = locale === "ja";
   const t = useMessages(locale);
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
@@ -93,14 +91,12 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
     try { return JSON.parse(localStorage.getItem(`layertalk:event-controls:${roomId}`) ?? "null") as ModerationRules | null; }
     catch { return null; }
   });
-  const [terms, setTerms] = useState<ModerationTerm[]>([]);
   const [presets, setPresets] = useState<DisplayPreset[]>([]);
   const [sessions, setSessions] = useState<PresentationSession[]>([]);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [signInOpen, setSignInOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [passcode, setPasscode] = useState("");
-  const [newTerm, setNewTerm] = useState("");
-  const [termMode, setTermMode] = useState<"contains" | "exact">("contains");
   const [presetName, setPresetName] = useState("");
   const [appliedPresetId, setAppliedPresetId] = useState<string | null>(null);
   const [captureEnabled, setCaptureEnabled] = useState(() => loadQuestionCapturePreference(roomId));
@@ -172,14 +168,12 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
       setOfflineActive(Boolean(active) || ongoingPaid);
       if (!active && !ongoingPaid) return;
       void refreshEntitlementLease(roomId).catch(() => undefined);
-      const [nextRules, termResult, presetResult] = await Promise.all([
+      const [nextRules, presetResult] = await Promise.all([
         fetchModerationRules(supabase, roomId),
-        supabase.from("moderation_terms").select("*").eq("room_id", roomId).order("created_at"),
         supabase.from("display_presets").select("*").order("created_at"),
       ]);
       setRules(nextRules);
       localStorage.setItem(`layertalk:event-controls:${roomId}`, JSON.stringify(nextRules));
-      setTerms(termResult.data ?? []);
       setPresets(presetResult.data ?? []);
     } catch {
       setError(ja ? "Event Passの状態を読み込めませんでした" : "Could not load Event Pass");
@@ -257,13 +251,13 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
               <div>
                 <h2 className="text-[15px] font-bold">{ja ? "本番を安全に運営" : "Run the room safely"}</h2>
                 <p className="text-text-muted mt-1 text-[11px] leading-relaxed">
-                  {ja ? "承認制、NGワード、入室パスコード、レポート、ブランド設定をこのルームで7日間使えます。" : "Approval, blocked words, a room passcode, reports, and branding for this room for seven days."}
+                  {ja ? "承認制、入室パスコード、表示ディレイ、発表レポート、ブランド設定をこのルームで7日間使えます。" : "Approval mode, a room passcode, display delay, presentation reports, and branding for this room for seven days."}
                 </p>
               </div>
             </div>
             <div className="mt-4 flex items-end justify-between">
               <div><span className="lt-num text-[24px] font-bold">¥2,980</span><span className="text-text-faint ml-1 text-[11px]">{ja ? "税込" : "tax included"}</span></div>
-              <button type="button" disabled={live} onClick={() => { setError(null); setPurchaseOpen(true); }} className="lt-tap bg-brand rounded-[13px] px-4 py-2.5 text-[12px] font-bold text-white disabled:opacity-40">
+              <button type="button" disabled={live} onClick={() => { setError(null); if (isPermanent) setPurchaseOpen(true); else setSignInOpen(true); }} className="lt-tap bg-brand rounded-[13px] px-4 py-2.5 text-[12px] font-bold text-white disabled:opacity-40">
                 {ja ? "購入する" : "Buy pass"}
               </button>
             </div>
@@ -283,6 +277,8 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
           </div>
         )}
         <EventPassPurchaseSheet open={purchaseOpen} roomId={roomId} roomTitle={roomTitle} roomCode={roomCode} locale={locale} onClose={() => setPurchaseOpen(false)} />
+        {/* サインインしたらそのまま購入へ進ませる。もう一度ボタンを探させない。 */}
+        <SignInDialog open={signInOpen} locale={locale} onClose={() => setSignInOpen(false)} onSignedIn={() => setPurchaseOpen(true)} />
       </section>
     );
   }
@@ -322,44 +318,6 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
           </div>
           {!entitlement && <p className="text-text-faint mt-1.5 text-[10px] leading-relaxed">{ja ? "Event Passの期限切れ後は、新しく参加する人にパスコードを求めません。" : "After the Event Pass expires, new participants are not asked for a passcode."}</p>}
         </div>
-
-        <div className="border-border border-t pt-4">
-          <p className="text-[13px] font-bold">{ja ? "NGワード" : "Blocked words"}</p>
-          <div className="mt-2 flex gap-2">
-            <input value={newTerm} onChange={(event) => setNewTerm(event.target.value)} className="border-border min-w-0 flex-1 rounded-[12px] border bg-transparent px-3 py-2 text-[12px] outline-none" />
-            <select aria-label={ja ? "一致方法" : "Match mode"} value={termMode} onChange={(event) => setTermMode(event.target.value as "contains" | "exact")} className="border-border rounded-[12px] border bg-transparent px-2 text-[10px] outline-none">
-              <option value="contains">{ja ? "部分" : "Contains"}</option>
-              <option value="exact">{ja ? "完全" : "Exact"}</option>
-            </select>
-            <button type="button" disabled={!newTerm.trim()} onClick={() => {
-              setError(null);
-              void supabase.from("moderation_terms").insert({ room_id: roomId, term: newTerm.trim(), match_mode: termMode }).select().single().then(({ data, error: insertError }) => {
-                if (insertError) { setError(resolveErrorMessage(new LayerTalkError("moderation_failed", insertError.message), locale)); return; }
-                if (data) setTerms((current) => [...current, data]);
-                setNewTerm("");
-              });
-            }} className="border-border rounded-[12px] border px-3"><Plus size={14} /></button>
-          </div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {terms.map((term) => <button key={term.id} type="button" onClick={() => {
-              setError(null);
-              void supabase.from("moderation_terms").delete().eq("id", term.id).then(({ error: deleteError }) => {
-                if (deleteError) { setError(resolveErrorMessage(new LayerTalkError("moderation_failed", deleteError.message), locale)); return; }
-                setTerms((current) => current.filter((item) => item.id !== term.id));
-              });
-            }} className="bg-surface-strong text-text-muted flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px]">{term.term}<Trash2 size={10} /></button>)}
-          </div>
-        </div>
-
-        {/* 承認待ちのキューは PendingApprovalQueue（コントロール窓の最上部）が持つ。
-            発表中はこのパネルまでスクロールしていられないので、ここには置かない。 */}
-
-        <RecentComments
-          comments={comments}
-          locale={locale}
-          moderate={(commentId, action) => moderateComment(supabase, commentId, action)}
-          onModerated={onCommentModerated}
-        />
 
         <div className="border-border border-t pt-4">
           <p className="text-[13px] font-bold">{ja ? "表示プリセット" : "Display presets"}</p>

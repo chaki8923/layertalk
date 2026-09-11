@@ -11,11 +11,11 @@ export function privacyContent(config: {
     effectiveDate: config.effectiveDate,
     updatedDate: config.updatedDate,
     sections: [
-      { id: "information", title: "1. 取得する情報", items: ["Presenterのメールアドレス、ユーザーIDおよび認証記録", "ルーム、設定、コメント、質問、スタンプ、発表レポート", "購入状態、Stripe Customer ID、Checkout Session ID、PaymentIntent ID", "IPアドレス、端末・ブラウザ情報、アクセス時刻、エラーログ"] },
+      { id: "information", title: "1. 取得する情報", items: ["Presenterのメールアドレス、ユーザーIDおよび認証記録", "ルーム、設定、コメント、質問、スタンプ、発表レポート", "購入状態、Stripe Customer ID、Checkout Session ID、PaymentIntent ID", "IPアドレス、端末・ブラウザ情報、アクセス時刻、エラーログ", "質問スライド画像: Presenterアプリで質問スライドの保存を有効にした場合に限り、質問が届いた時点で、Presenterが選んだ発表用ディスプレイ1画面の静止画を撮影します。LayerTalk自身の表示とマウスカーソルは含みません。この画像はPresenterのMac内にのみ保存し、LayerTalkのサーバーへは送信しません（既定は無効です）"] },
       { id: "purpose", title: "2. 利用目的", items: ["本人認証とアカウント管理", "リアルタイムコメント、モデレーション、レポート等のサービス提供", "決済処理、購入確認、有料権利の付与と失効", "問い合わせ対応、不正利用の防止、障害調査とサービス改善", "法令上必要な記録の作成と保存"] },
       { id: "payments", title: "3. 決済情報", paragraphs: ["カード情報はStripeが直接収集します。LayerTalkのサーバーはカード番号やセキュリティコードを取得・保持せず、決済結果とStripeが発行する識別子だけを受け取ります。"] },
       { id: "providers", title: "4. 外部サービスと委託先", items: ["Stripe: 決済、領収書、不正利用対策", "Supabase: 認証、データベース、リアルタイム配信、ストレージ、認証メール", "Cloudflare Turnstile: 不正なアクセスや自動化された操作の防止", "Vercel: Audience Webのホスティングと配信"] },
-      { id: "retention", title: "5. 保存期間", items: ["Freeのイベントデータ: 原則7日間", "Event Passのイベントデータ: 原則30日間", "決済、会計、不正対策、問い合わせ対応に必要な記録: 法令または正当な目的に応じた期間"] },
+      { id: "retention", title: "5. 保存期間", items: ["Freeのイベントデータ: 原則7日間", "Event Passのイベントデータ: 原則30日間", "決済、会計、不正対策、問い合わせ対応に必要な記録: 法令または正当な目的に応じた期間", "質問スライド画像: PresenterのMac内に30日間保存し、経過後はアプリの起動時に自動削除します。それ以前に削除する場合は、Presenterアプリのアプリケーションデータフォルダから直接削除できます"] },
       { id: "sharing", title: "6. 第三者提供、委託、越境移転", paragraphs: ["法令に基づく場合を除き、本人の同意なく個人情報を第三者へ販売しません。上記の外部サービスへ処理を委託することがあり、そのサーバーが日本国外に所在する場合があります。委託先の安全管理措置を確認し、必要な契約上の保護を行います。"] },
       { id: "storage", title: "7. Cookieとローカルストレージ", paragraphs: ["認証状態、表示設定、ルーム情報、オフライン権利確認等のため、Cookieまたはブラウザ・アプリ内のローカルストレージを利用します。広告目的のCookieは使用していません。"] },
       { id: "security", title: "8. 安全管理措置", paragraphs: ["通信の暗号化、アクセス制御、権限の分離、Webhook署名検証、秘密情報のサーバー側管理、保存期間に応じた削除等を行います。安全性を完全に保証するものではありませんが、リスクに応じて継続的に見直します。"] },

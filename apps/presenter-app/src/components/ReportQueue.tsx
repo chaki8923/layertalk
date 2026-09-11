@@ -38,11 +38,11 @@ type Grouped = {
 /**
  * 観客から届いた通報（App Store 1.2）。
  *
- * **`has_paid_room_features` に依存させないこと。** 通報の受け取りと表示は無料ルームでも
- * 動く（`content_reports` の SELECT は `is_room_operator` だけを見ている）。
- * 一方で「非表示にする」= `moderate_comment` は Event Pass の機能なので、そこだけ落ちる。
- * 落ちたときは黙らず `needsPass` を出す — 罠 #16 の「画面は成功・DB は無反応」を作らない。
- * カスタムスタンプの削除は課金と無関係に通るので、無料でも必ず消せる。
+ * **受け取り・表示・非表示・スタンプ削除のどれにも `has_paid_room_features` を
+ * 噛ませないこと。** 1.2 は「通報できること」と「通報に対処できること」を両方求める。
+ * かつて `moderate_comment` が Event Pass を要求していたため、無料ルームは
+ * 「通報は届くが誰も消せない」状態だった（`20260908051937_free_tier_moderation.sql` で解消）。
+ * 失敗したときは黙らず理由を出す — 罠 #16 の「画面は成功・DB は無反応」を作らない。
  */
 export function ReportQueue({ roomId, locale, comments, stamps, onModerated, onStampDeleted }: Props) {
   const t = useMessages(locale);
@@ -109,9 +109,9 @@ export function ReportQueue({ roomId, locale, comments, stamps, onModerated, onS
   }, [reports, commentsById, stampsById]);
 
   /**
-   * `hint` は「この操作が落ちる一番ありそうな理由」。非表示は Event Pass を要求するので
-   * `needsPass` を添える。スタンプの削除は課金と無関係に通るはずなので、素の理由だけ出す
-   * — ここを一緒くたにすると、通信断を「課金してください」と誤って案内することになる。
+   * `hint` は「この操作が落ちる一番ありそうな理由」。いまはどちらの操作も課金と無関係に
+   * 通るはずなので、素の理由だけ出す。課金を疑わせる文言をここに戻さないこと
+   * — 通信断を「課金してください」と誤って案内することになる。
    */
   const runAction = async (key: string, action: () => Promise<void>, hint?: string) => {
     if (busyKeys.has(key)) return;
@@ -175,7 +175,7 @@ export function ReportQueue({ roomId, locale, comments, stamps, onModerated, onS
                     disabled={busy}
                     onClick={() => void runAction(group.key, async () => {
                       onModerated(await moderateComment(supabase, comment.id, "hide"));
-                    }, t.reports.needsPass)}
+                    })}
                     className="lt-tap border-border text-text-muted flex flex-1 items-center justify-center gap-1 rounded-[11px] border px-3 py-1.5 text-[11px] font-bold disabled:opacity-40"
                   >
                     {busy ? <Loader2 size={12} className="animate-spin" /> : <EyeOff size={12} />}

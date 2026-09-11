@@ -44,7 +44,7 @@ export function PendingApprovalQueue({ comments, locale, onModerated }: Props) {
     try {
       onModerated(await moderateComment(supabase, comment.id, action));
     } catch (err) {
-      // 期限切れ（active Event Pass required）もここに来る。無反応にしないこと。
+      // 承認／非表示は課金と無関係に通る（1.2）。ここに来るのは通信断か権限違い。無反応にしないこと。
       setError(resolveErrorMessage(err, locale) || t.approval.failed);
     } finally {
       setBusyIds((current) => {

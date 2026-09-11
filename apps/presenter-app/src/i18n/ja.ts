@@ -134,6 +134,12 @@ export const ja = {
   account: {
     title: "アカウント",
     signOut: "ログアウト",
+    /** 匿名のまま使えるので、サインインは「購入・レポート・退会のときだけ」求める（5.1.1(v)）。 */
+    signIn: "サインイン",
+    signInHint: "購入・発表レポート・退会にはアカウントが要ります。ここまでに作ったルームはそのまま引き継がれます。",
+    offlineTitle: "接続できませんでした",
+    offlineBody: "LayerTalk のサーバーに接続できないため、ルームを作れません。ネットワークを確認してからやり直してください。",
+    retry: "やり直す",
     privacy: "プライバシー",
     terms: "利用規約",
     support: "サポート",
@@ -162,8 +168,6 @@ export const ja = {
     },
     stampTarget: "カスタムスタンプ",
     missingTarget: "削除済みの投稿",
-    /** 通報を捌く操作（非表示）は Event Pass の機能なので、無い場合はこれを出す。 */
-    needsPass: "非表示にするには Event Pass が必要です。スタンプはこの窓の一覧から削除できます。",
   },
 
   qr: {

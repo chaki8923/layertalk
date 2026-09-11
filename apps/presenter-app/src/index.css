@@ -19,6 +19,24 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* 質問窓だけは webview が**見えている**。
+ *
+ * 透過 WKWebView は private API を要求する（App Store 2.5.1）ので不透明のまま出し、
+ * 角丸は Rust が webview のレイヤに当てている（`native_overlay::PANEL_RADIUS`）。
+ * **ここで面を塗らないと、上の `background: transparent` のせいで
+ * WKWebView の既定色（白）がそのまま板になる。**
+ *
+ * 色を `--lt-*` のトークンにしないこと — あれは light モードで反転するが、
+ * オーバーレイはスライドの上に出る前提で常に暗い（`text-white` を直書きしているのと同じ理由）。 */
+html[data-window="questions"] {
+  --lt-question-surface: #161b26;
+}
+html[data-window="questions"],
+html[data-window="questions"] body,
+html[data-window="questions"] #root {
+  background: var(--lt-question-surface);
+}
+
 /* オーバーレイ側では文字を選択させない（クリックスルー解除時の誤操作防止） */
 .overlay-root {
   user-select: none;

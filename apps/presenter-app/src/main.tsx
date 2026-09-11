@@ -15,6 +15,9 @@ const label = currentWindowLabel();
 // ここで直さないと最初の 1 フレームだけ日本語の行分割で出てしまう。
 document.documentElement.lang = loadSettings().language;
 
+// 質問窓だけ面を塗る必要がある（webview が見えている唯一の窓）。CSS から引けるよう印を付ける。
+document.documentElement.dataset.window = label;
+
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     {label === "overlay" ? (

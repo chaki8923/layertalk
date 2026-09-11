@@ -61,9 +61,16 @@ if (isNew) callback();   // ← 常に false
 購読確立からレプリケーションのフィルタが効くまで 1〜2 秒のズレがある。
 `useComments` は購読直後と 2.5 秒後の 2 回取得し直して回収している。`smoke:realtime` で再現可能。
 
-**4. Tauri の `macOSPrivateApi` は cargo feature とセット**
-`tauri.conf.json` だけだとビルドが「allowlist と一致しない」で落ちる。
-`tauri = { features = ["macos-private-api", ...] }` が必要。Mac App Store 配布は不可になる。
+**4. `macOSPrivateApi` は落とした。二度と戻さないこと**
+かつては透過のために `tauri.conf.json` の `macOSPrivateApi` と cargo の
+`macos-private-api` を対で立てていた（片方だけだとビルドが「allowlist と一致しない」で落ちる）。
+**あの feature の正体は wry に `setValue:forKey:@"drawsBackground"` という private な
+KVC キーを使わせること**で、App Store 2.5.1（公開 API のみ）に真正面から反する。
+いまは透過が要る窓から webview を外し、Core Animation で直接描いている（`overlay_render.rs`）。
+**`transparent: true` を窓に足すと feature ごと復活する**ので、窓を増やすときは気を付ける。
+消えたことの確認は実行ファイルを直接見るのが早い:
+`strings LayerTalk.app/Contents/MacOS/presenter-app | grep -c drawsBackground` が **0**。
+（`strings` が効いていることの対照に `native/overlay` などを数えておくと確実）
 
 **5. `alwaysOnTop` だけではスライドショーの前に出ない**
 Keynote / PowerPoint のフルスクリーンは NSFloatingWindowLevel より上。
@@ -117,7 +124,12 @@ tao の窓は表示しないまま残す。オーバーレイは素の `NSWindow
   `NSWorkspace.activeSpaceDidChangeNotification` だが `block2` の依存追加が要るので採らなかった
 - 切り分けの計測は残してある。`LAYERTALK_DEBUG_OVERLAY=1` で起動すると `log_window_state` が
   `isVisible` / `isOnActiveSpace` / `occlusionState` を 1 秒ごとに出す
-  （`onActiveSpace=false` → Space、`occluded=true` → 描画停止）
+  （`onActiveSpace=false` → Space、`occluded=true` → 描画停止）。
+  **このフラグは長いあいだ「ドキュメントにだけ存在」していた**（コードは全ビルドで無条件に
+  `/tmp/layertalk-overlay.log` へ追記していた）。いまは実装されていて、出力先は
+  `app_data_dir()` 配下の `layertalk-overlay.log`、**起動ごとに作り直す**。
+  stderr へは従来どおり常に出る。`/tmp` へ戻さないこと — sandbox で拒否されるうえ、
+  ウォッチドッグが毎秒書くので放っておくと際限なく伸びる
 
 **10. `postgres_changes` の DELETE は old に主キーしか載せない**
 `replica identity full` にしても実測で `{"id": "…"}` だけだった（`comments` の UPDATE で
@@ -179,7 +191,8 @@ PostgREST は RLS で 1 行も一致しなくても **204 / `error: null`** を�
 **画面は ON・DB は false・スライドには LayerTalk が出たまま**になった
 （実測: `PATCH /rest/v1/room_branding` 6 回すべて 204 なのに行は既定値のまま）。
 `room_branding` / `moderation_rules` の UPDATE は `has_paid_room_features` を要求するので、
-Event Pass が切れた瞬間から**全部この黙った 0 行更新**になる。
+Event Pass が切れた瞬間から**全部この黙った 0 行更新**になる
+（`moderation_terms` と `moderate_comment` は 1.2 のため課金判定の外に出したので、ここには入らない）。
 権限付きの表を書くときは `.select().maybeSingle()` を付けて**返ってきた行を正とする**こと
 （`lib/branding.ts` の `patchRoomBranding`）。行が無い＝弾かれた、で
 `branding_rejected`（権限）と `branding_save_failed`（通信）を必ず分ける。
@@ -220,6 +233,11 @@ LayerTalk を出す。無料版が表記を消せてはいけないので既定�
   Swift 側に `#available(macOS 14.0, *)` があるので macOS 13 では Err が返るだけ）
 - ついでに `queue_depth` は Apple の文書上の下限が 3。2 にしていた
 
+**保存先は sandbox の有無で変わる。**（罠 #13 / #17b と同じ「dev と .app は別物」の系列）
+サンドボックス無し: `~/Library/Application Support/app.layertalk.presenter/`
+サンドボックス有り: `~/Library/Containers/app.layertalk.presenter/Data/Library/Application Support/app.layertalk.presenter/`
+`app_data_dir()` が返す先が丸ごと動くので、**無い方を見て「1枚も撮れていない」と誤診しないこと**。
+
 切り分けはアプリのログではなく **OS 側**を見る:
 `log show --last 10m --info --debug --predicate 'process == "replayd"'` の
 `screenframeCount`（OS がフレームを作っているか）と `SCAlert` 行（塞がれていないか）で一発。
@@ -236,11 +254,168 @@ TCC の責任プロセスは起動元（Terminal / iTerm / IDE）になるので
 署名が無いので `.app` 側も**リビルドで TCC の照合が外れる**ことがある。効かないときは
 システム設定で LayerTalk を一度 `−` で外してから `+` で入れ直す。
 
+**18. NG ワードの `contains` は普通の単語を巻き込む**
+既定の NG ワードを入れるとき、`カス` が **`カスタムスタンプ`（このアプリの機能名）** に
+当たることに気付いた。同種のものが山ほどある: `バカ`→バカンス、`ゴミ`→ゴミ箱、
+`帰れ`→持ち帰れ、`ブス`→デブス、英語は `ass`→class/password（Scunthorpe problem）、
+`dick`→Dickens、`hell`→shell/hello。
+**短い語は入れない。** 誤検知は発表を壊すが、取りこぼしは発表者が自分で足せる — 非対称なので
+迷ったら入れない側に倒す。`20260908055150_seed_default_moderation_terms.sql` に
+良性コーパスとの照合クエリを置いてあるので、語を足したら必ず回すこと
+（`private.default_moderation_terms()` を直接読むので一覧を二重管理しない）。
+
+**19. `paint-order: stroke fill` は AppKit に無い。縁取りは2回描く**
+`.lt-overlay-text`（`theme.css:120-126`）は `-webkit-text-stroke: 3px` に
+**`paint-order: stroke fill`** を添えて、CSS の既定（塗り → 縁）を打ち消している。
+縁は輪郭の**中心**に引かれるので、この指定が無いと幅の半分が字面を内側から食う。
+AppKit の `NSStrokeWidthAttributeName` に負値を入れると「塗りと縁の両方」になるが、
+その順序は**まさに CSS の既定のほう**で、`paint-order` に当たる属性が存在しない。
+`overlay_render.rs` はこれを見落として1枚で描いていた。実測（全画面スクショの画素）で
+字面が `rgb(38,38,38)` ＝ 黒85%を白背景に載せた値ちょうどになり、
+**白い塗りが1画素も出ていなかった**（30pt に 3px の縁だと字面が埋まりきる）。
+**縁（正値＝縁だけ）と塗り（白のみ）の2枚を入れ物の `CALayer` に重ねること。**
+アニメーションは入れ物にだけ当てる（別々に動かすとずれた瞬間に縁と字面が分離する）。
+`contentsScale` は**子の両方**に要る — 入れ物に付けても降りてこないので、付け忘れた側だけぼやける。
+「負値にすれば CSS と同じ」で済ませないこと。
+
+**20. オーバーレイの見た目は `LAYERTALK_OVERLAY_SELFTEST=1` で人手なしに出せる**
+ネイティブ経路は **tao の窓にも認証にもルームにも依存していない**
+（`native_overlay::show` は `use_native_overlay()` が真なら `tao_ns_window` に触れず早期 return し、
+窓は `ensure` が自前で作る）。なので `lib.rs` の `start_overlay_selftest` が
+起動直後に `show_overlay` を呼んでサンプル文を流す。
+ルーム作成も発表開始もクリックも要らないので、`screencapture -x` と組み合わせれば
+**描画の検証は機械的に回せる**。罠 #19 はこれで見つけた。
+フキダシ・スタンプ・QR・モニターカードを移植するたびに使うこと。
+
+**21. objc2 は非推奨 API も同じ名前で生やす**
+`NSAttributedString` の文字寸法を測るとき、`boundingRectWithSize_options`（2引数）を掴むと
+**deprecated カテゴリ**のほうを呼ぶことになる。objc2 は現行版
+（`boundingRectWithSize_options_context`）と非推奨版の両方をトレイトとして生やしていて、
+**名前が短いのは非推奨のほう**。App Store 2.5.1 は「非推奨の機能・フレームワークを段階的に外す」
+ことも求めるので、objc2 で API を選ぶときは `..._context` のような**引数が多いほうを疑ってかかる**。
+コンパイラは deprecated 警告を出さない（トレイト経由なので）。
+
+**22. Core Animation の `transform.rotation` はラジアン。CSS の `rotate` は度**
+`StampLayer.tsx` の `rotate: [0, random(-45, 45)]` をそのまま `transform.rotation` へ渡すと、
+45 度のつもりが **45 ラジアン（≒7回転）** になる。粒が高速で回り続けるという形で出る。
+移植のときは度→ラジアンの変換を必ず挟むこと（`overlay_render.rs` の `spin`、
+`cargo test` の `spin_is_converted_from_degrees_to_radians` で固定してある）。
+同様に **AppKit は上が正**なので、Web の `y: [0, -rise]`（下が正）とは符号も逆になる。
+
+**23. 常設レイヤは「Rust が置く」と「JS が消す」が競合する**
+参加QR とモニター確認カードは、粒やコメントと違って**寿命で消えない常設レイヤ**で、
+出し入れを持っているのは `OverlayWindow` の effect。ところがセルフテスト
+（`LAYERTALK_OVERLAY_SELFTEST`）はルームもサインインも無しで走るので、webview 側は
+`showQr = false` と判断して **Rust が置いた直後に `overlaySetJoinQr(null)` を送って消す**。
+ログには `qr: 置きました` → `qr: 消されました` が並ぶだけで、**レイヤは正しく作られている
+のに画面に出ない**という、描画のバグにしか見えない症状になる。
+`is_overlay_selftest()` を JS から見て、セルフテスト中は effect を早期 return させている。
+**常設レイヤを足すときは「誰が消す権利を持つか」を先に決めること。**
+（切り分けでは、素の色板を置いても出ないことを確かめて「contents の問題ではない」まで
+絞り込んでから、`None` で呼ばれた側にログを足して初めて分かった。）
+
+**24. 質問パネルは「窓＝見えているパネル」**
+webview を透過できなくなったので（罠 #4）、**質問パネルの窓は中身とピッタリ同じ大きさ**にしてある。
+中身より大きい窓を出すと、余白がそのまま不透明に塗られて**縦に伸びた黒帯**になる。
+高さは `QuestionWindow` が `ResizeObserver` で測って `set_question_panel_size` で渡し、
+Rust が窓の frame を組み直す（`native_overlay::show_panel`）。
+角丸は **webview のレイヤに `cornerRadius` + `masksToBounds`**（公開 API）。
+CSS 側にも角丸を付けないこと —— 二重に落ちて縁に線が出る。
+面の色は `index.css` の `--lt-question-surface` にある。**`--lt-*` のトークンにしない**
+（light モードで反転する。オーバーレイは常に暗い前提）。
+`html, body, #root` は `background: transparent` なので、**質問窓だけは明示的に塗らないと
+WKWebView の既定色（白）がそのまま板になる**。
+
+**25. entitlements の plist に XML コメントを書くと署名できない**
+`Entitlements.plist` にコメントを入れると `plutil -lint` は **OK を返すのに**、
+`codesign --entitlements` に渡した瞬間
+`Failed to parse entitlements: AMFIUnserializeXML: syntax error near line N` で落ちる。
+AMFI のパーサがコメントを解釈できないため。**しかも `codesign` の終了コードは 0 のまま**
+署名だけが entitlement 無しで完了するので、気付かずに「sandbox が効かない」と悩むことになる。
+理由は `Entitlements.README.md` に書く。署名後は必ず
+`codesign -d --entitlements - LayerTalk.app` で**乗ったことを確認する**。
+
+**26. App Sandbox は証明書が無くても実測できる**
+sandbox はコード署名に入った entitlement を見てカーネルが強制するので、Developer ID は要らない。
+**アドホック署名（`codesign --force --sign - --entitlements …`）で本当に効く。**
+provisioning profile が要るのは MAS 提出と、profile と突き合わせる種類の entitlement
+（iCloud / App Groups / Push）だけ。
+**効いていることの直接の証拠は `~/Library/Containers/app.layertalk.presenter/` ができること。**
+拒否の観測は `log stream --predicate 'eventMessage CONTAINS "deny" AND eventMessage CONTAINS "presenter-app"'`。
+なお `.app` の中の実行ファイルを直接起動しても署名は効いたままなので、
+**環境変数を渡してセルフテストをサンドボックス下で回せる**。
+
+**27. `cargo build --release` だけで作った実行ファイルは画面が真っ白になる**
+`tauri-macros` の `context.rs:155` が `dev: cfg!(not(feature = "custom-protocol"))` と書いていて、
+**この feature は tauri CLI が足している**。cargo から直接ビルドすると release でも
+「dev」と判定され、埋め込んだ `dist` ではなく `devUrl`（`http://localhost:1420`）を見に行く。
+dev サーバが居なければ**どの窓も真っ白のまま、エラーも出ない**。
+症状は「JS が一度も走らない」＝ `command:` のログが1行も出ない、という形で出る。
+`.app` の中の実行ファイルだけ差し替えるときは
+`cargo build --release --features tauri/custom-protocol`（このリポジトリの `Cargo.toml` は
+再輸出していないので **`tauri/` を付ける**）か、素直に `npm run build:presenter` を通すこと。
+（`npm run build:presenter -- --bundles app` は **npm が `--bundles` を自分の設定として食う**ので
+`tauri build` には `app` だけが渡り `unexpected argument` で落ちる。フラグを渡したいときは
+`npx tauri build` を直接叩く。）
+なお `codesign --force` は実行ファイルを書き換えるので**タイムスタンプが更新される**。
+「新しいから作り直せている」の判断材料にはならない。
+
+**28. 表示されない窓に載った webview は、約6秒でページごと凍る**
+オーバーレイ窓の webview は一度も表示されない tao 窓に残っている（罠 #9 の載せ替えは
+ネイティブ描画のホストであって webview ではない）。macOS はこのページを
+**起動から約 6 秒で凍らせる**。実測（サンドボックス下の `.app`、15 分放置）:
+- `setInterval(1000)` は**間延びではなく停止**する。復帰時のティックは 1 回きりで
+  `gap=54924ms`（55 秒ぶんが溜まって流れるのではない）
+- **ソケットは繋がったまま。** 凍っているあいだも接続は保たれ、復帰した瞬間に往復が通る。
+  つまり症状は「`SUBSCRIBED` は出ている・コメントだけ 1 件も来ない」になる。
+  **購読の生死を `SUBSCRIBED` で判断しないこと**
+- **外から届いたソケットのデータでは起きない。** コメントはまさにそれで届くので、
+  放っておくと「発表開始から数秒で、以後 1 件も流れない」
+- 起こせるのは **(a) 窓を表示する**か **(b) ネイティブ側から IPC を送る**かの二択
+- **アプリに見えている窓があっても関係ない。** 凍るのはページ単位で、
+  オーバーレイを出していても tao 窓を出していなければ凍る。逆に見えている窓に
+  載った webview（質問パネル）は 15 分間 1 度も落ちなかった（往復 46/46）
+対策として `start_front_watchdog` が**発表中だけ** 1 秒ごとに `overlay-keepalive` を
+`emit` している。受け手は `OverlayWindow` の `onOverlayKeepalive`。
+**この 2 箇所を消すとコメントが数秒で流れなくなる。**
+計測の道具は `LAYERTALK_OVERLAY_SELFTEST` の `pump` / `pump-live` / `pump-wake` /
+`pump-poke` と `scripts/pump-poke-outside.mjs`。詳細は `docs/mas-migration-handover.md`。
+
 ## 設計上の決めごと
 
+- **オーバーレイの描画はすべてネイティブ（Core Animation）。** 横流し・フキダシ・スタンプ・
+  参加QR・モニター確認カードのどれも `overlay_render.rs` が描く。webview 側の描画層は
+  2026-09-10 に削除した（`FlowLayer` / `BubbleLayer` / `StampLayer` / `overlay-motion.ts`）。
+  `OverlayWindow.tsx` は**残っている** —— Supabase の購読を持つデータ供給係で、描画はしない。
+  **切り替えフラグ（`LAYERTALK_NATIVE_OVERLAY`）はもう無い。** ネイティブが唯一の経路
+- **見えている webview は質問パネルだけ。** ほかの窓（オーバーレイ）は
+  tao の窓に置いたまま一度も表示しない。ここを増やすと罠 #4 の透過問題が戻る
+- **オーバーレイ窓の webview は発表中だけ Rust が突いて起こし続ける**（罠 #28）。
+  購読を持っているのがこの「一度も表示されない webview」なので、突かないと
+  発表開始から数秒でコメントが届かなくなる。**購読を質問パネル窓へ移す案もある**
+  （見えている webview なので凍らない）が、そうすると質問パネルを発表開始と同時に
+  出すことになり「最初の質問が来るまで出さない」を変えることになるので採っていない
 - **コメント／スタンプの全面オーバーレイはクリックスルー常時 ON。** 切り替え UI も
   ショートカットも持たない。操作できるのは右端の質問窓の範囲だけで、そこで
   展開／折りたたみを操作できる（スライド全面の操作を塞がないため）
+- **発表者も匿名で始める。サインインを起動時の壁に戻さないこと**（App Store 5.1.1(v)）。
+  かつては起動直後にメール6桁 OTP の全画面ゲートがあり、無料で試すだけの人にもメールを要求していた。
+  いまは `ControlWindow` が `signInAnonymously()` でセッションを作り、ルーム作成・発表・
+  コメント表示まで匿名で通る。**メールを聞くのは購入・発表レポート・退会のときだけ**
+  （どれもサーバの `requirePresenter` が匿名を弾く操作）。入口は `SignInDialog` の2箇所だけ
+- **匿名 → 本会員は `updateUser({ email })` で昇格させる。`signInWithOtp` を使わないこと。**
+  後者は**別のユーザーになる**ので、匿名のうちに作ったルームが本人から見えなくなる。
+  `updateUser` は identity linking なので user id が変わらず、ルームも購入履歴も残る。
+  確認の `verifyOtp` は `type: "email_change"`（`"email"` だと必ず「コードが無効」になる）。
+  **Supabase 側で Manual linking（Authentication > Providers、既定は無効・beta）を
+  有効にしていないと昇格できない** — 切れていると「匿名のまま課金できない人」が生まれる
+- **保持ジョブはルームを持つ匿名ユーザーを消さない**（`api/internal/retention/route.ts`）。
+  観客の匿名ユーザーを30日で掃除する処理だが、発表者も匿名になったので、
+  素通りさせると `rooms` が cascade で落ちて罠 #14 の「コードは残っているが DB に無い」状態になる。
+  本人はサインインしていないので復旧手段が無い
+- **新しいルームには既定の NG ワードが入る**（`private.default_moderation_terms()`）。
+  1.2 の「フィルタする手段」を空のリストで出さないため。**発表者は1語ずつ消せること** —
+  消せないと「発表者の意図しない検閲」になる。語を足すときは罠 #18 を読むこと
 - **参加 QR は手動トグルだけ。** 自動表示はしない（スライドを勝手に隠さない）。
   URL は `VITE_AUDIENCE_BASE_URL`（未設定なら localhost）で、LAN IP の自動検出はしない
 - **フキダシは白の不透明板。** 縁取り文字（`.lt-overlay-text`）とは併用しない（白板の上に
@@ -268,17 +443,26 @@ TCC の責任プロセスは起動元（Terminal / iTerm / IDE）になるので
   切り替えると `roomId / roomCode / roomTitle` を null にして作成／参加カードに戻し、
   外したコードは `previousRoomCode` に残して1タップで戻れるようにする。
   **発表中は切り替えさせない**（コメントが流れなくなる事故を防ぐため）
-- **通報（`content_reports`）は無料ルームでも必ず動く。** NG ワードと承認制は Event Pass の
-  機能だが、通報だけは `has_paid_room_features` を通さない。App Store 1.2 が UGC アプリに
-  求める4点（フィルタ／報告手段／ブロック／連絡先）のうち、**報告手段と連絡先を課金の内側に
-  入れると無料ルームが要件を1つも満たさなくなる**ため。書き込みは `report_content` RPC のみで、
+- **1.2 に要る操作は全部無料。フィルタ・通報・非表示・連絡先を課金の内側へ戻さないこと。**
+  App Store 1.2 は UGC アプリに4点（フィルタ／報告手段／ブロック／連絡先）を求める。
+  以前は**通報と連絡先だけ無料**で、NG ワード（`moderation_terms`）と非表示（`moderate_comment`）が
+  Event Pass の内側にあった。つまり**無料ルームは「通報は届くが誰も消せない」**状態で、
+  審査員は無料ルームで試すのでそこが直接の指摘になる
+  （`20260908051937_free_tier_moderation.sql` で外した）。いま無料で動くのは
+  NG ワード・承認/非表示/復帰（`moderate_comment` の全アクション）・通報・カスタムスタンプ削除。
+  有料に残るのは**「投稿を全件いったん保留する」承認制トグル・入室パスコード・表示遅延・
+  質問のみ表示**（＝`moderation_rules` の UPDATE）と、ブランディング・レポート・質問スライド撮影。
+  NG ワードで `pending` になった投稿を戻す道が要るので、`approve` も無料側に置いてある
+  （hide だけ無料にすると誤検知した投稿を二度と出せなくなる）。
+  UI は `ModerationPanel`（無料）と `EventPassPanel`（有料）に分かれている
+- **通報（`content_reports`）は無料ルームでも必ず動く。** 書き込みは `report_content` RPC のみで、
   INSERT ポリシーは作らない（生 INSERT を開けると room_id を偽って他ルームの表を膨らませられる）。
   読めるのは `is_room_operator` だけ — 観客に自分の通報も見せない（誰が通報したかを
   推測させないため）。「通報済み」の表示は観客側の localStorage が持つ
-- **通報を捌く操作と、通報を受け取ることを混ぜない。** 受信・表示（`ReportQueue`）は無料でも動くが、
-  コメントの非表示は `moderate_comment` ＝ Event Pass の機能なので落ちる。落ちたときは黙らず
-  理由を出すこと（罠 #16 の「画面は成功・DB は無反応」を作らない）。カスタムスタンプの削除は
-  課金と無関係に通るので、無料ルームでも必ず消せる
+- **通報の受信も、通報を捌く操作も、どちらも無料で通る。** `ReportQueue` の非表示ボタンに
+  課金を疑わせる文言を戻さないこと — いまは落ちる理由が通信断か権限違いしか無いので、
+  「Event Pass が要ります」と案内すると誤誘導になる。落ちたときに黙らないのは変わらず必要
+  （罠 #16 の「画面は成功・DB は無反応」を作らない）
 - **カスタムスタンプの通報は長押し。** バーは 44px の丸ボタンが並ぶ横スクロールで、1枚ごとに
   通報ボタンを足すと列が2倍になり押し間違いも増える。長押しが成立したら、指を離したときの
   click（＝スタンプ送信）を1回だけ捨てる

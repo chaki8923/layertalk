@@ -37,6 +37,8 @@ import {
   Undo2,
   X,
 } from "lucide-react";
+import type { Session } from "@supabase/supabase-js";
+
 import { STAMP_EMOJIS } from "@layertalk/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -44,7 +46,7 @@ import { AccountFooter } from "../components/AccountFooter";
 import { JoinQrCard } from "../components/JoinQrCard";
 import { EventPassPanel } from "../components/EventPassPanel";
 import { PendingApprovalQueue } from "../components/PendingApprovalQueue";
-import { PresenterAuth } from "../components/PresenterAuth";
+import { ModerationPanel } from "../components/ModerationPanel";
 import { ReportQueue } from "../components/ReportQueue";
 import { useDocumentLang, useMessages, type Messages } from "../i18n";
 import { audienceUrl as buildAudienceUrl } from "../lib/audience";
@@ -87,20 +89,43 @@ export function ControlWindow() {
   const [live, setLive] = useState(false);
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
   const [authReady, setAuthReady] = useState(false);
-  const [signedIn, setSignedIn] = useState(false);
+  const [authFailed, setAuthFailed] = useState(false);
+  /** セッションがある（**匿名を含む**）。RLS はどちらも `authenticated` なので取得系はこれで足りる。 */
+  const [hasSession, setHasSession] = useState(false);
+  /** 本会員（匿名でない）。購入・レポート・退会だけがこれを要求する。 */
+  const [isPermanent, setIsPermanent] = useState(false);
 
   const t = useMessages(settings.language);
   useDocumentLang(settings.language);
 
+  /**
+   * セッションを用意する。**サインインを起動時の壁にしない**（App Store 5.1.1(v)）。
+   *
+   * セッションが無ければ匿名で始める。匿名ユーザーも `authenticated` ロールを持つので、
+   * ルーム作成からコメント表示まで一通り動く。メールを聞くのは購入・レポート・退会のときだけ。
+   *
+   * `authReady` は**セッションが取れてから**立てる。`onAuthStateChange` は初期化時に
+   * null で1回発火するので、そこで ready にすると匿名サインインが終わる前に画面が動き出し、
+   * 最初の取得がまとめて空振りする。
+   */
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => {
-      setSignedIn(Boolean(data.session && !data.session.user.is_anonymous));
-      setAuthReady(true);
+    const apply = (session: Session | null) => {
+      setHasSession(Boolean(session));
+      setIsPermanent(Boolean(session && !session.user.is_anonymous));
+      if (session) setAuthReady(true);
+    };
+    void supabase.auth.getSession().then(async ({ data }) => {
+      if (data.session) { apply(data.session); return; }
+      const { data: anonymous, error } = await supabase.auth.signInAnonymously();
+      if (error || !anonymous.session) {
+        // 匿名サインインが無効・レート制限のときはここ。黙って空の画面を出さない。
+        setAuthFailed(true);
+        setAuthReady(true);
+        return;
+      }
+      apply(anonymous.session);
     });
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSignedIn(Boolean(session && !session.user.is_anonymous));
-      setAuthReady(true);
-    });
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => apply(session));
     return () => data.subscription.unsubscribe();
   }, []);
 
@@ -111,8 +136,8 @@ export function ControlWindow() {
   // ブランド設定の SELECT は authenticated 限定。サインイン前の取得は空振りするので、
   // 通ったところで取り直す（キャッシュのまま古い値で QR を出さないため）。
   useEffect(() => {
-    if (signedIn) void reloadBranding();
-  }, [signedIn, reloadBranding]);
+    if (hasSession) void reloadBranding();
+  }, [hasSession, reloadBranding]);
 
   /**
    * このルームで有料機能が使えるか。`EventPassPanel` が取った結果を受けている。
@@ -237,7 +262,7 @@ export function ControlWindow() {
   useEffect(() => {
     const code = settings.roomCode;
     // 発表中は照合しない。ここでルームを外すとコメントが流れなくなる。
-    if (!authReady || !signedIn || !code || live) return;
+    if (!authReady || !hasSession || !code || live) return;
     if (verifiedRoomCode.current === code) return;
     verifiedRoomCode.current = code;
 
@@ -263,7 +288,7 @@ export function ControlWindow() {
         });
         setError(resolveErrorMessage(err, settings.language));
       });
-  }, [authReady, signedIn, settings.roomCode, settings.language, live, update]);
+  }, [authReady, hasSession, settings.roomCode, settings.language, live, update]);
 
   // The tray can stop a presentation without going through the main button.
   // Close the database session as the native state transitions to stopped so
@@ -515,9 +540,10 @@ export function ControlWindow() {
     update({ sectionOrder: draftOrderRef.current });
   }, [update]);
 
-  // Event Pass だけルーム未接続で消える。`Reorder.Group` の `values` は
+  // Event Pass とコメント管理はルーム未接続で消える。`Reorder.Group` の `values` は
   // 実際に描いた children と一致していないといけないので、見えているものだけ渡す。
-  const visibleOrder = draftOrder.filter((id) => id !== "eventPass" || Boolean(settings.roomId));
+  const roomScoped = new Set<SectionId>(["eventPass", "moderation"]);
+  const visibleOrder = draftOrder.filter((id) => !roomScoped.has(id) || Boolean(settings.roomId));
   const handleReorder = useCallback((next: SectionId[]) => {
     // 見えている枠だけを新しい順に置き換え、隠れている id は元の位置に留める。
     setDraftOrder((current) => {
@@ -531,10 +557,19 @@ export function ControlWindow() {
     return <div className="bg-bg text-text flex h-screen items-center justify-center"><Loader2 size={20} className="animate-spin" /></div>;
   }
 
-  if (!signedIn) {
+  // 壁として出すのはここだけ。匿名セッションすら作れないと何も動かないため。
+  if (authFailed) {
     return (
-      <div className="bg-bg text-text h-screen overflow-y-auto">
-        <PresenterAuth locale={settings.language} onSignedIn={() => setSignedIn(true)} />
+      <div className="bg-bg text-text flex h-screen flex-col items-center justify-center gap-3 p-6 text-center">
+        <p className="text-[13px] font-bold">{t.account.offlineTitle}</p>
+        <p className="text-text-muted text-[11px] leading-relaxed">{t.account.offlineBody}</p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="lt-tap bg-brand rounded-[13px] px-4 py-2.5 text-[12px] font-bold text-white"
+        >
+          {t.account.retry}
+        </button>
       </div>
     );
   }
@@ -1009,6 +1044,14 @@ export function ControlWindow() {
         </div>
       </section>
     ),
+    moderation: settings.roomId && (
+      <ModerationPanel
+        roomId={settings.roomId}
+        locale={settings.language}
+        comments={comments}
+        onCommentModerated={upsertLocal}
+      />
+    ),
     eventPass: settings.roomId && (
       (
         <EventPassPanel
@@ -1017,8 +1060,6 @@ export function ControlWindow() {
           roomTitle={settings.roomTitle}
           locale={settings.language}
           live={live}
-          comments={comments}
-          onCommentModerated={upsertLocal}
           display={{ displayMode: settings.displayMode, showJoinQr: settings.showJoinQr, allowCustomStamps: settings.allowCustomStamps }}
           onApplyPreset={(preset) => update({
             displayMode: preset.display_mode,
@@ -1028,6 +1069,7 @@ export function ControlWindow() {
           branding={branding}
           onBrandingChange={setBranding}
           onPaidChange={setPaidFeatures}
+          isPermanent={isPermanent}
         />
       )
     ),
@@ -1140,10 +1182,12 @@ export function ControlWindow() {
           ))}
         </Reorder.Group>
 
-        {/* 発表中は畳む。退会ダイアログがスライドの前で開くと操作不能になる。 */}
-        {!live && (
-          <AccountFooter
+        {/* 発表中も出したまま。畳むのは中の破壊的操作だけ（`AccountFooter` の `live`）。
+            プライバシー・規約・サポートへの導線は 5.1.1(i) が常時到達可能であることを求める。 */}
+        <AccountFooter
             locale={settings.language}
+            live={live}
+            isPermanent={isPermanent}
             onDeleted={() => update({
               roomId: null,
               roomCode: null,
@@ -1153,7 +1197,6 @@ export function ControlWindow() {
               previousRoomCode: null,
             })}
           />
-        )}
 
       </div>
     </div>

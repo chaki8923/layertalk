@@ -17,8 +17,14 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 const OVERLAY: &str = "overlay";
 const CONTROL: &str = "control";
 const QUESTIONS: &str = "questions";
-const QUESTION_PANEL_WIDTH: f64 = 430.0;
-const QUESTION_TAB_WIDTH: f64 = 56.0;
+/// 質問パネルの見え幅。**webview が不透明になったので「窓＝見えているパネル」**。
+/// 以前は 430 の窓の中で `left-3 right-3` の余白を透過させていたぶん、その 24 を引いた値。
+const QUESTION_PANEL_WIDTH: f64 = 406.0;
+/// 折りたたみタブ。移植元の `w-12` / `min-h-28`。
+const QUESTION_TAB_WIDTH: f64 = 48.0;
+const QUESTION_TAB_HEIGHT: f64 = 112.0;
+/// 中身の高さがまだ届いていないときの暫定値。最初の `ResizeObserver` で上書きされる。
+const QUESTION_PANEL_FALLBACK_HEIGHT: f64 = 220.0;
 
 /// 発表中かどうか。ウィンドウの表示・非表示は Rust の責務なので、
 /// ここを唯一の真実にする。永続化しない = 再起動したら必ず停止状態から始まる。
@@ -101,11 +107,37 @@ fn ns_window_ptr(window: &WebviewWindow) -> Option<*mut objc2::runtime::AnyObjec
 #[cfg(not(target_os = "macos"))]
 fn elevate_overlay_window(_window: &WebviewWindow) {}
 
-/// 調査用ログの出力先。ターミナルにも出すが、`tauri dev` の親プロセスに環境変数が
-/// 渡っていない・stderr が見えないといった事情に左右されないよう、必ずファイルにも残す。
-/// **原因が判明したら `log_window_state` ごと落とす一時的な仕掛け。**
+/// 調査用ログのファイル出力先。`init_debug_log` が setup で1度だけ入れる。
+///
+/// **以前は全ビルドが無条件に `/tmp/layertalk-overlay.log` へ追記していた。**
+/// 発表中はウォッチドッグが毎秒 1〜2 行書くので、2時間の登壇で1万行が
+/// 誰でも書ける `/tmp` に無期限で積み上がっていた。App Sandbox では拒否される場所でもある。
 #[cfg(target_os = "macos")]
-const DEBUG_LOG_PATH: &str = "/tmp/layertalk-overlay.log";
+static DEBUG_LOG_PATH: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+/// `LAYERTALK_DEBUG_OVERLAY=1` のときだけファイルへ残す。
+/// 環境変数を1度だけ読む形。
+#[cfg(target_os = "macos")]
+fn debug_log_to_file() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var("LAYERTALK_DEBUG_OVERLAY").as_deref() == Ok("1"))
+}
+
+/// setup から1度だけ呼ぶ。**起動ごとに作り直す**（append のままだと発表を重ねるたびに伸び続ける）。
+/// 置き場所をアプリのデータフォルダにしてあるので、sandbox を入れてもコンテナ内に収まる。
+#[cfg(target_os = "macos")]
+fn init_debug_log(app_data: &std::path::Path) {
+    if !debug_log_to_file() {
+        return;
+    }
+    if std::fs::create_dir_all(app_data).is_err() {
+        return;
+    }
+    let path = app_data.join("layertalk-overlay.log");
+    if std::fs::write(&path, b"").is_ok() {
+        let _ = DEBUG_LOG_PATH.set(path);
+    }
+}
 
 #[cfg(target_os = "macos")]
 fn debug_log(line: &str) {
@@ -117,13 +149,13 @@ fn debug_log(line: &str) {
         .unwrap_or(0);
     let line = format!("[{seconds}] {line}");
 
+    // stderr は残す。どこにも溜まらないので、Console.app から見たい人の邪魔にならない。
     eprintln!("{line}");
 
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(DEBUG_LOG_PATH)
-    {
+    let Some(path) = DEBUG_LOG_PATH.get() else {
+        return;
+    };
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
         let _ = writeln!(file, "{line}");
     }
 }
@@ -174,6 +206,25 @@ mod native_overlay {
 
     /// kCGScreenSaverWindowLevel。tao 窓に当てていたのと同じ条件に揃える。
     const LEVEL: isize = 1000;
+
+    /// 質問パネルの角丸。移植元のカード（`rounded-[18px]`）より少し大きくして、
+    /// カードが面の中に収まって見えるようにする。
+    const PANEL_RADIUS: f64 = 22.0;
+    /// 画面の右端から浮かせる距離。移植元の `right-3`（12px）。
+    /// **折りたたみタブも同じだけ浮かせる**（密着させると右2隅だけ丸める必要が出る）。
+    const PANEL_RIGHT_INSET: f64 = 12.0;
+    /// 上端からの距離。移植元の `top-[5vh]`。
+    const PANEL_TOP_RATIO: f64 = 0.05;
+
+    /// いまのパネルの大きさ。モニターを貼り直すときに全高へ戻さないために覚えておく。
+    /// **`frame()` から読み直さない** —— 貼り直しの最中は反映前の値が返る（罠 #9 の `*_async`）。
+    static PANEL_WIDTH: AtomicUsize = AtomicUsize::new(0);
+    static PANEL_HEIGHT: AtomicUsize = AtomicUsize::new(0);
+
+    fn remember_panel(width: f64, height: f64) {
+        PANEL_WIDTH.store(width.round().max(0.0) as usize, Ordering::Relaxed);
+        PANEL_HEIGHT.store(height.round().max(0.0) as usize, Ordering::Relaxed);
+    }
 
     fn slots(kind: Hosted) -> (&'static AtomicUsize, &'static AtomicBool) {
         match kind {
@@ -313,16 +364,6 @@ mod native_overlay {
 
     /// オーバーレイを webview ではなくネイティブ描画にするか。
     ///
-    /// **移行中の切り替え。** 既定は従来どおり webview で、`LAYERTALK_NATIVE_OVERLAY=1` の
-    /// ときだけ `overlay_render` のホストビューを載せる。フキダシ・スタンプ・QR の移植が
-    /// 済んだらこの分岐ごと消し、`macos-private-api` を落とす（App Store 2.5.1）。
-    pub fn use_native_overlay() -> bool {
-        static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        *FLAG.get_or_init(|| std::env::var("LAYERTALK_NATIVE_OVERLAY").as_deref() == Ok("1"))
-    }
-
-    /// 表示先の候補一覧。名前は `screen_frame` と同じ実装で作る。
-    /// `x` / `y` は AppKit 座標（左下原点）のポイント値。UI では使っていない。
     pub fn monitors() -> Vec<super::MonitorInfo> {
         let Some(mtm) = MainThreadMarker::new() else {
             return Vec::new();
@@ -366,7 +407,7 @@ mod native_overlay {
         // コメントが流れれば、**「隠れた WKWebView が Supabase の購読を保てるか」**
         // という移行計画いちばんの未知数がそのまま検証できる。
         // 流れないなら購読を Rust 側へ移す必要がある、という判断材料になる。
-        if kind == Hosted::Overlay && use_native_overlay() {
+        if kind == Hosted::Overlay {
             // **窓自身から取る。** `SessionState` の monitor 名を引き回すと、
             // 罠 #12 の名前一致に依存するうえ、窓が実際に居る画面とずれうる。
             let scale = window.backingScaleFactor();
@@ -403,6 +444,19 @@ mod native_overlay {
                 let _: () = msg_send![tao_ns_window, setContentView: &*placeholder];
 
                 window.setContentView(Some(&content));
+
+                // **質問パネルだけは webview が見えている。** 透過は private API を
+                // 要求するので不透明のまま出し、角丸で丸い板に見せる
+                // （`cornerRadius` / `masksToBounds` はどちらも公開 API）。
+                // 窓側は既に `setOpaque(false)` + `clearColor` なので、
+                // 角の外はちゃんとスライドが透ける。
+                if kind == Hosted::Panel {
+                    content.setWantsLayer(true);
+                    if let Some(layer) = content.layer() {
+                        layer.setCornerRadius(PANEL_RADIUS);
+                        layer.setMasksToBounds(true);
+                    }
+                }
             }
             attached.store(true, Ordering::Relaxed);
             super::debug_log(&format!("{}: webview を自前の窓へ移しました", label(kind)));
@@ -424,8 +478,17 @@ mod native_overlay {
         show(Hosted::Overlay, tao_ns_window, frame);
     }
 
-    /// 質問パネル（右端の縦帯）を表示する。幅はポイント単位。
-    pub fn show_panel(tao_ns_window: *mut AnyObject, target: Option<&str>, width: f64) {
+    /// 質問パネルを表示する。単位はポイント。
+    ///
+    /// **窓＝見えているパネルそのもの。** webview を不透明にした以上、窓の中は全部塗られるので、
+    /// 中身より大きい窓を出すと縦に伸びた黒帯になる。高さは JS が `ResizeObserver` で
+    /// 測って渡す（`set_question_panel_size`）。
+    pub fn show_panel(
+        tao_ns_window: *mut AnyObject,
+        target: Option<&str>,
+        width: f64,
+        height: f64,
+    ) {
         let Some(mtm) = MainThreadMarker::new() else {
             return;
         };
@@ -433,27 +496,41 @@ mod native_overlay {
             super::debug_log("native/panel: 表示できる画面が見つかりません");
             return;
         };
+        // 画面からはみ出させない。質問が増え続けても画面内に収める。
+        let usable = (screen.size.height - PANEL_TOP_RATIO * screen.size.height * 2.0).max(1.0);
+        let height = height.clamp(1.0, usable);
+        let top_gap = (screen.size.height * PANEL_TOP_RATIO).round();
         let frame = NSRect::new(
-            NSPoint::new(screen.origin.x + screen.size.width - width, screen.origin.y),
-            NSSize::new(width, screen.size.height),
+            NSPoint::new(
+                screen.origin.x + screen.size.width - width - PANEL_RIGHT_INSET,
+                // AppKit は下原点。上から `top_gap` に見せたいので下からの距離へ直す。
+                screen.origin.y + screen.size.height - top_gap - height,
+            ),
+            NSSize::new(width, height),
         );
+        remember_panel(width, height);
         show(Hosted::Panel, tao_ns_window, frame);
     }
 
     /// いまの質問パネルの幅（ポイント）。モニターを貼り直すときに、
     /// 展開中／折りたたみ中のどちらだったかを保つために使う。
-    pub fn panel_width() -> Option<f64> {
-        MainThreadMarker::new()?;
-        existing(Hosted::Panel).map(|window| window.frame().size.width)
+    /// いまのパネルの大きさ（幅, 高さ）。まだ一度も出していなければ `None`。
+    pub fn panel_size() -> Option<(f64, f64)> {
+        let width = PANEL_WIDTH.load(Ordering::Relaxed);
+        let height = PANEL_HEIGHT.load(Ordering::Relaxed);
+        if width == 0 || height == 0 {
+            return None;
+        }
+        Some((width as f64, height as f64))
     }
 
     /// いまの幅を保ったまま、指定モニターの右端へ貼り直す。
     /// 載せ替えは済んでいるので tao 窓のポインタは要らない。
     pub fn refit_panel(target: Option<&str>) {
-        let Some(width) = panel_width() else {
+        let Some((width, height)) = panel_size() else {
             return;
         };
-        show_panel(std::ptr::null_mut(), target, width);
+        show_panel(std::ptr::null_mut(), target, width, height);
     }
 
     /// 位置を変えずに最前面へ出し直すだけ。Space の切り替えに追従するために
@@ -725,7 +802,7 @@ fn refit_question_panel(app: &AppHandle) {
 ///
 /// macOS ではオーバーレイと同じ理由で自前の窓（nonactivating な `NSPanel`）に
 /// 載せ替える。tao の窓では他アプリの全画面 Space に入れない（罠 #9）。
-fn show_question_panel(app: &AppHandle, logical_width: f64) {
+fn show_question_panel(app: &AppHandle, logical_width: f64, logical_height: f64) {
     let Some(questions) = app.get_webview_window(QUESTIONS) else {
         return;
     };
@@ -742,6 +819,7 @@ fn show_question_panel(app: &AppHandle, logical_width: f64) {
                 ns_window as *mut objc2::runtime::AnyObject,
                 monitor.as_deref(),
                 logical_width,
+                logical_height,
             );
             debug_log(&format!(
                 "native/panel/show: {}",
@@ -752,6 +830,7 @@ fn show_question_panel(app: &AppHandle, logical_width: f64) {
 
     #[cfg(not(target_os = "macos"))]
     {
+        let _ = logical_height;
         elevate_overlay_window(&questions);
         fit_question_panel_to_monitor(&questions, monitor.as_deref(), logical_width);
         let _ = questions.show();
@@ -881,6 +960,7 @@ fn start_front_watchdog(app: &AppHandle) {
     let handle = app.clone();
     std::thread::spawn(move || {
         debug_log("watchdog: 開始");
+        let mut keepalive: u64 = 0;
 
         loop {
             std::thread::sleep(FRONT_WATCHDOG_INTERVAL);
@@ -898,6 +978,20 @@ fn start_front_watchdog(app: &AppHandle) {
                 }
                 *watching = false;
                 break;
+            }
+
+            // **オーバーレイ窓の webview を起こし続ける。**
+            //
+            // オーバーレイの webview は一度も表示されない tao 窓に載っているので、
+            // macOS は起動から約 6 秒でこのページを凍らせる（実測。`docs/mas-migration-handover.md`）。
+            // 凍ると `setInterval` も止まり、**Supabase の購読は繋がったまま何も届かなくなる**
+            // — 外から来た broadcast では起きない（同じく実測）。
+            // 起こせるのは「窓を表示する」か「ネイティブ側から IPC を送る」かの二択で、
+            // ここは後者。発表中だけ 1 秒ごとに突いて、コメントが届く状態を保つ。
+            // **消さないこと。消すとコメントが数秒で流れなくなる。**
+            keepalive += 1;
+            if let Some(overlay) = handle.get_webview_window(OVERLAY) {
+                let _ = overlay.emit("overlay-keepalive", keepalive);
             }
 
             let app = handle.clone();
@@ -1035,28 +1129,12 @@ fn start_question_capture(app: &AppHandle, session_id: &str, monitor: Option<Str
     }
 }
 
-/// オーバーレイがネイティブ描画かどうか。フロント側は自分で環境変数を読めないので聞きに来る。
-/// 移植が済んだらこのコマンドごと消える。
-#[tauri::command]
-fn is_native_overlay() -> bool {
-    #[cfg(target_os = "macos")]
-    {
-        native_overlay::use_native_overlay()
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        false
-    }
-}
-
 /// ネイティブ描画のオーバーレイへコメントを1件流す（App Store 2.5.1 対応の移行中）。
 ///
 /// **AppKit はメインスレッド専用**なので `run_on_main_thread` で入る。同期コマンドは
 /// メインスレッドで走るが（罠 #17 の `capture_question_slide` 参照）、フロントが
 /// どのスレッドから呼ぶかに依存させないため明示する。
 ///
-/// `LAYERTALK_NATIVE_OVERLAY=1` で起動していないときは何も起きない
-/// （ホストビューが載っていないので `overlay_render` 側が黙って返る）。
 #[tauri::command]
 fn overlay_push_comment(
     app: AppHandle,
@@ -1074,6 +1152,159 @@ fn overlay_push_comment(
     #[cfg(not(target_os = "macos"))]
     {
         let _ = (app, text, font_size, opacity, base_duration_sec);
+    }
+}
+
+/// フキダシ表示のコメントを 1 件流す（ネイティブ描画）。
+///
+/// `overlay_push_comment`（横流し）と分けてあるのは、レーンの数・間隔・選び方が
+/// 移植元の時点で別物だから。引数で分岐させると、どちらの規則で動いているのか
+/// 呼び出し側から見えなくなる。
+#[tauri::command]
+fn overlay_push_bubble(
+    app: AppHandle,
+    text: String,
+    font_size: f64,
+    opacity: f64,
+    base_duration_sec: f64,
+) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.run_on_main_thread(move || {
+            overlay_render::push_bubble(&text, font_size, opacity, base_duration_sec);
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, text, font_size, opacity, base_duration_sec);
+    }
+}
+
+/// 絵文字スタンプを `count` 個ぶん舞い上げる（ネイティブ描画）。
+#[tauri::command]
+fn overlay_burst_emoji(app: AppHandle, emoji: String, count: usize, opacity: f64, base_duration_sec: f64) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.run_on_main_thread(move || {
+            overlay_render::burst_emoji(&emoji, count, opacity, base_duration_sec);
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, emoji, count, opacity, base_duration_sec);
+    }
+}
+
+/// カスタムスタンプの PNG を Rust 側へ渡して覚えさせる。
+///
+/// **Rust から署名 URL を取りに行かせない**（HTTP クライアントと Supabase セッションが
+/// Rust 側にも要ることになる）。JS が bytes を取って base64 で渡し、復号は `NSImage` に任せる。
+/// 一覧が届いた時点で呼ぶ前提 —— 200 粒のバーストで毎回復号すると間に合わない。
+#[tauri::command(async)]
+fn overlay_cache_stamp_image(app: AppHandle, id: String, png_base64: String) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.run_on_main_thread(move || {
+            overlay_render::cache_stamp_image(&id, &png_base64);
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, id, png_base64);
+    }
+}
+
+/// カスタムスタンプを `count` 個ぶん舞い上げる。**知らない id は黙って捨てる。**
+#[tauri::command]
+fn overlay_burst_image(app: AppHandle, id: String, count: usize, opacity: f64, base_duration_sec: f64) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.run_on_main_thread(move || {
+            overlay_render::burst_image(&id, count, opacity, base_duration_sec);
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, id, count, opacity, base_duration_sec);
+    }
+}
+
+/// セルフテストが走っているか。
+///
+/// **JS 側の effect と取り合わないために要る。** 参加QR とモニターカードは常設レイヤで、
+/// 普段は `OverlayWindow` が「出す／消す」を持っている。セルフテストは
+/// ルームもサインインも無しで走るので、webview 側は `showQr = false` と判断して
+/// **置いた直後に消しに来る**（実測でこれに1時間溶かした）。
+#[tauri::command]
+fn is_overlay_selftest() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        overlay_selftest_mode().map(|mode| {
+            match mode {
+                SelftestMode::Flow => "flow",
+                SelftestMode::Bubble => "bubble",
+                SelftestMode::Stamp => "stamp",
+                SelftestMode::Qr => "qr",
+                SelftestMode::Peek => "peek",
+                SelftestMode::Panel => "panel",
+                SelftestMode::Pump => "pump",
+                // JS 側のプローブは同じものを使う。
+                SelftestMode::PumpLive | SelftestMode::PumpPoke | SelftestMode::PumpWake => "pump",
+            }
+            .to_string()
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
+
+/// セルフテストのプローブからの通報を、既存のデバッグログにそのまま乗せる。
+///
+/// **`pump` の計測はこれ1本で足りる。** 隠れた webview の中で
+/// タイマーが刻めているか・realtime のソケットが往復しているかを、
+/// `LAYERTALK_DEBUG_OVERLAY` のログへ落として grep で解析する。
+#[tauri::command]
+fn selftest_heartbeat(kind: String, seq: u32, detail: String) {
+    debug_log(&format!("pump/{kind} seq={seq} {detail}"));
+}
+
+/// 参加QR を左下に出す。`png_base64` が `None` なら消す。
+///
+/// **カードは JS が `<canvas>` に描いて渡す。** QR は1ピクセル狂うと読み取れないので、
+/// `qrcode.react` が出したものを Rust で再実装しない。文言もキャンバスに焼かれるので、
+/// i18n のカタログを Rust へ複製せずに済む。
+#[tauri::command]
+fn overlay_set_join_qr(app: AppHandle, png_base64: Option<String>) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.run_on_main_thread(move || {
+            overlay_render::set_join_qr(png_base64.as_deref());
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, png_base64);
+    }
+}
+
+/// モニター確認カードの表示・非表示。
+///
+/// **`monitor` は訳さないこと**（罠 #12）。`ディスプレイ N` は `settings.monitorName` に
+/// 保存されて文字列一致で照合される ID なので、JS が組み立てたものをそのまま渡す。
+#[tauri::command]
+fn overlay_set_peek_card(app: AppHandle, caption: Option<String>, monitor: Option<String>) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.run_on_main_thread(move || match (caption, monitor) {
+            (Some(caption), Some(monitor)) => overlay_render::show_peek_card(&caption, &monitor),
+            _ => overlay_render::hide_peek_card(),
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, caption, monitor);
     }
 }
 
@@ -1161,6 +1392,229 @@ fn stop_presentation(app: AppHandle) {
     }
 }
 
+/// ネイティブ描画のオーバーレイを、**クリックも認証もルームも無しで**画面に出す。
+///
+/// A1（App Store 2.5.1）の可否 —— *private API 無しで本当に透過できるか* —— は
+/// 画面に出してみる以外に確かめようがない。だが通常の経路はサインイン →
+/// ルーム作成 → 発表開始 → テストコメント、と人の手が要る。
+///
+/// ネイティブ経路は **tao の窓にも認証にもルームにも依存していない**
+/// （`native_overlay::show` はオーバーレイなら `tao_ns_window` に触れずに早期 return し、
+/// 窓は `ensure` が自前で作る）。
+/// なので起動直後に `show_overlay` を呼んで文字を流すだけで可否が分かる。
+///
+#[cfg(target_os = "macos")]
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum SelftestMode {
+    Flow,
+    Bubble,
+    Stamp,
+    Qr,
+    Peek,
+    Panel,
+    /// 隠れた webview でタイマーとソケットが生き続けるかを計る（移行計画いちばんの未知数）。
+    Pump,
+    /// `Pump` と同じ計測に、**Rust から 2 秒ごとに webview を突く**処理を足したもの。
+    /// 隠れた webview が止まるとき、IPC で起こし続けられるなら対策はこれで済む。
+    PumpPoke,
+    /// 隠れたまま 60 秒放置してから窓を出す。**止まった webview が窓の表示で
+    /// 起き直るか**、ソケットが自力で戻るかを見る。購読を「見えている窓」へ移す設計は、
+    /// 発表開始のたびにこの復帰が起きることを前提にするので、ここが要になる。
+    PumpWake,
+    /// `Pump` と同じ計測を**発表中の条件**で行う（オーバーレイ表示 ＋ ウォッチドッグ稼働）。
+    /// 隠れたままの `Pump` が落ちたときに、原因が「アプリごと暇」なのか
+    /// 「webview が隠れていること」なのかを切り分けるために要る。
+    PumpLive,
+}
+
+/// スタンプのセルフテスト用の画像（48px のマゼンタの丸＋白いリング）。
+/// **絵文字と一目で区別できる図形**にしてある。Supabase を通さずに
+/// 「base64 → NSImage → CGImage → CALayer.contents」の経路を丸ごと通すためのもの。
+#[cfg(target_os = "macos")]
+const SELFTEST_STAMP_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAABJElEQVR42u2aQRbCIAxEm7mN3epd7BH1Lnarx6mr7qhSMgmhlGWfHf5A+kAGGYjtfX0sOb8b50lYfYoXtJUZqQHNNIMo8KXaEgFcMxuICL+nT0SE39M3osLnMiAyfA4LosP/Y0IL8L/YMDTexGL0L6978vnn9qSvEcKC34LealozqwlYjjj7HcpeiAnCMAFN+TAASjVWZtQcPYYWasNrNRF54copo+YXMkQoH412fzNwGjgN9G6AtSVmabc/A8yDVu82zpPAa6qtNOHdIVsLmiNuholSDdpfSo0JxgCgVgmwSvA4xyotnMylvtfjbSUiL2wpNljHoNaREzyyXMu8DF6BtFXYB89U3SKphPfVAHbMKpGC7pLBgvfdBrZ2n5c9Il23+QIINaFWoAsf2AAAAABJRU5ErkJggg==";
+
+#[cfg(target_os = "macos")]
+fn overlay_selftest_mode() -> Option<SelftestMode> {
+    static MODE: std::sync::OnceLock<Option<SelftestMode>> = std::sync::OnceLock::new();
+    *MODE.get_or_init(|| {
+        match std::env::var("LAYERTALK_OVERLAY_SELFTEST").as_deref() {
+            Ok("1") | Ok("flow") => Some(SelftestMode::Flow),
+            Ok("bubble") => Some(SelftestMode::Bubble),
+            Ok("stamp") => Some(SelftestMode::Stamp),
+            Ok("qr") => Some(SelftestMode::Qr),
+            Ok("peek") => Some(SelftestMode::Peek),
+            Ok("panel") => Some(SelftestMode::Panel),
+            Ok("pump") => Some(SelftestMode::Pump),
+            Ok("pump-live") => Some(SelftestMode::PumpLive),
+            Ok("pump-poke") => Some(SelftestMode::PumpPoke),
+            Ok("pump-wake") => Some(SelftestMode::PumpWake),
+            _ => None,
+        }
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn start_overlay_selftest(app: &AppHandle) {
+    let Some(mode) = overlay_selftest_mode() else {
+        return;
+    };
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        // tao の窓が揃うまで待つ。`show_overlay` は overlay ラベルの窓を引くので、
+        // setup の途中で呼ぶと取れないことがある。
+        std::thread::sleep(Duration::from_millis(1500));
+        // `pump` は隠れた webview の中だけを計る。**オーバーレイは出さない**
+        // （画面を覆わずに15分走らせたい。窓を出しても計測対象は変わらない）。
+        if mode == SelftestMode::PumpWake {
+            debug_log("selftest: pump-wake（60 秒隠したまま放置してから窓を出す）");
+            std::thread::sleep(Duration::from_secs(60));
+            debug_log("selftest: pump-wake（ここから表示）");
+            show_overlay(&handle);
+            set_live(&handle, true);
+            show_question_panel(&handle, QUESTION_TAB_WIDTH, QUESTION_TAB_HEIGHT);
+            set_panel_shown(&handle, true);
+        } else if mode == SelftestMode::PumpLive {
+            debug_log("selftest: pump-live（発表中と同じ条件。オーバーレイ表示 ＋ ウォッチドッグ）");
+            show_overlay(&handle);
+            set_live(&handle, true);
+            // 質問パネルも出す。**こちらの webview は本当に画面に出ている**ので、
+            // 隠れたオーバーレイ窓との差がそのまま「購読をどこに置くか」の答えになる。
+            show_question_panel(&handle, QUESTION_TAB_WIDTH, QUESTION_TAB_HEIGHT);
+            set_panel_shown(&handle, true);
+        } else if mode == SelftestMode::PumpPoke {
+            debug_log("selftest: pump-poke（隠れたまま。Rust から 2 秒ごとに突く）");
+            let poker = handle.clone();
+            std::thread::spawn(move || {
+                let mut n: u32 = 0;
+                loop {
+                    std::thread::sleep(Duration::from_secs(2));
+                    n += 1;
+                    if let Some(overlay) = poker.get_webview_window(OVERLAY) {
+                        let _ = overlay.emit("selftest-poke", n);
+                    }
+                }
+            });
+        } else if mode != SelftestMode::Pump {
+            debug_log("selftest: オーバーレイを出します");
+            show_overlay(&handle);
+        } else {
+            debug_log("selftest: pump（隠れた webview の生存を計測。オーバーレイは出さない）");
+        }
+
+        match mode {
+            // 判定用の文。**細い字と英数字を混ぜてある** —— Retina のにじみ
+            // （`contentsScale` の設定漏れ）は細い線に最初に出るため。
+            SelftestMode::Flow => {
+                let lines = [
+                    "透過チェック — 背後のアプリがこの文字の周りに見えていれば合格",
+                    "Retina 1234567890 ABCDEfghij ｜ﾊﾞｯｸｸﾞﾗｳﾝﾄﾞ",
+                    "縁取りは白塗り＋黒縁。中抜きなら NSStrokeWidth の符号が逆",
+                    "SELFTEST / native overlay / no private API",
+                    "あいうえお かきくけこ 漢字とかなの混在も見る",
+                    "iiiillll1111 —— 細い線がぼけていないか",
+                ];
+                for (index, line) in lines.iter().enumerate() {
+                    std::thread::sleep(Duration::from_millis(400));
+                    let text = format!("{} [{}]", line, index + 1);
+                    // AppKit はメインスレッド専用。
+                    let _ = handle.run_on_main_thread(move || {
+                        // 引数は OVERLAY_DEFAULTS（lib/settings.ts）と同じに揃える。
+                        overlay_render::push_comment(&text, 30.0, 1.0, 9.0);
+                    });
+                }
+            }
+            // フキダシは**幅の決まり方**が要点なので、短文・長文・1文字を必ず混ぜる。
+            // 「短文は文字に吸い付き、長文はレーン幅まで伸びてから折り返す」が再現できているか。
+            SelftestMode::Bubble => {
+                let lines = [
+                    "あ",
+                    "短い",
+                    "白い板・濃い文字・左下にしっぽ",
+                    "これは折り返しの確認用に長くした文です。レーンの幅まで伸びたら折り返して縦に伸びるはずで、140文字でも省略しないという決めごとを守れているかをここで見ます。あいうえおかきくけこ。",
+                    "Retina 1234567890 ABCDEfghij",
+                    "同じレーンで重なっていないか",
+                ];
+                for (index, line) in lines.iter().enumerate() {
+                    std::thread::sleep(Duration::from_millis(400));
+                    let text = format!("{} [{}]", line, index + 1);
+                    let _ = handle.run_on_main_thread(move || {
+                        overlay_render::push_bubble(&text, 30.0, 1.0, 9.0);
+                    });
+                }
+            }
+            // スタンプは**粒がばらけているか**が要点。絵文字と画像の両方を撒く。
+            SelftestMode::Stamp => {
+                // 画像の経路（base64 → NSImage → CGImage）を Supabase 抜きで通す。
+                let _ = handle.run_on_main_thread(|| {
+                    overlay_render::cache_stamp_image("selftest", SELFTEST_STAMP_PNG);
+                });
+                std::thread::sleep(Duration::from_millis(200));
+
+                for (emoji, count) in [("🎉", 40), ("👏", 40), ("❤️", 40)] {
+                    std::thread::sleep(Duration::from_millis(500));
+                    let _ = handle.run_on_main_thread(move || {
+                        overlay_render::burst_emoji(emoji, count, 1.0, 9.0);
+                    });
+                }
+                std::thread::sleep(Duration::from_millis(500));
+                // 上限（200）に当てて、古いものから回収されることも見る。
+                let _ = handle.run_on_main_thread(|| {
+                    overlay_render::burst_image("selftest", 60, 1.0, 9.0);
+                });
+            }
+            // 常設レイヤ。**消える瞬間まで見る**のが要点（粒と違って寿命で消えない）。
+            SelftestMode::Qr => {
+                let _ = handle.run_on_main_thread(|| {
+                    overlay_render::set_join_qr(Some(SELFTEST_STAMP_PNG));
+                });
+                std::thread::sleep(Duration::from_secs(6));
+                debug_log("selftest: QR を消します");
+                let _ = handle.run_on_main_thread(|| overlay_render::set_join_qr(None));
+            }
+            // 質問パネルの**窓の形**を見る。`set_question_panel_size` は `is_live` で
+            // 弾かれる（発表中しか出ない）ので、ここは `show_panel` を直接叩く。
+            // 中身は質問0件のヘッダだけになるが、**不透明・角丸・内容に合わせた高さ・
+            // 周りが透過**という窓側の性質はこれで確かめられる。
+            SelftestMode::Panel => {
+                let handle_for_panel = handle.clone();
+                let _ = handle.run_on_main_thread(move || {
+                    if let Some(questions) = handle_for_panel.get_webview_window(QUESTIONS) {
+                        if let Some(ptr) = ns_window_ptr(&questions) {
+                            native_overlay::show_panel(
+                                ptr as *mut objc2::runtime::AnyObject,
+                                None,
+                                QUESTION_PANEL_WIDTH,
+                                180.0,
+                            );
+                        }
+                    }
+                });
+                std::thread::sleep(Duration::from_secs(6));
+                debug_log("selftest: 質問パネルを消します");
+                let _ = handle.run_on_main_thread(|| {
+                    native_overlay::hide(native_overlay::Hosted::Panel);
+                });
+            }
+            // 計測の本体は webview 側のプローブ（`OverlayWindow.tsx`）。
+            // Rust は `selftest_heartbeat` を受けてログに落とすだけ。
+            SelftestMode::Pump
+            | SelftestMode::PumpLive
+            | SelftestMode::PumpPoke
+            | SelftestMode::PumpWake => {}
+            SelftestMode::Peek => {
+                let _ = handle.run_on_main_thread(|| {
+                    // 実際の呼び出しと同じく、`ディスプレイ N` は組み立て済みの文字列を渡す。
+                    overlay_render::show_peek_card("このディスプレイに表示します", "ディスプレイ 1");
+                });
+                std::thread::sleep(Duration::from_secs(6));
+                debug_log("selftest: モニターカードを消します");
+                let _ = handle.run_on_main_thread(overlay_render::hide_peek_card);
+            }
+        }
+        debug_log("selftest: 流し終えました");
+    });
+}
+
 #[tauri::command]
 fn screen_capture_permission(request: bool) -> question_capture::CapturePermission {
     question_capture::permission(request)
@@ -1170,15 +1624,21 @@ fn screen_capture_permission(request: bool) -> question_capture::CapturePermissi
 fn open_screen_capture_settings() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        // 固定URLを引数として直接渡す。シェルを介さないので `?` も展開されない。
-        let status = std::process::Command::new("/usr/bin/open")
-            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
-            .status()
-            .map_err(|err| err.to_string())?;
-        if status.success() {
+        use objc2_app_kit::NSWorkspace;
+        use objc2_foundation::NSURL;
+
+        // **`/usr/bin/open` を spawn しないこと。** App Sandbox は他プロセスの起動を
+        // 拒否するので、sandbox を入れた瞬間にここが黙って失敗する（A2 で必ず踏む）。
+        // NSWorkspace の openURL: は sandbox 内から呼べる公開 API。
+        let url = NSURL::URLWithString(&objc2_foundation::NSString::from_str(
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+        ))
+        .ok_or_else(|| "could not build the System Settings URL".to_string())?;
+
+        if NSWorkspace::sharedWorkspace().openURL(&url) {
             Ok(())
         } else {
-            Err(format!("System Settings exited with {status}"))
+            Err("System Settings did not open".to_string())
         }
     }
     #[cfg(not(target_os = "macos"))]
@@ -1284,17 +1744,23 @@ fn refit_overlay(app: AppHandle) {
 
 /// 質問パネルを展開幅またはタブ幅に変更し、選択モニターの右端へ揃える。
 #[tauri::command]
-fn set_question_panel_expanded(app: AppHandle, expanded: bool) {
+fn set_question_panel_size(app: AppHandle, expanded: bool, height: Option<f64>) {
     if !is_live(&app) {
         return;
     }
 
-    let width = if expanded {
-        QUESTION_PANEL_WIDTH
+    let (width, height) = if expanded {
+        (
+            QUESTION_PANEL_WIDTH,
+            height
+                .filter(|value| *value > 1.0)
+                .unwrap_or(QUESTION_PANEL_FALLBACK_HEIGHT),
+        )
     } else {
-        QUESTION_TAB_WIDTH
+        // 折りたたみタブは中身が固定なので測らせない。
+        (QUESTION_TAB_WIDTH, QUESTION_TAB_HEIGHT)
     };
-    show_question_panel(&app, width);
+    show_question_panel(&app, width, height);
     set_panel_shown(&app, true);
 }
 
@@ -1397,15 +1863,22 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_monitors,
             set_overlay_monitor,
-            is_native_overlay,
             overlay_push_comment,
+            overlay_push_bubble,
+            overlay_burst_emoji,
+            overlay_cache_stamp_image,
+            overlay_burst_image,
+            is_overlay_selftest,
+            selftest_heartbeat,
+            overlay_set_join_qr,
+            overlay_set_peek_card,
             overlay_clear,
             start_presentation,
             stop_presentation,
             get_presentation_state,
             peek_overlay,
             refit_overlay,
-            set_question_panel_expanded,
+            set_question_panel_size,
             show_control,
             set_app_language,
             screen_capture_permission,
@@ -1416,8 +1889,14 @@ pub fn run() {
         ])
         .setup(|app| {
             if let Ok(app_data) = app.path().app_data_dir() {
+                #[cfg(target_os = "macos")]
+                init_debug_log(&app_data);
                 question_capture::cleanup_expired(&app_data);
             }
+
+            // A1 の可否を画面で確かめるための経路。既定では動かない。
+            #[cfg(target_os = "macos")]
+            start_overlay_selftest(app.handle());
             // Dock アイコンを出さず、⌘-Tab にも現れず、オーバーレイが
             // 発表アプリからフォーカスを奪わないようにする。
             #[cfg(target_os = "macos")]

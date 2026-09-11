@@ -4,5 +4,9 @@
 <dict>
   <key>NSScreenCaptureUsageDescription</key>
   <string>LayerTalk captures the presentation slide when an audience question arrives.</string>
+  <!-- 通信は HTTPS のみ。Ed25519 は権利リースの「署名検証」＝認証にしか使っていないので
+       非免除の暗号には当たらない。入れておかないとビルドのたびに App Store Connect が聞いてくる。 -->
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
 </dict>
 </plist>

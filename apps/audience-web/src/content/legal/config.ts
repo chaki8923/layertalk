@@ -12,7 +12,7 @@ export const legalConfig = {
   refundPolicy: process.env.LEGAL_REFUND_POLICY || draft("返金・キャンセル条件"),
   systemRequirementsUrl: process.env.LEGAL_SYSTEM_REQUIREMENTS_URL || "",
   effectiveDate: "2026年8月16日",
-  updatedDate: "2026年8月16日",
+  updatedDate: "2026年9月8日",
 };
 
 export const billingPublicationEnabled = process.env.BILLING_PUBLICATION_ENABLED === "true";

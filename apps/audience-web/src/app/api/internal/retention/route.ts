@@ -71,14 +71,40 @@ export async function POST(request: Request) {
   }
   const deletedOrphanedFiles = await removeOrphanedStorage(admin);
 
+  // 匿名ユーザーの掃除。観客は入室のたびに匿名ユーザーを作るので、放っておくと際限なく増える。
+  //
+  // **ルームを持つ匿名ユーザーは消さないこと。** 5.1.1(v) 対応でサインイン無しでも
+  // ルームを作れるようにしたので、ここに引っかかるのは「観客」だけとは限らない。
+  // 消すと `rooms` が cascade で落ち、発表者の手元にはコードが残ったまま DB から消えた
+  // 状態（CLAUDE.md の罠 #14）になる。本人はサインインしていないので復旧手段が無い。
   let removedAnonymousUsers = 0;
+  let keptAnonymousOwners = 0;
   const anonymousCutoff = Date.now() - 30 * 86400_000;
   const { data: usersPage } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  for (const user of usersPage.users) {
-    if (user.is_anonymous && new Date(user.created_at).getTime() < anonymousCutoff) {
+  const expired = usersPage.users.filter(
+    (user) => user.is_anonymous && new Date(user.created_at).getTime() < anonymousCutoff,
+  );
+  if (expired.length > 0) {
+    // owner_id をまとめて引く。1人ずつ問い合わせると 1000 件で 1000 往復になる。
+    const { data: ownedRooms } = await admin
+      .from("rooms")
+      .select("owner_id")
+      .in("owner_id", expired.map((user) => user.id));
+    const owners = new Set((ownedRooms ?? []).map((room) => room.owner_id));
+    for (const user of expired) {
+      if (owners.has(user.id)) {
+        keptAnonymousOwners += 1;
+        continue;
+      }
       const { error } = await admin.auth.admin.deleteUser(user.id);
       if (!error) removedAnonymousUsers += 1;
     }
   }
-  return Response.json({ deletedComments, deletedStampFiles: paths.length, deletedOrphanedFiles, removedAnonymousUsers });
+  return Response.json({
+    deletedComments,
+    deletedStampFiles: paths.length,
+    deletedOrphanedFiles,
+    removedAnonymousUsers,
+    keptAnonymousOwners,
+  });
 }

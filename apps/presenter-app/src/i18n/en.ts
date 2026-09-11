@@ -119,6 +119,11 @@ export const en: Messages = {
   account: {
     title: "Account",
     signOut: "Sign out",
+    signIn: "Sign in",
+    signInHint: "An account is needed for purchases, presentation reports, and deleting your account. The rooms you already made stay yours.",
+    offlineTitle: "Could not connect",
+    offlineBody: "LayerTalk can’t reach its server, so rooms can’t be created. Check your connection and try again.",
+    retry: "Try again",
     privacy: "Privacy",
     terms: "Terms",
     support: "Support",
@@ -146,7 +151,6 @@ export const en: Messages = {
     },
     stampTarget: "Custom stamp",
     missingTarget: "Deleted post",
-    needsPass: "Hiding a comment needs an Event Pass. Stamps can be deleted from the list in this window.",
   },
 
   qr: {
