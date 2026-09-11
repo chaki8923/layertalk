@@ -840,6 +840,7 @@ fn start_front_watchdog(app: &AppHandle) {
     let handle = app.clone();
     std::thread::spawn(move || {
         debug_log("watchdog: 開始");
+        let mut keepalive: u64 = 0;
 
         loop {
             std::thread::sleep(FRONT_WATCHDOG_INTERVAL);
@@ -858,6 +859,18 @@ fn start_front_watchdog(app: &AppHandle) {
                 *watching = false;
                 break;
             }
+
+            // **コントロール窓の webview を起こし続ける。消さないこと。**
+            //
+            // この webview が Supabase の購読・ネイティブ描画への送り出し・質問スライド撮影の起点を
+            // すべて持っている。**閉じた窓の webview は macOS が約 6 秒でページごと凍らせる**
+            // （実測。`docs/mas-migration-handover.md` の 2026-09-11 追記）。凍ると `setInterval` も
+            // 止まり、Supabase の購読は繋がったまま何も届かない — 外から来たデータでは起きない。
+            // 起こせるのは「窓を表示する」か「ネイティブ側から IPC を送る」かの二択で、ここは後者。
+            // **届くのは JS 側で listener を登録した webview だけ**（Tauri の `emit_js_filter`）。
+            // 受け手は `ControlWindow` の `onPresentationKeepalive`。
+            keepalive += 1;
+            let _ = handle.emit("presentation-keepalive", keepalive);
 
             let app = handle.clone();
             // AppKit はメインスレッド専用。ここから直接 NSWindow を叩いてはいけない。
@@ -1566,6 +1579,54 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 // --------------------------------------------------------------------- run
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// 計測用セルフテスト。`LAYERTALK_DEBUG_OVERLAY` と一緒に `LAYERTALK_OVERLAY_SELFTEST` を
+/// 指定したときだけ動く。いまは `pump-control-live` だけで、コントロール窓を閉じたまま
+/// 発表を始め、webview が凍らずに購読を保てるかを見る（計るのは `lib/selftest-pump.ts`）。
+/// ルームもサインインもクリックも要らない。
+fn overlay_selftest_mode() -> Option<&'static str> {
+    #[cfg(target_os = "macos")]
+    {
+        if !debug_enabled() {
+            return None;
+        }
+        match std::env::var("LAYERTALK_OVERLAY_SELFTEST").ok().as_deref() {
+            Some("pump-control-live") => Some("pump-control-live"),
+            _ => None,
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
+
+/// JS 側のプローブを動かすか。種類はいま1つなので、動かすときは常に `"pump"`。
+#[tauri::command]
+fn is_overlay_selftest() -> Option<String> {
+    overlay_selftest_mode().map(|_| "pump".to_string())
+}
+
+/// プローブからの通報を調査用ログへそのまま流す。解析は `pump/control-*` を grep する。
+#[tauri::command]
+fn selftest_heartbeat(kind: String, seq: u32, detail: String) {
+    debug_log(&format!("pump/{kind} seq={seq} {detail}"));
+}
+
+fn start_overlay_selftest(app: &AppHandle) {
+    if overlay_selftest_mode().is_none() {
+        return;
+    }
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(1500));
+        if let Some(control) = handle.get_webview_window(CONTROL) {
+            let _ = control.hide();
+        }
+        debug_log("selftest: pump-control-live（コントロール窓を閉じたまま発表を開始）");
+        set_live(&handle, true);
+    });
+}
+
 pub fn run() {
     tauri::Builder::default()
         // `tauri-plugin-opener` は入れていない。あれは `/usr/bin/open` を spawn するので
@@ -1600,6 +1661,8 @@ pub fn run() {
             start_presentation,
             stop_presentation,
             get_presentation_state,
+            is_overlay_selftest,
+            selftest_heartbeat,
             peek_overlay,
             refit_overlay,
             set_question_panel_expanded,
@@ -1669,6 +1732,7 @@ pub fn run() {
             }
 
             setup_tray(&handle)?;
+            start_overlay_selftest(&handle);
 
             #[cfg(target_os = "macos")]
             storekit::start_updates(handle.clone());

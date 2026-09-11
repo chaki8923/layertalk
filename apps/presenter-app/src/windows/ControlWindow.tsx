@@ -67,14 +67,17 @@ import {
   type SectionId,
 } from "../lib/settings";
 import { clientId, supabase } from "../lib/supabase";
+import { startSelftestPump } from "../lib/selftest-pump";
 import { initializeBillingRecovery } from "../lib/billing";
 import { isPaidPresentationSession, loadQuestionCapturePreference, questionCaptureErrorMessage, questionCapturePendingMessage } from "../lib/question-capture";
 import {
   captureQuestionSlide,
   getPresentationState,
+  isOverlaySelftest,
   listMonitors,
   onQuestionCaptureError,
   onOverlayPeek,
+  onPresentationKeepalive,
   onPresentationStateChanged,
   overlayClear,
   overlayPushComment,
@@ -347,6 +350,36 @@ export function ControlWindow() {
     const unlisten = onTestStamp(({ emoji, count }) => playStamp(emoji, count));
     return () => { void unlisten.then((off) => off()); };
   }, [playStamp]);
+
+  /**
+   * 発表中の「起きていろ」を受ける。**消さないこと。**
+   *
+   * この窓の webview は、Supabase の購読・ネイティブ描画への送り出し（`overlayPushComment` /
+   * `overlayPushStamp`）・質問スライド撮影の起点をすべて持っている。発表中は閉じられることが多く、
+   * **閉じた窓の webview は macOS が約 6 秒でページごと凍らせる**（実測。他の窓の裏に回っただけなら
+   * タイマーが 2 秒間隔に間引かれるだけで凍らない）。凍るとコメントもスタンプもスライドに出ず、
+   * 開き直した瞬間にまとめて届く（約 1 分の凍結で実測）。撮影は**その瞬間の最新フレーム**を
+   * 上書きせず保存するので、遅れて発火すると別のスライドが残る。
+   * 起こせるのはネイティブ側からの IPC だけで、Tauri は listener を登録した webview にしか
+   * JS を評価しないので、**登録そのものが起こす条件**になっている。
+   */
+  useEffect(() => {
+    const unlisten = onPresentationKeepalive(() => {});
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  }, []);
+
+  // 計測用（`LAYERTALK_OVERLAY_SELFTEST=pump-control-live`）: 閉じたまま発表中にこの窓が凍らないかを計る。
+  useEffect(() => {
+    let stop: (() => void) | null = null;
+    void isOverlaySelftest()
+      .then((mode) => {
+        if (mode === "pump") stop = startSelftestPump("control");
+      })
+      .catch(() => {});
+    return () => stop?.();
+  }, []);
 
   // 発表状態（トレイからの終了もここに届く）
   useEffect(() => {

@@ -255,8 +255,48 @@ App Store 5.1.1(i) が「アプリ内からポリシーへ辿れること」を�
 （任意スキームを許すと webview の不具合が「勝手に別アプリが起動する」に化ける）。
 `x-apple.systempreferences:` を開く `open_screen_capture_settings` だけは別入口にしてある。
 
+**19. `cargo build --release` だけで作った実行ファイルは画面が真っ白になる**
+`tauri-macros` の `context.rs:155` が `dev: cfg!(not(feature = "custom-protocol"))` と書いていて、
+**この feature は tauri CLI が足している**。cargo から直接ビルドすると release でも
+「dev」と判定され、埋め込んだ `dist` ではなく `devUrl`（`http://localhost:1420`）を見に行く。
+dev サーバが居なければ**どの窓も真っ白のまま、エラーも出ない**。
+`.app` の中の実行ファイルだけ差し替えるときは
+`cargo build --release --features tauri/custom-protocol`（このリポジトリの `Cargo.toml` は
+再輸出していないので **`tauri/` を付ける**）か、素直に `npm run build:presenter` を通すこと。
+（`npm run build:presenter -- --bundles app` は **npm が `--bundles` を自分の設定として食う**ので
+`tauri build` には `app` だけが渡り `unexpected argument` で落ちる。フラグを渡したいときは
+`npx tauri build` を直接叩く。）
+なお `codesign --force` は実行ファイルを書き換えるので**タイムスタンプが更新される**。
+「新しいから作り直せている」の判断材料にはならない — 中身は `strings` で確かめる。
+
+**20. 閉じた窓の webview は約6秒でページごと凍る — 発表中はコントロール窓を Rust から起こし続けている**
+コントロール窓の webview は、Supabase の購読・ネイティブ描画への送り出し（`overlayPushComment` /
+`overlayPushStamp`）・質問スライド撮影の起点をすべて持っている。ところが**閉じた（`hide()` した）窓の
+webview は、macOS が約 6 秒でページごと凍らせる**。実測（サンドボックス下の `.app`、2026-09-11）:
+- `setInterval` は**間延びではなく停止**する
+- **ソケットは繋がったまま。** 凍っているあいだの受信は、窓を出し直した瞬間にまとめて届いた（約 1 分の凍結）。
+  症状は「`SUBSCRIBED` は出ている・コントロール窓を閉じた数秒後からスライドに何も出ない・
+  開いた瞬間に溜まった分が一気に流れる」になる。**購読の生死を `SUBSCRIBED` で判断しないこと**
+- **外から届いたソケットのデータでは起きない**（コメントはまさにそれで届く）
+- 起こせるのは **(a) 窓を表示する**か **(b) ネイティブ側から IPC を送る**かの二択
+- **他の窓の裏に回っただけの窓は凍らない**（タイマーが 2 秒間隔に間引かれるだけ）。
+  全画面スライドの別 Space にあるときは未計測。`visibilityState` は起きていても `hidden` と出るので指標にしない
+
+対策として `start_front_watchdog` が**発表中だけ** 1 秒ごとに `presentation-keepalive` を `emit` し、
+`ControlWindow` の `onPresentationKeepalive` が受けている。**Tauri は listener を登録した webview に
+しか JS を評価しない**（`emit_js_filter`）ので、**listener の登録そのものが起こす条件**。
+何もしていない listener に見えても消さないこと。撮影は**その瞬間の最新フレーム**を上書きせず保存するので、
+凍って遅れて発火すると別のスライドが残る。
+発表外で凍っていた分は `packages/shared` の `onPageVisible` で**窓が見えたら取り直す**
+（`useComments` / `useRoomStamps` / `ReportQueue`）。
+計測は `LAYERTALK_DEBUG_OVERLAY=1 LAYERTALK_OVERLAY_SELFTEST=pump-control-live` と
+`scripts/pump-poke-outside.mjs`（ログは `pump/control-*` を grep）。
+
 ## 設計上の決めごと
 
+- **コントロール窓の webview は、発表中だけ Rust が突いて起こし続ける**（罠 #20）。購読・ネイティブ描画への
+  送り出し・質問スライド撮影の起点がすべてこの webview にあるので、突かないと発表中にコントロール窓を
+  閉じた数秒後からスライドに何も出なくなる
 - **コメント／スタンプの全面オーバーレイはクリックスルー常時 ON。** 切り替え UI も
   ショートカットも持たない。操作できるのは右端の質問窓の範囲だけで、そこで
   展開／折りたたみを操作できる（スライド全面の操作を塞がないため）

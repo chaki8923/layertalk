@@ -30,6 +30,12 @@
 | `20260904035052_allow_presenter_account_deletion` | `moderation_actions.actor_id` を `on delete restrict` → **`set null`** + nullable |
 | `20260904035142_add_content_reports` | `content_reports` 表 + `report_content` RPC + RLS + Realtime publication 追加 |
 
+**⛔ 2026-09-11: 未適用の修正が1本ある。必ず当てること。**
+9/8 に当てた3本（`20260908051937` / `20260908055150` / `20260908055412`）は、9/5 の
+`20260905033612_apple_review_safety_storekit` を含まない古いミラーをもとに書かれていて、
+本番の `post_comment` と `create_room` を上書きしていた。**コメントからのブロックが全件落ちる。**
+`20260911041638_restore_post_comment_authors_and_presenter_gate` で戻す（下の「2026-09-11 追記」）。
+
 ---
 
 ## この作業は何だったか
@@ -141,6 +147,77 @@ Event Pass の購入シートの中にしかリンクが無く、購入画面を
   「App Store では売っている・法務ページは下書きのまま」が成立していた
 - **提出パッケージ**: `./scripts/build-mas.sh` が `.app` → プロファイル埋め込み →
   MAS Distribution 署名 → `productbuild` で `.pkg` までやる
+
+### 2026-09-11 追記 — 並行作業の統合と、本番 DB の退行
+
+別の作業ツリーで、同じ A1・A2・1.2 を**別の設計で**実装していた（オーバーレイ窓の webview を残して
+Rust から起こす／発表者を匿名にする／ブロックは実装できない前提 など）。push の時点で食い違いに気付き、
+**main はこのリモートの設計を正とした。** 向こうの作業は `archive/native-overlay-sandbox-2026-09-11`
+ブランチに退避してあり、main へはまだ無かったものだけを移した。
+
+#### 本番 DB の退行 — 修正マイグレーションを当てること
+
+9/8 の3本は、9/5 の関数を知らないまま `post_comment` と `create_room` を丸ごと書き直していた。
+本番の関数定義と件数で確認した事実（2026-09-11）:
+
+| 外れていたもの | 影響 |
+|---|---|
+| `post_comment` が `private.comment_authors` に投稿者を記録しない | `ban_room_participant` が投稿者を引けず、**コメントからのブロックが `block target not found` で全件落ちる**。本番のコメント 34 件すべてで記録が 0 件。スタンプからのブロックは別の列を引くので動く |
+| NG ワードに当たった投稿が「拒否」ではなく `pending`（保留） | 9/5 の「無料の NG ワード拒否」と違う挙動 |
+| `create_room` から `is_permanent_user()` のガードが外れた | 匿名でもルームを作れる |
+
+- 修正は `supabase/migrations/20260911041638_restore_post_comment_authors_and_presenter_gate.sql`。
+  **戻すのは上の3つだけ。** 9/8 の「非表示・復帰を無料に」「新しいルームに既定 NG ワード」は 9/5 と矛盾しないので残す
+- **記録が無いまま投稿された 34 件は、コメントからはブロックできない**（復元できない。非表示にはできる）
+- 9/8 の3本は本番に反映済みだが**マイグレーション履歴（`list_migrations`）には載っていない**。
+  ミラーを `supabase/migrations/` に足し、先頭に「単独で当て直さないこと」を書いた
+- **既存の2ルームには既定 NG ワードが 0 語**（`create_room` の中で入るので新しいルームにしか入らない）。
+  審査用のデモルームは作り直すこと
+- **関数を書き換えるマイグレーションは、本番の定義を読んでから書くこと。** ミラーは本番より遅れていることがある
+  （今回はそれで壊した）: `select pg_get_functiondef('public.post_comment(uuid,uuid,text,boolean)'::regprocedure);`
+
+#### コントロール窓の凍結 — 発表中は Rust から起こす
+
+この設計では、Supabase の購読・ネイティブ描画への送り出し・質問スライド撮影の起点がすべて
+コントロール窓の webview にある。**閉じた窓の webview は約 6 秒でページごと凍る**ので、
+発表中にコントロール窓を閉じると、その数秒後からスライドに何も出なくなる（CLAUDE.md の罠 #20）。
+
+退避ブランチの実装で、コントロール窓そのものを測った結果（サンドボックス下の `.app`）:
+
+| 見たもの | 結果 |
+|---|---|
+| 閉じると凍るか | **凍る。** 閉じてから 6 秒でタイマーが止まった |
+| 60 秒後に出したとき | 起きた（`gap=54608ms`）。`visibilitychange=visible` も届いた |
+| 凍っている間に外から投げた broadcast | **失われず、出した瞬間にまとめて届いた** |
+| 他の窓の裏に回っただけのとき | 凍らず、タイマーが 2 秒間隔に間引かれるだけ |
+| 閉じたまま発表を開始（keepalive あり、5.2 分） | **最後まで動いた**。往復の取りこぼし 0、外からの broadcast も即時に届いた |
+
+**移植後のこの実装でも同じ条件で確かめた**（`LAYERTALK_DEBUG_OVERLAY=1 LAYERTALK_OVERLAY_SELFTEST=pump-control-live`、
+`Entitlements.mas.plist` でアドホック署名したサンドボックス下、3.8 分）: 閉じてから最後までタイマーが止まらず
+（115 回・最大間隔 2,031ms）、20 秒ごとの往復は取りこぼし 0（rtt 中央値 83ms）、
+t=91s に外から投げた broadcast も送った次の秒に届いた。
+
+#### 移したもの
+
+- `presentation-keepalive`: `start_front_watchdog` → `ControlWindow` の `onPresentationKeepalive`
+- `packages/shared` の `onPageVisible` と、`useComments` / `useRoomStamps` / `ReportQueue` の取り直し
+- 計測用 `LAYERTALK_OVERLAY_SELFTEST=pump-control-live`（`lib/selftest-pump.ts`・`scripts/pump-poke-outside.mjs`）
+- CLAUDE.md の罠 #19（cargo 単体ビルドは真っ白）と #20（閉じた窓の凍結）
+- 9/8 のマイグレーションのミラーと、上の修正マイグレーション
+
+#### 移していないが、退避ブランチに実測つきで残っているもの
+
+- **縁取り文字が黒く潰れる疑い（この実装では未確認）**: `overlay_render.rs` の `outlined_string` は、
+  負の `NSStrokeWidthAttributeName` を1枚の文字列に載せている。退避ブランチの実装で**同じ作りを
+  全画面スクショの画素で測ったところ、30pt・3px では白い塗りが1画素も出ず、字面が `rgb(38,38,38)`
+  （黒 85% を白背景に載せた値）になった**。AppKit の負値は「塗り → 縁」の順で描き、縁が輪郭の中心に
+  引かれるので内側の半分が塗りを覆う（CSS の `paint-order: stroke fill` に当たる指定が無い）。
+  退避ブランチでは縁（正値）と塗り（白）を2枚の `CATextLayer` に分けて直した
+- アドホック署名でサンドボックスを効かせて実測する手順（`codesign --force --sign - --entitlements …`、
+  効いている証拠は `~/Library/Containers/app.layertalk.presenter/` ができること）
+- entitlements の plist に XML コメントを書くと、`plutil -lint` は通るのに `codesign` が
+  **終了コード 0 のまま entitlement 抜きで署名する**件（この実装の `Entitlements.mas.plist` にコメントは無い）
+- オーバーレイ描画のセルフテスト一式（`LAYERTALK_OVERLAY_SELFTEST=flow|bubble|stamp|qr|peek|panel`）
 
 ### 残作業の一覧
 

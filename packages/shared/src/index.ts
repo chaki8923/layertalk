@@ -8,6 +8,7 @@ export * from "./types";
 export * from "./useComments";
 export * from "./useRoomStamps";
 export * from "./useStampChannel";
+export * from "./visibility";
 export type { Database, Json, ReportReason } from "./database.types";
 
 // モーション定義は名前が汎用的（press / entrance / exit）なので名前空間で出す。

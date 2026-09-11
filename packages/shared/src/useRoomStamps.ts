@@ -6,6 +6,7 @@ import type { LayerTalkClient } from "./client";
 import { roomStampChannelName } from "./constants";
 import { LayerTalkError } from "./errors";
 import type { RoomStamp } from "./types";
+import { onPageVisible } from "./visibility";
 
 const oldestFirst = (a: RoomStamp, b: RoomStamp) => a.created_at.localeCompare(b.created_at);
 
@@ -189,9 +190,13 @@ export function useRoomStamps({ client, roomId }: UseRoomStampsOptions): UseRoom
         }
       });
 
+    // 見えていないあいだに凍っていた分を回収する（理由は `useComments` の同じ箇所）。
+    const stopWatchingVisibility = onPageVisible(() => void hydrate());
+
     return () => {
       cancelled = true;
       clearTimeout(reconcileTimer);
+      stopWatchingVisibility();
       void client.removeChannel(channel);
     };
   }, [client, roomId, appendUnlessPresent]);

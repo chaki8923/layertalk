@@ -210,6 +210,28 @@ export const setAppLanguage = (language: "ja" | "en") =>
 export const onPresentationStateChanged = (handler: (live: boolean) => void) =>
   listen<boolean>("presentation-state-changed", (event) => handler(event.payload));
 
+/**
+ * 発表中に Rust から 1 秒ごとに届く「起きていろ」の合図（`start_front_watchdog`）。
+ *
+ * コントロール窓の webview は Supabase の購読とネイティブ描画への送り出しを持っているが、
+ * **閉じた窓の webview は macOS が約 6 秒でページごと凍らせる**（実測）。外から来た
+ * Realtime のデータでは起きず、ネイティブ側からの IPC だけが起こせる。
+ * **listener を登録すること自体が起こす条件。** Tauri は event に listener を登録した
+ * webview にしか JS を評価しない（`emit_js_filter`）ので、登録を外すと起きない。
+ */
+export const onPresentationKeepalive = (handler: (seq: number) => void) =>
+  listen<number>("presentation-keepalive", (event) => handler(event.payload));
+
+/**
+ * 計測用セルフテスト（`LAYERTALK_OVERLAY_SELFTEST`）の種類。走っていなければ null。
+ * `LAYERTALK_DEBUG_OVERLAY` と一緒に指定したときだけ動く。
+ */
+export const isOverlaySelftest = () => invoke<string | null>("is_overlay_selftest");
+
+/** セルフテストのプローブからの通報。`LAYERTALK_DEBUG_OVERLAY` のログに落ちる。 */
+export const selftestHeartbeat = (kind: string, seq: number, detail: string) =>
+  invoke<void>("selftest_heartbeat", { kind, seq, detail });
+
 /** peek が始まったことを受け取る。ペイロードは表示時間(ms)。 */
 export const onOverlayPeek = (handler: (ms: number) => void) =>
   listen<number>("overlay-peek", (event) => handler(event.payload));
