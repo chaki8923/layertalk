@@ -29,7 +29,7 @@ import { clientId, supabase } from "../lib/supabase";
 import {
   getPresentationState,
   isOverlaySelftest,
-  onOverlayKeepalive,
+  onPresentationKeepalive,
   onOverlayPeek,
   onPresentationStateChanged,
   overlayBurstEmoji,
@@ -148,11 +148,12 @@ export function OverlayWindow() {
    * 約 6 秒でページを凍らせる。** 凍ると購読は繋がったままコメントが届かなくなる
    * （実測。`docs/mas-migration-handover.md` の購読スパイク）。起こせるのは
    * ネイティブ側からの IPC だけなので、`start_front_watchdog` が 1 秒ごとに突いている。
-   * 受け手が要るわけではないが、**届いていることを確かめられる場所を残しておく。**
+   * **この listener は消さないこと。** Tauri は listener を登録した webview にしか JS を
+   * 評価しない（`emit_js_filter`）ので、消すと突いても起きず、コメントが数秒で止まる。
    */
   const keepaliveRef = useRef(0);
   useEffect(() => {
-    const unlisten = onOverlayKeepalive((seq) => {
+    const unlisten = onPresentationKeepalive((seq) => {
       keepaliveRef.current = seq;
     });
     return () => {

@@ -127,14 +127,17 @@ export const isOverlaySelftest = () => invoke<string | null>("is_overlay_selftes
 /**
  * 発表中に Rust から 1 秒ごとに届く「起きていろ」の合図。
  *
- * オーバーレイ窓の webview は一度も表示されない tao 窓に載っているので、macOS が
- * **起動から約 6 秒でページごと凍らせる**（実測）。凍ると `setInterval` が止まり、
- * Supabase の購読は繋がったままコメントが1件も届かなくなる。外から来た broadcast では
- * 起きず、**ネイティブ側からの IPC だけが起こせる**ので、`start_front_watchdog` が突いている。
- * ここで受けているのは「配達されたことを JS 側でも確かめられるように」。
+ * 見えていない窓の webview は、macOS が**約 6 秒でページごと凍らせる**（実測）。凍ると
+ * `setInterval` が止まり、Supabase の購読は繋がったまま何も届かなくなる。外から来た
+ * broadcast では起きず、**ネイティブ側からの IPC だけが起こせる**ので、
+ * `start_front_watchdog` が突いている。
+ *
+ * **listener を登録すること自体が起こす条件。** Tauri は event に listener を登録した
+ * webview にしか JS を評価しない（`emit_js_filter`）ので、登録を外すとその窓は起きない。
+ * 受けているのはオーバーレイ窓（購読）とコントロール窓（質問スライド撮影の起点）。
  */
-export const onOverlayKeepalive = (handler: (seq: number) => void) =>
-  listen<number>("overlay-keepalive", (event) => handler(event.payload));
+export const onPresentationKeepalive = (handler: (seq: number) => void) =>
+  listen<number>("presentation-keepalive", (event) => handler(event.payload));
 
 /** セルフテストのプローブからの通報。`LAYERTALK_DEBUG_OVERLAY` のログに落ちる。 */
 export const selftestHeartbeat = (kind: string, seq: number, detail: string) =>

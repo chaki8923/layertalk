@@ -5,6 +5,7 @@ import {
   deleteRoomStamp,
   fetchContentReports,
   moderateComment,
+  onPageVisible,
   resolveErrorMessage,
   roomStampUrl,
   type Comment,
@@ -72,8 +73,11 @@ export function ReportQueue({ roomId, locale, comments, stamps, onModerated, onS
     // 罠 #3: SUBSCRIBED からレプリケーションのフィルタが効くまで 1〜2 秒ある。
     // `useComments` と同じく購読直後にもう一度取り直して取りこぼしを回収する。
     const recovery = window.setTimeout(load, 2500);
+    // コントロール窓は閉じているあいだ凍る。出したときにも取り直す（保険。理由は `useComments` の同じ箇所）。
+    const stopWatchingVisibility = onPageVisible(load);
     return () => {
       window.clearTimeout(recovery);
+      stopWatchingVisibility();
       void supabase.removeChannel(channel);
     };
   }, [roomId, load]);

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { LayerTalkClient } from "./client";
 import { INITIAL_COMMENT_LIMIT, commentChannelName } from "./constants";
 import type { Comment, ConnectionStatus, SortMode } from "./types";
+import { onPageVisible } from "./visibility";
 
 const newestFirst = (a: Comment, b: Comment) => b.created_at.localeCompare(a.created_at);
 
@@ -140,6 +141,8 @@ export function useComments({
     let cancelled = false;
     let reconcileTimer: ReturnType<typeof setTimeout> | undefined;
     let firstSubscribe = true;
+    // 初回の取得が終わったか。終わる前に「見えた」で取り直すと過去ログを流してしまう。
+    let hydrated = false;
 
     // ルームが変わったら演出済みの記録もリセットする
     seenIdsRef.current = new Set();
@@ -194,6 +197,7 @@ export function useComments({
       // Realtime 経由で持っている行の方が新しいので、そちらを上書き側にする。
       setComments((live) => mergeById(rows, live));
       setLoading(false);
+      hydrated = true;
     };
 
     const channel = client
@@ -247,9 +251,25 @@ export function useComments({
         }
       });
 
+    /**
+     * 窓（タブ）が見えるようになったら取り直す。
+     *
+     * **閉じた窓の webview はページごと凍る**（発表者アプリで実測。約 6 秒で止まり、
+     * 外から届いたソケットのデータでは起きない）。約 1 分の凍結では、そのあいだの受信は
+     * 失われず起きた瞬間にまとめて届いた。長く凍ってソケットが切れれば再接続の `SUBSCRIBED` で
+     * 上の取り直しが走るはず（未計測）。**どちらの経路にも頼らない保険**として、見えた瞬間にも
+     * 取り直す。スマホのブラウザがバックグラウンドのタブを止めるのも同じ形。
+     * 重複は `markSeen` / `registerApprovedComment` / `mergeById` が吸収する。
+     */
+    const stopWatchingVisibility = onPageVisible(() => {
+      if (!hydrated) return;
+      void hydrate(true);
+    });
+
     return () => {
       cancelled = true;
       clearTimeout(reconcileTimer);
+      stopWatchingVisibility();
       void client.removeChannel(channel);
     };
   }, [client, roomId, limit, markSeen, includeModerated]);

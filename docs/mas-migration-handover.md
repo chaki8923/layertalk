@@ -26,35 +26,38 @@
 | `20260904035052_allow_presenter_account_deletion` | `moderation_actions.actor_id` を `on delete restrict` → **`set null`** + nullable |
 | `20260904035142_add_content_reports` | `content_reports` 表 + `report_content` RPC + RLS + Realtime publication 追加 |
 
-### ⛔ 未適用が2本ある（2026-09-08 時点）
+### ✅ 9/8 の3本も本番に反映済み（2026-09-11 に中身で確認）
 
-`20260908051937_free_tier_moderation` は**適用済み**（実測で確認）。上の表へは未転記。
-
-| version | 内容 | 状態 |
+| version | 内容 | 確認したこと |
 |---|---|---|
-| `20260908055150_seed_default_moderation_terms` | 新規ルームに既定 NG ワードを入れる（1.2） | **未適用** |
-| `20260908055412_allow_anonymous_room_creation` | `create_room` から `is_permanent_user()` を外す（5.1.1(v)） | **未適用** |
+| `20260908051937_free_tier_moderation` | NG ワード・承認/非表示を課金の外へ（1.2） | `moderate_comment` に `has_paid_room_features` が無い／`moderation_terms` のポリシーが `is_room_operator` だけ |
+| `20260908055150_seed_default_moderation_terms` | 新規ルームに既定 NG ワード（1.2） | `private.default_moderation_terms()` があり、`create_room` が呼んでいる |
+| `20260908055412_allow_anonymous_room_creation` | `create_room` から `is_permanent_user()` を外す（5.1.1(v)） | `create_room` に `is_permanent_user` が無い |
 
-**2本は順番どおりに当てること**（後者が前者の `default_moderation_terms()` を呼ぶ）。
+**ただしマイグレーション履歴（`list_migrations`）には載っていない。** 履歴の最後は
+`20260904035142_add_content_reports` のまま。**履歴を「本番に何があるか」の根拠にしないこと** —
+関数定義とポリシーを直接読んで確かめる（下のクエリ）。
 
-**アプリ側のコードは先に入っている。** `20260908055412` を当てるまで、匿名セッションで
-起動した発表者は**ルーム作成が `presenter authentication required` で落ちる**。
-**デプロイより前に必ず当てること。**
+**既存のルームには既定 NG ワードが入っていない**（2026-09-11 時点で2ルームとも0語）。
+既定語は `create_room` の中で入るので、**マイグレーション前に作ったルームは空のまま**。
+**審査用のデモルームは作り直すこと**（空のフィルタを審査員に見せない）。
 
-`20260908055412` には **Supabase ダッシュボード側の設定が対で要る**:
-**Authentication > Providers で Manual linking を有効にする**（既定は無効・beta）。
-入れ忘れると匿名ユーザーが本会員へ昇格できず、購入導線が詰まる。
+**Manual linking（Authentication > Providers、既定は無効・beta）は MCP から確認できない。**
+無効だと匿名ユーザーが本会員へ昇格できず、購入・レポート・退会に進めない。ダッシュボードで目視すること。
 
-適用後の確認:
+**repo のどこにも無いオブジェクトが本番にある**（全ブランチ・履歴・stash を検索して0件、2026-09-11）:
+`ban_room_participant` / `unblock_room_participant` / `room_participant_blocks` /
+`app_store_events` / `app_store_transactions` / `app_store_purchase_attempts`。いずれも行は0件で、由来は不明。
+**前者3つは CLAUDE.md の「ブロックは原理的に実装できない」と食い違う**ので、使う・消す前に出どころを確かめること。
 
 ```sql
--- 既定 NG ワードが入るか（新しいルームを1つ作ってから）
-select count(*) from public.moderation_terms where room_id = '<新しい room id>';
-
--- 匿名でも作れるか
-select pg_get_functiondef(p.oid) like '%is_permanent_user%' as still_gated
-from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-where n.nspname='public' and p.proname = 'create_room';   -- false になること
+-- 履歴ではなく中身で確かめる
+select
+  to_regprocedure('private.default_moderation_terms()') is not null as has_default_terms_fn,   -- true
+  position('has_paid_room_features' in pg_get_functiondef('public.moderate_comment(uuid,text)'::regprocedure)) > 0
+    as moderate_requires_paid,                                                                  -- false
+  position('is_permanent_user' in pg_get_functiondef('public.create_room(text,text)'::regprocedure)) > 0
+    as create_room_gated;                                                                       -- false
 ```
 
 **ミラーが本番と食い違っていた箇所が1つ見つかっている。** `moderation_terms` の
@@ -261,9 +264,9 @@ Phase 1 最大の未知数だった「一度も表示されない WKWebView が 
 #### 採った対策 — 発表中だけ webview を突く
 
 `start_front_watchdog` が回している 1 秒ごとのループから、オーバーレイ窓へ
-`overlay-keepalive` を `emit` する（`lib.rs`）。発表中だけ動き、終了すれば自然に止まる。
+`presentation-keepalive` を `emit` する（`lib.rs`）。発表中だけ動き、終了すれば自然に止まる。
 F の計測どおり、突いているあいだは**外から来た broadcast も届く**。
-受け手は `OverlayWindow` の `onOverlayKeepalive`。**この 2 箇所を消すとコメントが
+受け手は `OverlayWindow` の `onPresentationKeepalive`。**この 2 箇所を消すとコメントが
 数秒で流れなくなる。**
 
 **対策後の実測**（`pump-live` を 14.1 分、サンドボックス下の `.app`）:
@@ -312,20 +315,54 @@ node scripts/pump-poke-outside.mjs 75
   `sendQuestionToPanel` の Tauri イベントそのもの（IPC ＝ 起こす手段の (b)）なので、
   いまの動線は成立している。**質問の配送をイベント以外の経路に変えると、
   パネルが二度と出てこなくなる**（凍ったページは自分では起きられない）
-- **コントロール窓も、隠れているあいだは凍る。** ⇧⌘L で呼び出すと窓の表示で起きるが、
-  `useComments` の取り直しは `SUBSCRIBED` のときだけで、ソケットは切れていないので
-  再購読が走らない。**凍っていたあいだに届いたコメントが一覧から抜ける**可能性がある
-  （承認待ち・通報の一覧が実際より少なく見える）。直すなら「窓が見えたら取り直す」
-  を足すことになるが、`useComments` に取り直しの口が無いので `packages/shared` 側の変更になる。
-  **未対応**
+- **コントロール窓も、閉じているあいだは凍る**（`pump-control` で実測。下記）。影響は2つで、
+  どちらも 2026-09-11 に対処した:
+  - **承認待ち・通報・カスタムスタンプの一覧が、起きるまで更新されない。** 約 1 分の凍結では
+    受信は失われず、起きた瞬間にまとめて届いた（取りこぼしは起きなかった）。
+    それでも**保険として** `packages/shared` の `onPageVisible` で**窓が見えたら取り直す**
+    （`useComments` / `useRoomStamps` / `ReportQueue`）。`useComments` は初回の取得が
+    終わるまで何もしない（過去ログを流さないため）
+  - **質問スライド撮影の起点が止まる。** 起点はこの窓の `useComments` の `onInsert` で、
+    撮影は `question_capture.rs` の `latest`（**その瞬間の最新フレーム**）を上書きせず保存する。
+    遅れて発火すると**別のスライドが永久に残る** → keepalive を `presentation-keepalive` に改名し、
+    **発表中はコントロール窓も起こす**
+- **keepalive は listener を登録した窓にしか届かない。** Tauri 2.11.5 の `emit_js_filter`
+  （`event/listener.rs:269`）は、その event に JS listener を登録した webview にしか評価しない。
+  **listener の登録そのものが起こす条件**なので、何もしていない listener に見えても消さないこと
 - **`visibility=hidden` でも動いているときがある。** 対策後のオーバーレイ窓は
   `document.visibilityState` が `hidden` のまま 2 秒間隔で動く（突かれて起きている）。
   つまり `visibilityState` は生死の指標にならない
 
+#### コントロール窓の実測（2026-09-11、サンドボックス下の `.app`）
+
+`pump-control`（閉じる → 60 秒 → ⇧⌘L と同じ `focus_control_window` で出す。発表外）:
+
+| 見たもの | 結果 |
+|---|---|
+| 閉じると凍るか | **凍る。** 閉じてから 6 秒でティックが止まった |
+| 出したとき起きるか | 起きた（`gap=54608ms`） |
+| 出したとき `visibilitychange=visible` が届くか | **届いた** → `onPageVisible` の取り直しは効く |
+| 凍っている間（t=33s）に外から投げた broadcast | **失われず、起きた瞬間に届いた** |
+| 出した 3 秒後に他の窓の裏へ回ったとき | `hidden` になったが**凍らず**、タイマーが 2 秒間隔に間引かれるだけ（50 秒以上、往復も正常） |
+
+つまり**凍るのは閉じた窓**で、裏に回っただけの窓は間引かれるだけ。
+全画面スライドの別 Space にある場合は未計測なので、発表中はどちらでも起こしておく。
+長い凍結（サーバがソケットを切る長さ）での挙動も未計測。
+
+`pump-control-live`（閉じたまま発表を開始＝keepalive が回る条件、5.2 分）:
+
+| | コントロール窓（閉じたまま） | オーバーレイ窓（改名後の keepalive） |
+|---|---|---|
+| ティック | 157 回・最大間隔 2,025ms（**6 秒で止まらず最後まで動いた**） | 157 回・最大 2,029ms |
+| 20 秒ごとの往復 | 取りこぼし 0・rtt 中央値 103ms | 取りこぼし 0・rtt 中央値 104ms |
+| 外から投げた broadcast（t=94s） | **送った瞬間に届いた**（遅れなし） | 同じ |
+
+`visibilityState` は最後まで `hidden` のまま。**起きていても `hidden` と出る**ので生死の指標にしないこと。
+
 ### A1 の残作業
 
-横流し以外はまだ webview 側にしかない。**ネイティブ経路では bubble モードで何も出ない**
-（移行中の既知の穴。コードにも明記済み）。
+**すべて移植済み。** 横流し・フキダシ・スタンプ・参加QR・モニター確認カードのどれもネイティブで描く
+（各項の実測は下のとおり。仕上げは「A1 完了」の節）。
 
 **Canva（Chrome のプレゼンテーションモード）でも問題ないことを利用者が確認済み**（2026-09-08）。
 罠 #9（tao の窓が他アプリの全画面 Space に入れない）は、ネイティブ経路では構造的に消えている。
@@ -389,16 +426,6 @@ strings … | grep -c fullScreenEnabled                                         
 **`ResizeObserver` が中身の高さを測って追従するところ**は、発表中＋質問到着が要るので
 実ルームでの確認が残っている。パネルは `is_live` ガードの内側にあるためセルフテストでは出せない。
 
-**オーバーレイ窓の描画はこれで全部ネイティブになった。** 残るのは `questions` 窓だけ。
-
-| 残り | ネイティブでの実装方針 |
-|---|---|
-| `StampLayer.tsx` 絵文字・画像 | `CALayer.contents` に `CGImage`、`CAKeyframeAnimation` |
-| `JoinQrCard.tsx` 参加 QR | **`CIQRCodeGenerator`（Core Image 内蔵）** — 依存追加なし |
-| `QuestionWindow.tsx` 右端パネル | `NSView` + `NSButton`（操作を受けるのでレイヤだけでは足りない） |
-
-全部移し終えてから `Cargo.toml` の `macos-private-api` と `tauri.conf.json` の
-`macOSPrivateApi` を落とし、`overlay` / `questions` の窓定義と切り替えフラグごと消す。
 **ネイティブ版は直接配布版でも使う**（描画系を2つ並行保守しない）。
 
 ### ✅ A2 — サンドボックス下で動くことを実測（2026-09-10）

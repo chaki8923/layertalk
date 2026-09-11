@@ -21,7 +21,7 @@ import { selftestHeartbeat } from "./tauri";
  * 通報はすべて Rust の `selftest_heartbeat` → `LAYERTALK_DEBUG_OVERLAY` のログ。
  * 解析は grep で足りる。
  */
-export function startSelftestPump(win: "overlay" | "questions"): () => void {
+export function startSelftestPump(win: "overlay" | "questions" | "control"): () => void {
   const startedAt = Date.now();
   // **窓ごとに分けて記録する。** 見えていない窓（オーバーレイ）と見えている窓（質問パネル）で
   // 結果が割れるなら、購読をどちらに置くかがそのまま答えになる。

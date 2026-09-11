@@ -28,7 +28,7 @@ const client = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY, {
 
 const waitSec = Number(process.argv[2] ?? 75);
 
-for (const win of ["overlay", "questions"]) {
+for (const win of ["overlay", "questions", "control"]) {
   const channel = client.channel(`selftest-pump-${win}`, {
     config: { broadcast: { self: false } },
   });

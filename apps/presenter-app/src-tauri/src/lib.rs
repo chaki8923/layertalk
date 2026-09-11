@@ -980,19 +980,24 @@ fn start_front_watchdog(app: &AppHandle) {
                 break;
             }
 
-            // **オーバーレイ窓の webview を起こし続ける。**
+            // **見えていない webview を起こし続ける。**
             //
-            // オーバーレイの webview は一度も表示されない tao 窓に載っているので、
-            // macOS は起動から約 6 秒でこのページを凍らせる（実測。`docs/mas-migration-handover.md`）。
-            // 凍ると `setInterval` も止まり、**Supabase の購読は繋がったまま何も届かなくなる**
-            // — 外から来た broadcast では起きない（同じく実測）。
-            // 起こせるのは「窓を表示する」か「ネイティブ側から IPC を送る」かの二択で、
-            // ここは後者。発表中だけ 1 秒ごとに突いて、コメントが届く状態を保つ。
-            // **消さないこと。消すとコメントが数秒で流れなくなる。**
+            // 見えていない窓の webview は、macOS が約 6 秒でページごと凍らせる
+            // （実測。`docs/mas-migration-handover.md` の購読スパイク）。凍ると `setInterval` も
+            // 止まり、**Supabase の購読は繋がったまま何も届かなくなる** — 外から来た
+            // broadcast では起きない（同じく実測）。起こせるのは「窓を表示する」か
+            // 「ネイティブ側から IPC を送る」かの二択で、ここは後者。
+            //
+            // 起こしている窓は2つ:
+            // - **オーバーレイ窓**（一度も表示されない）: コメント・スタンプの購読を持つ
+            // - **コントロール窓**（発表中は閉じられていることが多い）: 質問スライド撮影の
+            //   起点（`useComments` の `onInsert`）を持つ。撮影は**その瞬間の最新フレーム**を
+            //   保存して上書きしないので、凍って遅れると別のスライドが残る
+            //
+            // **届くのは JS 側で listener を登録した webview だけ**（Tauri の `emit_js_filter`）。
+            // 受け手は両窓の `onPresentationKeepalive`。どちらを消してもその窓は起きない。
             keepalive += 1;
-            if let Some(overlay) = handle.get_webview_window(OVERLAY) {
-                let _ = overlay.emit("overlay-keepalive", keepalive);
-            }
+            let _ = handle.emit("presentation-keepalive", keepalive);
 
             let app = handle.clone();
             // AppKit はメインスレッド専用。ここから直接 NSWindow を叩いてはいけない。
@@ -1249,7 +1254,11 @@ fn is_overlay_selftest() -> Option<String> {
                 SelftestMode::Panel => "panel",
                 SelftestMode::Pump => "pump",
                 // JS 側のプローブは同じものを使う。
-                SelftestMode::PumpLive | SelftestMode::PumpPoke | SelftestMode::PumpWake => "pump",
+                SelftestMode::PumpLive
+                | SelftestMode::PumpPoke
+                | SelftestMode::PumpWake
+                | SelftestMode::PumpControl
+                | SelftestMode::PumpControlLive => "pump",
             }
             .to_string()
         })
@@ -1421,6 +1430,12 @@ enum SelftestMode {
     /// 起き直るか**、ソケットが自力で戻るかを見る。購読を「見えている窓」へ移す設計は、
     /// 発表開始のたびにこの復帰が起きることを前提にするので、ここが要になる。
     PumpWake,
+    /// コントロール窓を `hide()` して 60 秒後に出し直す（発表外）。閉じたコントロール窓が
+    /// 凍るか、出したとき `visibilitychange` が届くか、凍っていた間の受信が捨てられるかを見る。
+    PumpControl,
+    /// コントロール窓を `hide()` したまま発表を始める。keepalive で起き続けるかを見る
+    /// （質問スライド撮影の起点がこの窓にある）。
+    PumpControlLive,
     /// `Pump` と同じ計測を**発表中の条件**で行う（オーバーレイ表示 ＋ ウォッチドッグ稼働）。
     /// 隠れたままの `Pump` が落ちたときに、原因が「アプリごと暇」なのか
     /// 「webview が隠れていること」なのかを切り分けるために要る。
@@ -1448,6 +1463,8 @@ fn overlay_selftest_mode() -> Option<SelftestMode> {
             Ok("pump-live") => Some(SelftestMode::PumpLive),
             Ok("pump-poke") => Some(SelftestMode::PumpPoke),
             Ok("pump-wake") => Some(SelftestMode::PumpWake),
+            Ok("pump-control") => Some(SelftestMode::PumpControl),
+            Ok("pump-control-live") => Some(SelftestMode::PumpControlLive),
             _ => None,
         }
     })
@@ -1465,7 +1482,23 @@ fn start_overlay_selftest(app: &AppHandle) {
         std::thread::sleep(Duration::from_millis(1500));
         // `pump` は隠れた webview の中だけを計る。**オーバーレイは出さない**
         // （画面を覆わずに15分走らせたい。窓を出しても計測対象は変わらない）。
-        if mode == SelftestMode::PumpWake {
+        if mode == SelftestMode::PumpControl || mode == SelftestMode::PumpControlLive {
+            if let Some(control) = handle.get_webview_window(CONTROL) {
+                let _ = control.hide();
+            }
+            if mode == SelftestMode::PumpControlLive {
+                debug_log("selftest: pump-control-live（コントロール窓を閉じたまま発表を開始）");
+                show_overlay(&handle);
+                set_live(&handle, true);
+            } else {
+                debug_log("selftest: pump-control（コントロール窓を閉じて 60 秒放置）");
+                std::thread::sleep(Duration::from_secs(60));
+                debug_log("selftest: pump-control（ここからコントロール窓を出す）");
+                let app = handle.clone();
+                // AppKit はメインスレッド専用（`raise_control_window` が NSWindow を叩く）。
+                let _ = handle.run_on_main_thread(move || focus_control_window(&app));
+            }
+        } else if mode == SelftestMode::PumpWake {
             debug_log("selftest: pump-wake（60 秒隠したまま放置してから窓を出す）");
             std::thread::sleep(Duration::from_secs(60));
             debug_log("selftest: pump-wake（ここから表示）");
@@ -1600,7 +1633,9 @@ fn start_overlay_selftest(app: &AppHandle) {
             SelftestMode::Pump
             | SelftestMode::PumpLive
             | SelftestMode::PumpPoke
-            | SelftestMode::PumpWake => {}
+            | SelftestMode::PumpWake
+            | SelftestMode::PumpControl
+            | SelftestMode::PumpControlLive => {}
             SelftestMode::Peek => {
                 let _ = handle.run_on_main_thread(|| {
                     // 実際の呼び出しと同じく、`ディスプレイ N` は組み立て済みの文字列を渡す。

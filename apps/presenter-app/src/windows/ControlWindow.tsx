@@ -60,12 +60,15 @@ import {
   type PresenterSettings,
   type SectionId,
 } from "../lib/settings";
+import { startSelftestPump } from "../lib/selftest-pump";
 import { supabase } from "../lib/supabase";
 import { isPaidPresentationSession, loadQuestionCapturePreference, questionCaptureErrorMessage, questionCapturePendingMessage } from "../lib/question-capture";
 import {
   captureQuestionSlide,
   getPresentationState,
+  isOverlaySelftest,
   listMonitors,
+  onPresentationKeepalive,
   onQuestionCaptureError,
   onPresentationStateChanged,
   peekOverlay,
@@ -206,6 +209,34 @@ export function ControlWindow() {
     client: settings.roomId ? supabase : null,
     roomId: settings.roomId,
   });
+
+  /**
+   * 発表中の「起きていろ」を受ける。**消さないこと。**
+   *
+   * 発表中のこの窓は閉じられていることが多く、閉じた窓の webview は macOS が約 6 秒でページごと
+   * 凍らせる（実測。他の窓の裏に回っただけならタイマーが 2 秒間隔に間引かれるだけで凍らない。
+   * 全画面スライドの別 Space にあるときは未計測なので、どちらでも起こしておく）。
+   * 凍ると上の `useComments` の `onInsert`（＝質問スライド撮影の起点）が止まり、撮影は
+   * **その瞬間の最新フレーム**を上書きせず保存するので、遅れて発火すると別のスライドが残る。
+   * Tauri は listener を登録した webview にしか JS を評価しないので、登録そのものが起こす条件。
+   */
+  useEffect(() => {
+    const unlisten = onPresentationKeepalive(() => {});
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  }, []);
+
+  // `pump` セルフテストのとき、この窓でも生存を計る（閉じたまま凍るか・起こせるか）。
+  useEffect(() => {
+    let stop: (() => void) | null = null;
+    void isOverlaySelftest()
+      .then((mode) => {
+        if (mode === "pump") stop = startSelftestPump("control");
+      })
+      .catch(() => {});
+    return () => stop?.();
+  }, []);
 
   // 発表状態（トレイからの終了もここに届く）
   useEffect(() => {
