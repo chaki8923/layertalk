@@ -6,6 +6,9 @@
 
 最終更新: 2026-08-14
 
+> **⚠️ 2026-08-14 時点の記録で、課金・Mac App Store 対応より前の内容。** いまの構造と決めごとは `CLAUDE.md`、
+> App Store 対応の経緯は `docs/mas-migration-handover.md`、提出までの残作業は `docs/app-store-gates.html` を見ること。
+
 ---
 
 ## 動く状態になっているもの

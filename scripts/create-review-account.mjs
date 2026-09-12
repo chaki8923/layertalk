@@ -64,7 +64,10 @@ if (!url || !secret) {
   process.exit(1);
 }
 
-const email = (process.env.LAYERTALK_REVIEW_EMAIL || "appreview@layertalk.app").trim().toLowerCase();
+// 既定は、サポート窓口と同じ受信箱に届くプラスアドレス。以前の `appreview@layertalk.app` は
+// ドメインに DNS レコードが無く（2026-09-12 に確認）、第三者がドメインを取るとパスワード再設定の
+// メールを受け取れてしまう。
+const email = (process.env.LAYERTALK_REVIEW_EMAIL || "layertalk0816+appreview@gmail.com").trim().toLowerCase();
 const remove = process.argv.includes("--delete");
 
 /**

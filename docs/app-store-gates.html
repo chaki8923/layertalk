@@ -624,7 +624,17 @@ LEGAL_REFUND_POLICY=デジタルコンテンツの性質上、決済完了後の
         "blocker": true,
         "body": [
           "<code>npm run dev:presenter</code> を起動し、サインイン画面のメール欄に何か貼り付けてみる。10 秒で済む。",
-          "効かないと、審査員がデモ用のメールとパスワードを貼れずサインインで詰まる。Accessory ポリシーでメニューバーが出ないため未実測。効く見込みは高いが、確かめるまでは分からない。"
+          "効かないと、審査員がデモ用のメールとパスワードを貼れずサインインで詰まる。Accessory ポリシーでメニューバーは出ないが、アプリのメニューを指定していないので Tauri が既定の Edit メニュー（Copy / Paste）を作る（<code>tauri-2.11.5/src/app.rs</code> の <code>enable_macos_default_menu</code>）。キーは効く見込みだが、実機で確かめるまでは分からない。",
+          "パスワードは記号を含まない文字種で生成するので、貼れなくても手で打てる（<code>scripts/create-review-account.mjs</code>）。"
+        ]
+      },
+      {
+        "id": "icon",
+        "title": "アプリアイコンの 1024px 原本を用意する",
+        "blocker": true,
+        "body": [
+          "今の <code>icon.icns</code> は 512px（<code>ic09</code>）しか持っていない。512@2x（<code>ic10</code>）が無いと、Transporter が ITMS-90236 でアップロードを受け付けない。",
+          "1024×1024 の PNG を用意し、<code>apps/presenter-app</code> で <code>npx tauri icon &lt;path&gt;</code>。作り直した icns に <code>ic10</code> が入ったかを確かめる。"
         ]
       },
       {
@@ -642,8 +652,9 @@ LEGAL_REFUND_POLICY=デジタルコンテンツの性質上、決済完了後の
         "title": "審査用アカウントを作る",
         "gl": "2.1",
         "body": [
-          "<code>npm run create:review-account</code>。サービスロールキー（<code>SUPABASE_SECRET_KEY</code>）が要る。",
-          "出力された Email / Password を <code>docs/app-store-review-notes.md</code> の <code>&lt;REVIEW_EMAIL&gt;</code> / <code>&lt;REVIEW_PASSWORD&gt;</code> へ。審査後は <code>-- --delete</code> で消せる。"
+          "<code>apps/audience-web/.env.local</code> に <code>SUPABASE_SECRET_KEY</code>（Supabase の secret key）を入れて <code>npm run create:review-account</code>。",
+          "メールの既定は <code>layertalk0816+appreview@gmail.com</code>（サポート窓口と同じ受信箱に届く）。出力された Password は App Store Connect の Review Notes に直接貼り、<strong>リポジトリには書かない</strong>。審査後は <code>-- --delete</code> で消せる。",
+          "作ったら、そのアカウントで<strong>新しいルームを作る</strong>。既定の NG ワードは作成時にしか入らない。"
         ]
       },
       {
@@ -665,7 +676,8 @@ LEGAL_REFUND_POLICY=デジタルコンテンツの性質上、決済完了後の
         "id": "mas-env",
         "title": "MAS ビルド用の env を用意",
         "body": [
-          "<code>VITE_AUDIENCE_BASE_URL</code>（デプロイ先のホスト）。空のままだと MAS ビルドは<strong>ビルド時に落ちる</strong>ようにしてあるので、気付かず出荷することはない。"
+          "<code>apps/presenter-app/.env.local</code> に <code>VITE_AUDIENCE_BASE_URL</code>（<code>https://www.layer-talk.com</code>）と <code>VITE_APPLE_EVENT_PASS_PRODUCT_ID</code>（<code>app.layertalk.presenter.event_pass</code>）。どちらか欠けると MAS ビルドはビルド時に落ちる（<code>vite.config.ts</code>）ので、気付かず出荷することはない。",
+          "2026-09-12 に両方入れ済み。"
         ]
       }
     ]
@@ -730,7 +742,8 @@ LEGAL_REFUND_POLICY=デジタルコンテンツの性質上、決済完了後の
         "id": "app-id-env",
         "title": "APPLE_APP_ID と通知 URL を設定",
         "body": [
-          "数値の Apple ID を Vercel の <code>APPLE_APP_ID</code> へ（本番の署名検証に必須）。App Store Server Notifications V2 の宛先に <code>/api/billing/app-store/notifications</code> を登録する。設定後は再デプロイ。"
+          "数値の Apple ID を Vercel の <code>APPLE_APP_ID</code> へ（本番の署名検証に必須。無いと審査の Sandbox は通るのに、公開後の実購入が検証できない）。設定後は再デプロイ。",
+          "App Store Server Notifications V2 の宛先（本番・Sandbox とも）: <code>https://www.layer-talk.com/api/billing/app-store/notifications</code>"
         ]
       },
       {
@@ -760,7 +773,8 @@ LEGAL_REFUND_POLICY=デジタルコンテンツの性質上、決済完了後の
         "id": "pkg",
         "title": "build-mas.sh で .pkg を作る",
         "body": [
-          "<code>MAS_APP_IDENTITY</code> / <code>MAS_INSTALLER_IDENTITY</code> / <code>MAS_PROVISION_PROFILE</code> / <code>VITE_AUDIENCE_BASE_URL</code> を渡す。identity の実物は <code>security find-identity -v -p codesigning</code> で確認。"
+          "<code>MAS_APP_IDENTITY</code> / <code>MAS_INSTALLER_IDENTITY</code> / <code>MAS_PROVISION_PROFILE</code> の3つを渡す（<code>VITE_*</code> は <code>.env.local</code> から読む）。identity の実物は <code>security find-identity -v -p codesigning</code> で確認。",
+          "2回目以降は <code>src-tauri/tauri.mas.conf.json</code> の <code>bundleVersion</code> を上げてからビルドする（App Store Connect は同じビルド番号を二度受け付けない）。"
         ]
       },
       {
@@ -785,7 +799,8 @@ LEGAL_REFUND_POLICY=デジタルコンテンツの性質上、決済完了後の
         "id": "overlay",
         "title": "オーバーレイと画面収録が sandbox で動くか",
         "body": [
-          "Keynote / PowerPoint / ブラウザの全画面プレゼンに重なるか。Retina でぼやけないか。⇧⌘L が効くか。質問時のスライド保存が撮れるか。"
+          "Keynote / PowerPoint / ブラウザの全画面プレゼンに重なるか。Retina でぼやけないか。⇧⌘L が効くか。質問時のスライド保存が撮れるか。",
+          "保存をオンにした Event Pass のルームで発表を始めると、メニューバーに「● REC」、コントロール窓に収録中の表示が出るか（App Store 2.5.14）。"
         ]
       },
       {
@@ -820,14 +835,17 @@ LEGAL_REFUND_POLICY=デジタルコンテンツの性質上、決済完了後の
         "title": "Review Notes のプレースホルダを埋める",
         "gl": "2.1",
         "body": [
-          "<code>docs/app-store-review-notes.md</code> の <code>&lt;REVIEW_EMAIL&gt;</code> / <code>&lt;REVIEW_PASSWORD&gt;</code> / <code>&lt;AUDIENCE_URL&gt;</code> / <code>&lt;PRODUCT_ID&gt;</code>。",
+          "残りの空欄は <code>&lt;REVIEW_PASSWORD&gt;</code> だけ（URL・商品 ID・サポートメール・審査用メールは <code>docs/app-store-review-notes.md</code> に記入済み）。パスワードは App Store Connect に直接入れる。",
           "「Dock アイコンが出ないのは設計」「開始を押すまで何も描かれない」を書き忘れないこと。書かないと『起動しない』『機能しない』と読まれる。"
         ]
       },
       {
         "id": "upload",
         "title": "Transporter でアップロードして提出",
-        "body": ["IAP は初回のみアプリ本体と一緒に審査へ出す。"]
+        "body": [
+          "IAP は初回のみアプリ本体と一緒に審査へ出す。",
+          "2回目以降のアップロードは <code>bundleVersion</code> を上げてからビルドする。"
+        ]
       }
     ]
   }

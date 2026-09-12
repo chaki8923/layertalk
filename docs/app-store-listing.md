@@ -19,12 +19,12 @@ LP と App Store で言っていることがずれると、審査員が「説明
 | プライマリカテゴリ | Productivity（`tauri.conf.json` の `category`） |
 | セカンダリカテゴリ | Business（任意） |
 | 価格 | 無料（機能は App 内課金） |
-| プライバシーポリシー URL | `<AUDIENCE_URL>/legal/privacy` |
-| プライバシーポリシー URL（英語ローカライズ） | `<AUDIENCE_URL>/legal/privacy?lang=en` |
-| サポート URL | `<AUDIENCE_URL>/support?channel=app-store` |
-| マーケティング URL | `<AUDIENCE_URL>` |
+| プライバシーポリシー URL | `https://www.layer-talk.com/legal/privacy` |
+| プライバシーポリシー URL（英語ローカライズ） | `https://www.layer-talk.com/legal/privacy?lang=en` |
+| サポート URL | `https://www.layer-talk.com/support?channel=app-store` |
+| マーケティング URL | `https://www.layer-talk.com` |
 
-> ⚠️ `<AUDIENCE_URL>` は `VITE_AUDIENCE_BASE_URL` と同じホスト。
+> ⚠️ `https://www.layer-talk.com` は `VITE_AUDIENCE_BASE_URL` と同じホスト。`www` を付けること（`layer-talk.com` は 308 で転送される）。
 > **`SEARCH_INDEXING_ENABLED` が未設定だと全ページ `noindex`** になる（`next.config.ts`）。
 > 審査には影響しないが、公開サイトとして意図どおりか確認しておくこと。
 >
@@ -228,7 +228,7 @@ Product names are trademarks of their respective owners.
 |---|---|
 | タイプ | **Non-Renewing Subscription**（消耗型にしないこと） |
 | 参照名 | `LayerTalk Event Pass (7 days, 1 room)` |
-| 商品 ID | `<PRODUCT_ID>` — 決めたら `APPLE_EVENT_PASS_PRODUCT_ID`（Vercel）と `VITE_APPLE_EVENT_PASS_PRODUCT_ID`（MASビルド）へ |
+| 商品 ID | `app.layertalk.presenter.event_pass` — サーバの `APPLE_EVENT_PASS_PRODUCT_ID` の既定値、presenter の `.env.local` の `VITE_APPLE_EVENT_PASS_PRODUCT_ID` と同じ。変えるなら3か所とも |
 | 表示名（日本語） | `Event Pass（1ルーム・7日間）` |
 | 表示名（English） | `Event Pass (1 room, 7 days)` |
 
@@ -273,10 +273,10 @@ Event Pass パネルを撮る。
 
 ---
 
-## 8. 埋めるべきプレースホルダ一覧
+## 8. 記入済みの値
 
-| 記号 | 入る値 |
+| 項目 | 値 |
 |---|---|
-| `<AUDIENCE_URL>` | 観客用 Web のデプロイ先（`VITE_AUDIENCE_BASE_URL` と同じ） |
-| `<PRODUCT_ID>` | App Store Connect で作った IAP の商品 ID |
-| `<REVIEW_EMAIL>` / `<REVIEW_PASSWORD>` | `npm run create:review-account` の出力（`docs/app-store-review-notes.md`） |
+| 観客用 Web | `https://www.layer-talk.com`（`VITE_AUDIENCE_BASE_URL` と同じ） |
+| IAP の商品 ID | `app.layertalk.presenter.event_pass` |
+| 審査用アカウント | メールは `layertalk0816+appreview@gmail.com`。パスワードは `npm run create:review-account` の出力を ASC に直接入れる（リポジトリには書かない） |

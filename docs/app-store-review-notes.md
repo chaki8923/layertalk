@@ -1,16 +1,18 @@
 # App Store Review Notes（App Store Connect に貼る用）
 
-`<...>` は提出前に埋める。埋めないまま貼らないこと — 空欄が1つでもあると
+残っている空欄は `<REVIEW_PASSWORD>` だけ。アカウントを作ったときに決まる値なので、
+App Store Connect に直接貼る（**リポジトリには書かない**）。空欄のまま貼ると
 「デモアカウントが動かない」で差し戻される。
 
-## 埋める値
+## 記入済みの値と、残りの空欄
 
-| プレースホルダ | どこから取るか |
+| 項目 | 値 |
 |---|---|
-| `<REVIEW_EMAIL>` / `<REVIEW_PASSWORD>` | 審査用アカウント。`supabase.auth.admin` でパスワードを設定して作る（下記） |
-| `<AUDIENCE_URL>` | `VITE_AUDIENCE_BASE_URL`（＝観客用 Web のデプロイ先） |
-| `<PRODUCT_ID>` | App Store Connect の Non-Renewing Subscription の商品 ID |
-| `<SUPPORT_EMAIL>` | Vercel の `LEGAL_SUPPORT_EMAIL`（サポートページに出ている窓口と同じ） |
+| 観客用 Web（`VITE_AUDIENCE_BASE_URL`） | `https://www.layer-talk.com` |
+| Event Pass の商品 ID | `app.layertalk.presenter.event_pass`（サーバの既定値、presenter の `.env.local` と同じ。変えるなら App Store Connect と3か所とも） |
+| サポート窓口（Vercel の `LEGAL_SUPPORT_EMAIL`） | `layertalk0816@gmail.com` |
+| 審査用アカウントのメール | `layertalk0816+appreview@gmail.com`（`create:review-account` の既定値。サポート窓口と同じ受信箱に届く） |
+| `<REVIEW_PASSWORD>` | **空欄のまま。** `npm run create:review-account` の出力を App Store Connect に直接貼る |
 
 ### 審査用アカウントの作り方
 
@@ -31,6 +33,7 @@ LAYERTALK_REVIEW_PASSWORD='...' npm run create:review-account
 
 既にアカウントがあればパスワードだけ差し替える（ルームや権利は消えない）。
 最後に、下の本文へ貼る Email / Password をそのまま出力する。
+既定のアドレスは `layertalk0816+appreview@gmail.com`。
 
 審査が通ったら消す:
 
@@ -51,7 +54,7 @@ npm run create:review-account -- --delete
 > never install an app or create an account.
 >
 > **Demo account**
-> Email: `<REVIEW_EMAIL>`
+> Email: `layertalk0816+appreview@gmail.com`
 > Password: `<REVIEW_PASSWORD>`
 > On the sign-in screen, tap "Sign in with a password" and use the credentials above.
 > (The default method emails a six-digit code; the password option exists so you do
@@ -70,14 +73,14 @@ npm run create:review-account -- --delete
 > 1. Sign in with the demo account above, then tap "Create room" to make a **new**
 >    room. New rooms start with a default blocked-word list.
 > 2. Open the audience URL shown under the code on any phone or second browser
->    (`<AUDIENCE_URL>/r/<CODE>`), then post a comment or tap a stamp.
+>    (`https://www.layer-talk.com/r/<CODE>`), then post a comment or tap a stamp.
 > 3. Back in the control window, tap "Start presentation". Comments and stamps now
 >    fly across the selected display. Nothing posted before you start is shown — this
 >    is intentional so rehearsal traffic never reaches a live slide.
 > 4. To see it without a second device, use the test comment / test stamp buttons in
 >    the control window.
 >
-> **In-app purchase — LayerTalk Event Pass (`<PRODUCT_ID>`, non-renewing subscription)**
+> **In-app purchase — LayerTalk Event Pass (`app.layertalk.presenter.event_pass`, non-renewing subscription)**
 > The pass unlocks approval mode, a room passcode, presentation reports, and branding
 > **for one room, for seven days**. It does not renew automatically and is never
 > charged again unless the presenter buys another pass.
@@ -103,7 +106,7 @@ npm run create:review-account -- --delete
 > All of these work in free rooms, without any purchase:
 > - Terms: presenters agree to our Terms when they sign in, and audience members when
 >   they post. The Terms do not tolerate objectionable content or abusive users:
->   `<AUDIENCE_URL>/legal/terms?channel=app-store&lang=en`
+>   `https://www.layer-talk.com/legal/terms?channel=app-store&lang=en`
 > - Filtering: comments matching the room's blocked-word list are rejected before they
 >   are stored.
 > - Reporting: every comment has a Report button; custom stamps are reported with a
@@ -111,26 +114,26 @@ npm run create:review-account -- --delete
 > - Blocking: "Hide & block" removes the comment and bars that participant from
 >   re-entering the room. The presenter can also switch off custom image stamps at any
 >   time.
-> - Our response: reports can also be sent to `<SUPPORT_EMAIL>`. We review reports of
+> - Our response: reports can also be sent to `layertalk0816@gmail.com`. We review reports of
 >   objectionable content within 24 hours, remove content that breaks the Terms, and
 >   bar the user who posted it.
 > - Contact: Account → Support in the app, and
->   `<AUDIENCE_URL>/support?channel=app-store`.
+>   `https://www.layer-talk.com/support?channel=app-store`.
 > Approval mode is an additional paid convenience, not one of these safeguards.
 >
 > **Account deletion**
 > Control window → bottom → "Delete account". It is hidden while a presentation is
 > running so the dialog cannot open in front of a live slide.
 >
-> **Privacy policy**: `<AUDIENCE_URL>/legal/privacy?lang=en` (also reachable in the app from
+> **Privacy policy**: `https://www.layer-talk.com/legal/privacy?lang=en` (also reachable in the app from
 > the sign-in screen and from Account at the bottom of the control window).
 
 ---
 
 ## 提出前チェック
 
-- [ ] 上のプレースホルダを全部埋めた
-- [ ] 本番 DB に `20260911041638_restore_post_comment_authors_and_presenter_gate` を適用し、
+- [ ] `<REVIEW_PASSWORD>` を App Store Connect に入れた（リポジトリには書かない）
+- [x] 本番 DB に `20260911041638_restore_post_comment_authors_and_presenter_gate` を適用し（2026-09-12 に関数定義で確認済み）、
       ファイル末尾の確認 SQL が3つとも true になった。**未適用だとコメントからのブロックが全件失敗し、
       NG ワードも拒否ではなく保留になる** — 上の 1.2 の説明と実挙動が食い違う
 - [ ] 審査用アカウントで**新しいルームを作った**（既定の NG ワードは作成時にしか入らない。
@@ -149,4 +152,6 @@ npm run create:review-account -- --delete
 - [ ] `npm run verify:mas-bundle` が緑（Ed25519 の鍵と Stripe の checkout が
       MAS バンドルに1件も無いこと）
 - [ ] `./scripts/build-mas.sh` が `.pkg` を吐き、Transporter が受け付けた
-- [ ] `docs/app-store-listing.md` のプレースホルダを全部埋めて ASC へ入れた
+- [ ] 2回目以降のアップロードでは、`src-tauri/tauri.mas.conf.json` の `bundleVersion` を上げた
+      （App Store Connect は同じビルド番号を二度受け付けない）
+- [ ] `docs/app-store-listing.md` の値を ASC へ入れた

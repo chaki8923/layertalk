@@ -1,6 +1,6 @@
 [package]
 name = "presenter-app"
-version = "0.1.0"
+version = "1.0.0"
 description = "LayerTalk presenter overlay"
 authors = ["LayerTalk"]
 edition = "2021"
