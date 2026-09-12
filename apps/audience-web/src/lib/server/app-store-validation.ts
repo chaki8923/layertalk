@@ -32,7 +32,8 @@ export function validateEventPassTransaction(
   const environment = transaction.environment;
   if (productId !== expectedProductId) throw new Error("Unexpected App Store product");
   if (bundleId !== expectedBundleId) throw new Error("Unexpected App Store bundle");
-  if (transaction.type !== Type.CONSUMABLE) throw new Error("Event Pass must be a consumable purchase");
+  // App Store Connect 上の Event Pass は Non-Renewing Subscription（7日間の期間限定アクセス）。
+  if (transaction.type !== Type.NON_RENEWING_SUBSCRIPTION) throw new Error("Event Pass must be a non-renewing subscription");
   if (transaction.quantity !== undefined && transaction.quantity !== 1) throw new Error("Unexpected purchase quantity");
   if (environment !== Environment.SANDBOX && environment !== Environment.PRODUCTION) {
     throw new Error("Unsupported App Store environment");

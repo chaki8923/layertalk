@@ -13,6 +13,9 @@ export const legalConfig = {
   systemRequirementsUrl: process.env.LEGAL_SYSTEM_REQUIREMENTS_URL || "",
   effectiveDate: "2026年8月16日",
   updatedDate: "2026年8月16日",
+  // 利用規約だけを 1.2 対応（不適切な投稿を容認しない・通報への対応期限）で改定した。
+  // プライバシーポリシーと特商法表記は変えていないので、共通の updatedDate は動かさない。
+  termsUpdatedDate: "2026年9月12日",
 };
 
 export const billingPublicationEnabled = process.env.BILLING_PUBLICATION_ENABLED === "true";

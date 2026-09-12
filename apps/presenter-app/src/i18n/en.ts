@@ -122,6 +122,7 @@ export const en: Messages = {
     privacy: "Privacy",
     terms: "Terms",
     support: "Support",
+    consent: "By signing in, you agree to the Terms and the Privacy Policy.",
     openFailed: "Could not open that page",
     delete: "Delete account",
     deleteTitle: "Delete your account?",

@@ -136,6 +136,11 @@ export const en: Messages = {
     sendQuestion: "Send question",
     sendComment: "Send comment",
     enterHint: "Enter to send · Shift+Enter for a new line",
+    consent: {
+      before: "By posting, you agree to the ",
+      link: "Terms",
+      after: ". Objectionable posts are removed, and their authors may be blocked.",
+    },
   },
 
   comment: {

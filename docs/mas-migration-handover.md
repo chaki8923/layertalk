@@ -30,7 +30,11 @@
 | `20260904035052_allow_presenter_account_deletion` | `moderation_actions.actor_id` を `on delete restrict` → **`set null`** + nullable |
 | `20260904035142_add_content_reports` | `content_reports` 表 + `report_content` RPC + RLS + Realtime publication 追加 |
 
-**⛔ 2026-09-11: 未適用の修正が1本ある。必ず当てること。**
+**✅ 2026-09-12: 下の修正は本番へ適用済み**（SQL Editor で手動適用。`MCP の apply_migration` を通していないので
+`list_migrations` には載らない）。関数定義で3点（`comment_authors` の記録・NG ワードの拒否・`is_permanent_user` のガード）を確認済み。
+以下は経緯として残す。
+
+~~⛔ 2026-09-11: 未適用の修正が1本ある。必ず当てること。~~
 9/8 に当てた3本（`20260908051937` / `20260908055150` / `20260908055412`）は、9/5 の
 `20260905033612_apple_review_safety_storekit` を含まない古いミラーをもとに書かれていて、
 本番の `post_comment` と `create_room` を上書きしていた。**コメントからのブロックが全件落ちる。**

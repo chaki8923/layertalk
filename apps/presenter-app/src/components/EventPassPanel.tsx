@@ -228,10 +228,17 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
     setError(null);
     setRestoreNotice(null);
     try {
-      const restored = await restorePurchases();
-      setRestoreNotice(restored > 0
-        ? (ja ? "購入を確認しました。" : "Purchases restored.")
-        : (ja ? "復元できる購入は見つかりませんでした。" : "No purchases to restore."));
+      const { restored, failed } = await restorePurchases();
+      if (failed > 0) {
+        setError(ja
+          ? "確認できなかった購入があります。時間をおいてもう一度お試しいただくか、サポートへご連絡ください。"
+          : "Some purchases could not be verified. Try again in a moment, or contact Support.");
+      }
+      if (restored > 0 || failed === 0) {
+        setRestoreNotice(restored > 0
+          ? (ja ? "購入を確認しました。" : "Purchases restored.")
+          : (ja ? "復元できる購入は見つかりませんでした。" : "No purchases to restore."));
+      }
     } catch {
       setError(ja ? "購入を復元できませんでした。接続を確認してください。" : "Could not restore purchases. Check your connection.");
     } finally {

@@ -3,6 +3,7 @@
 import { COMMENT_MAX_LENGTH, motionPresets } from "@layertalk/shared";
 import { motion } from "motion/react";
 import { ArrowUp, CircleHelp } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 
 import { useMessages } from "@/i18n/locale-context";
@@ -119,6 +120,14 @@ export function Composer({ onSubmit, disabled }: Props) {
       {/* 改行キーが送信に変わったので、黙って変えない。 */}
       <p className="text-text-faint px-3 pt-0.5 text-[11px]">
         {t.composer.enterHint}
+      </p>
+      {/* 別タブで開く。同じタブで遷移するとルームから抜けてしまう。 */}
+      <p className="text-text-faint px-3 pb-0.5 text-[11px] leading-relaxed">
+        {t.composer.consent.before}
+        <Link href="/legal/terms" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+          {t.composer.consent.link}
+        </Link>
+        {t.composer.consent.after}
       </p>
     </form>
   );

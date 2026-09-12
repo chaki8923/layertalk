@@ -1,4 +1,4 @@
-import { fulfillAppStoreTransaction } from "@/lib/server/app-store";
+import { AppStorePurchaseNotOwnedError, fulfillAppStoreTransaction } from "@/lib/server/app-store";
 import { corsHeaders, corsJson } from "@/lib/server/cors";
 import { requirePresenter } from "@/lib/server/supabase-admin";
 
@@ -20,6 +20,9 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof Response) {
       return new Response(error.body, { status: error.status, headers: corsHeaders(request) });
+    }
+    if (error instanceof AppStorePurchaseNotOwnedError) {
+      return corsJson(request, { error: "Purchase belongs to another account" }, { status: 409 });
     }
     console.error("[billing/app-store/fulfill]", error);
     return corsJson(request, { error: "Purchase could not be verified" }, { status: 400 });

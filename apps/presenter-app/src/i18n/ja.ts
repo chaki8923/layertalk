@@ -137,6 +137,7 @@ export const ja = {
     privacy: "プライバシー",
     terms: "利用規約",
     support: "サポート",
+    consent: "ログインすると、利用規約とプライバシーポリシーに同意したものとみなします。",
     openFailed: "案内ページを開けませんでした",
     delete: "アカウントを削除",
     deleteTitle: "アカウントを削除しますか？",

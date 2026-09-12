@@ -17,5 +17,5 @@ export const metadata: Metadata = createPageMetadata({
 // Mac App Store 版のアプリが購入シートからこのクエリ付きで開く。
 export default async function TermsPage(props: PageProps<"/legal/terms">) {
   const channel = resolveSalesChannel((await props.searchParams).channel);
-  return <PublicShell><LegalDocument document={termsContent(legalConfig, channel)} /></PublicShell>;
+  return <PublicShell><LegalDocument document={termsContent({ ...legalConfig, updatedDate: legalConfig.termsUpdatedDate }, channel)} /></PublicShell>;
 }

@@ -2,7 +2,7 @@ import { importSPKI, jwtVerify } from "jose";
 
 import type { EntitlementLease } from "@layertalk/shared";
 
-import { BILLING_API_BASE, BillingError, billingBearerHeaders, billingJson, type EventPassProduct, type EventPassPurchaseResult } from "./billing-http";
+import { BILLING_API_BASE, BillingError, billingBearerHeaders, billingJson, type EventPassProduct, type EventPassPurchaseResult, type RestorePurchasesResult } from "./billing-http";
 import { openExternalUrl } from "./tauri";
 
 const LEASE_KEY = "layertalk:event-pass-lease";
@@ -63,4 +63,4 @@ export async function initializeBillingRecovery() { return () => undefined; }
  * サインインした時点で `fetchActiveEntitlement` が拾うので、復元という操作が要らない。
  * 形を揃えるためだけに置いてある（バレルが両チャネルで同じ形を再輸出している）。
  */
-export async function restorePurchases(): Promise<number> { return 0; }
+export async function restorePurchases(): Promise<RestorePurchasesResult> { return { restored: 0, failed: 0 }; }

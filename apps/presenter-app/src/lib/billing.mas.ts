@@ -1,6 +1,6 @@
 import type { EntitlementLease } from "@layertalk/shared";
 
-import { BILLING_API_BASE, BillingError, billingBearerHeaders, billingJson, type EventPassProduct, type EventPassPurchaseResult } from "./billing-http";
+import { BILLING_API_BASE, BillingError, billingBearerHeaders, billingJson, type EventPassProduct, type EventPassPurchaseResult, type RestorePurchasesResult } from "./billing-http";
 import {
   onStoreKitTransaction,
   storeKitAll,
@@ -68,22 +68,27 @@ async function recover() {
  * 届ける責任は開発者にある」としているので、2 台目の Mac では `Transaction.all` を
  * 見に行かないと何も戻せない。
  *
- * 1 件ずつ握り潰しているのは、履歴には**別の LayerTalk アカウントで買った Pass**も
+ * 1 件ずつ続けるのは、履歴には**別の LayerTalk アカウントで買った Pass**も
  * 入っているため（Apple ID は同じでもアプリのアカウントは別でありうる）。サーバは
- * 所有者不一致を 400 で弾く。それは異常ではないので、成功した数だけ数える。
+ * それを 409 で返す。異常ではないので数えない。
+ * **それ以外の失敗は数えて返す。** 以前は全部握り潰していたので、サーバの検証が
+ * 全件落ちていても「復元できる購入は見つかりませんでした」と出て、壊れていることが見えなかった。
  * 付与そのものは `app_store_transaction_id` の一意制約で冪等なので、何度押しても増えない。
  */
-export async function restorePurchases(): Promise<number> {
+export async function restorePurchases(): Promise<RestorePurchasesResult> {
   const result = await storeKitAll();
   let restored = 0;
+  let failed = 0;
   for (const transaction of result.transactions) {
     if (transaction.productId !== PRODUCT_ID) continue;
     try {
       await fulfill(transaction);
       restored += 1;
-    } catch { /* 他アカウントの購入・検証失敗。次の1件へ進む。 */ }
+    } catch (error) {
+      if (!(error instanceof BillingError && error.status === 409)) failed += 1;
+    }
   }
-  return restored;
+  return { restored, failed };
 }
 
 export async function initializeBillingRecovery() {

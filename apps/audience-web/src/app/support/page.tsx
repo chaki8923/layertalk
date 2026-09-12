@@ -10,7 +10,7 @@ import { createPageMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = createPageMetadata({
   title: "お問い合わせ・返金案内 | LayerTalk",
-  description: "LayerTalkの購入トラブル、Event Passの返金・キャンセル、その他のお問い合わせ窓口です。",
+  description: "LayerTalkの購入トラブル、Event Passの返金・キャンセル、不適切な投稿の報告、その他のお問い合わせ窓口です。",
   path: "/support",
 });
 
@@ -42,6 +42,13 @@ export default async function SupportPage(props: PageProps<"/support">) {
           <section><h2 className="text-[17px] font-bold"><PhraseText phrases={["購入トラブル時に", "送る情報"]} /></h2><ul className="text-text-muted mt-4 space-y-2 pl-5 text-[13px] leading-6">{purchaseFacts.map((item) => <li key={item} className="list-disc"><ProtectedText text={item} terms={["メールアドレス", "ルームコード", "購入日時", "領収書番号", "領収書メール"]} /></li>)}</ul></section>
           <section><h2 className="flex items-center gap-2 text-[17px] font-bold"><ShieldAlert className="text-like shrink-0" size={18} /><span className="lt-nowrap">送ってはいけない情報</span></h2><ul className="text-text-muted mt-4 space-y-2 pl-5 text-[13px] leading-6">{["カード番号の全文", "セキュリティコード", "Stripe API Key", "Supabase Access Token"].map((item) => <li key={item} className="list-disc"><ProtectedText text={item} terms={[item]} /></li>)}</ul></section>
         </div>
+
+        <section id="reports" className="border-border mt-12 scroll-mt-24 border-t pt-10">
+          <h2 className="text-[20px] font-bold"><PhraseText phrases={["不適切な投稿の", "報告"]} /></h2>
+          <p className="text-text-muted mt-4 text-[13px] leading-7"><ProtectedText text="観客は、コメントの「通報」ボタンまたはカスタムスタンプの長押しから通報できます。通報は発表者の画面に直ちに届き、発表者はその場で投稿の非表示と投稿者のブロックを行えます。" terms={["「通報」ボタン", "カスタムスタンプ", "長押し"]} /></p>
+          <p className="text-text-muted mt-3 text-[13px] leading-7"><ProtectedText text="発表者が対応できない場合は、ルームコードと投稿の内容を添えて上記のサポート窓口へご連絡ください。LayerTalkは、不適切な投稿の報告を原則として受領から24時間以内に確認し、利用規約に違反する投稿の削除と投稿者の締め出しを行います。" terms={["ルームコード", "サポート窓口", "24時間以内"]} /></p>
+          <p className="mt-5 text-[12px]"><Link href={`/legal/terms${query}#moderation`} className="lt-nowrap text-brand font-semibold">利用規約の該当箇所を確認する</Link></p>
+        </section>
 
         <section id="refunds" className="border-border mt-12 scroll-mt-24 border-t pt-10">
           <h2 className="text-[20px] font-bold"><PhraseText phrases={["返金・", "キャンセル条件"]} /></h2>

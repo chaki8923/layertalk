@@ -375,7 +375,9 @@ webview は、macOS が約 6 秒でページごと凍らせる**。実測（サ�
   Consumable で売ると Purchasability Type で差し戻される。この型は「同じ Apple ID の
   全デバイスへ届ける責任は開発者にある」ので、**`Transaction.all` を見る「購入を復元」が要る**
   （`storeKitAll` → `restorePurchases`）。`Transaction.unfinished` だけでは、
-  1 台目で finish 済みの購入を 2 台目に戻せない
+  1 台目で finish 済みの購入を 2 台目に戻せない。**サーバの `validateEventPassTransaction` も
+  NRS だけを受理する** — 型を Consumable から変えたときここが取り残され、Apple が正しく署名した
+  取引まで弾いて購入も復元も全件落ちていた（`app-store.test.ts` が型を固定している）
 - **audience-web はダークファースト。** 観客は暗い会場でスマホを見る
 - **日本語 Web フォントは読み込まない。** 数MBあり会場の Wi-Fi で初期表示が壊れる
 - **表示言語を決めるのは発表者だけ。** コントロール窓のタイトルバーの JA/EN トグルが唯一の入口で、

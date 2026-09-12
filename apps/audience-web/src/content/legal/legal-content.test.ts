@@ -32,6 +32,18 @@ describe("legal content", () => {
     expect(appStore).toContain("自動更新");
   });
 
+  /**
+   * App Store 1.2 の差し戻しで求められる形（不適切な投稿を容認しない・通報へ期限内に対応する）。
+   * 販売条件ではないので、チャネルで出し分けない。
+   */
+  it("states zero tolerance and the report response time in both channels", () => {
+    for (const channel of ["stripe", "app-store"] as const) {
+      const terms = JSON.stringify(termsContent(config, channel));
+      expect(terms).toContain("一切容認しません");
+      expect(terms).toContain("24時間以内");
+    }
+  });
+
   it("keeps the Stripe channel as the default", () => {
     expect(JSON.stringify(termsContent(config))).toContain("Stripe Checkout");
     expect(JSON.stringify(termsContent(config, "stripe"))).toContain("2,980");

@@ -26,3 +26,5 @@ export type EventPassProduct =
   | { status: "ready"; productId: string; displayName: string; displayPrice: string }
   | { status: "unavailable" | "error"; message?: string };
 export type EventPassPurchaseResult = "started" | "completed" | "pending" | "cancelled";
+/** `failed` に別アカウントの購入（サーバの 409）は含めない。数えるのは検証や通信の失敗だけ。 */
+export type RestorePurchasesResult = { restored: number; failed: number };

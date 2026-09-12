@@ -26,6 +26,18 @@ export class AppleSignatureVerificationError extends Error {
   }
 }
 
+/**
+ * この LayerTalk アカウントのものではない取引。「購入を復元」は同じ Apple ID の履歴を
+ * 総なめするので、別アカウント（退会して作り直した分を含む）で買った Pass が普通に混ざる。
+ * 検証の失敗とは分けて返す — 一緒にすると、復元の失敗を画面で数えられない。
+ */
+export class AppStorePurchaseNotOwnedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AppStorePurchaseNotOwnedError";
+  }
+}
+
 function verifiers(): Verifier[] {
   const roots = appleRootCertificates();
   const bundleId = serverEnv.appleBundleId();
@@ -75,8 +87,8 @@ export async function fulfillAppStoreTransaction(
     .eq("id", transaction.appAccountToken)
     .maybeSingle();
   if (attemptError) throw attemptError;
-  if (!attempt) throw new Error("App Store purchase attempt not found");
-  if (expectedOwnerId && attempt.owner_id !== expectedOwnerId) throw new Error("App Store purchase owner mismatch");
+  if (!attempt) throw new AppStorePurchaseNotOwnedError("App Store purchase attempt not found");
+  if (expectedOwnerId && attempt.owner_id !== expectedOwnerId) throw new AppStorePurchaseNotOwnedError("App Store purchase owner mismatch");
   if (attempt.product_id !== transaction.productId) throw new Error("App Store purchase product mismatch");
   if (transaction.revocationAt) throw new Error("App Store transaction has been revoked");
 

@@ -20,12 +20,15 @@ LP と App Store で言っていることがずれると、審査員が「説明
 | セカンダリカテゴリ | Business（任意） |
 | 価格 | 無料（機能は App 内課金） |
 | プライバシーポリシー URL | `<AUDIENCE_URL>/legal/privacy` |
-| サポート URL | `<AUDIENCE_URL>/support` |
+| サポート URL | `<AUDIENCE_URL>/support?channel=app-store` |
 | マーケティング URL | `<AUDIENCE_URL>` |
 
 > ⚠️ `<AUDIENCE_URL>` は `VITE_AUDIENCE_BASE_URL` と同じホスト。
 > **`SEARCH_INDEXING_ENABLED` が未設定だと全ページ `noindex`** になる（`next.config.ts`）。
 > 審査には影響しないが、公開サイトとして意図どおりか確認しておくこと。
+>
+> サポート URL には `?channel=app-store` を付ける。付けないと Stripe 版の案内（「Stripeの領収書番号を送る」）が
+> 出て、審査員に「同じ Pass を別の決済で売っている」と読ませる余地を作る（3.1.1）。
 
 ---
 
@@ -102,10 +105,11 @@ LayerTalkはスライドを読み込みません。画面の一番上に透明�
 ・発表レポート（コメント・質問・反応のピーク、質問時のスライド画像）
 ・ブランド設定（ロゴ・色・LayerTalk表記の非表示）
 
-■ 質問時のスライド保存について
-この機能をオンにしたときだけ、質問が届いた瞬間の発表用ディスプレイを保存します。
-LayerTalkの表示とマウスカーソルは写りません。画像はこのMacの中だけに30日間保存され、
-サーバーへ送信されることはありません。オフのままでも発表はそのまま行えます。
+■ 質問時のスライド保存について（Event Pass）
+Event Passのルームでこの機能をオンにしたときだけ、発表中は発表用ディスプレイを
+画面収録し、質問が届いた瞬間の1枚だけを保存します。LayerTalkの表示とマウスカーソルは
+写りません。画像はこのMacの中だけに30日間保存され、サーバーへ送信されることは
+ありません。オフのままでも発表はそのまま行えます。
 
 ※ 各製品名は各社の商標です。
 ```
@@ -157,11 +161,11 @@ does not renew automatically.
 - Presentation reports, including the slide shown at each question
 - Branding: your logo, your colour, and hiding the LayerTalk mark
 
-ABOUT SAVING SLIDES AT QUESTIONS
-Only when you turn this on, the selected presentation display is captured at the
-moment a question arrives. LayerTalk's own windows and the cursor are excluded. The
-images stay on your Mac for 30 days and are never uploaded. Presenting works fine
-with the feature off.
+ABOUT SAVING SLIDES AT QUESTIONS (EVENT PASS)
+Only when you turn this on in an Event Pass room, LayerTalk records the selected
+presentation display while you present and keeps a single frame each time a question
+arrives. LayerTalk's own windows and the cursor are excluded. The images stay on your
+Mac for 30 days and are never uploaded. Presenting works fine with the feature off.
 
 Product names are trademarks of their respective owners.
 ```

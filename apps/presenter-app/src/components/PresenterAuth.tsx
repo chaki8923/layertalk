@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { Locale } from "@layertalk/shared";
 
 import { useMessages } from "../i18n";
-import { openAudiencePage } from "../lib/billing";
+import { isMasBuild, openAudiencePage } from "../lib/billing";
 import { supabase } from "../lib/supabase";
 
 const RESEND_COOLDOWN_MS = 60_000;
@@ -207,13 +207,16 @@ export function PresenterAuth({ locale, onSignedIn }: { locale: Locale; onSigned
             : (ja ? "確認コードでログイン" : "Sign in with a code")}
         </button>
 
+        <p className="text-text-faint mt-4 text-center text-[10px] leading-relaxed">{t.account.consent}</p>
+
         {/*
           App Store 5.1.1(i) は「プライバシーポリシーへアプリ内から容易に辿れること」を
           求めている。この画面は**メールアドレスを受け取る唯一の画面**で、しかも
           サインインできない相手はこの先の AccountFooter に到達できない。ここに置く。
         */}
         <div className="border-border mt-5 flex justify-center gap-4 border-t pt-4">
-          {([[t.account.privacy, "/legal/privacy"], [t.account.terms, "/legal/terms"]] as const).map(([label, path]) => (
+          {/* `?channel=app-store` は AccountFooter と同じ理由。MAS 版から Stripe 前提の規約を開かせない（3.1.1）。 */}
+          {([[t.account.privacy, "/legal/privacy"], [t.account.terms, `/legal/terms${isMasBuild ? "?channel=app-store" : ""}`]] as const).map(([label, path]) => (
             <button key={path} type="button" onClick={() => openLegal(path)}
               className="text-text-faint hover:text-brand flex items-center gap-1 text-[10px] font-semibold">
               {label}<ExternalLink size={9} />

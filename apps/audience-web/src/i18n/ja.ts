@@ -140,6 +140,12 @@ export const ja = {
     sendQuestion: "質問を送信",
     sendComment: "コメントを送信",
     enterHint: "Enter で送信・Shift+Enter で改行",
+    /** 投稿＝利用規約への同意（App Store 1.2）。リンクの位置が言語で違うので3つに分ける。 */
+    consent: {
+      before: "投稿すると",
+      link: "利用規約",
+      after: "に同意したものとみなします。不適切な投稿は削除され、投稿者は締め出されることがあります。",
+    },
   },
 
   comment: {

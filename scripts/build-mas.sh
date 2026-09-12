@@ -61,6 +61,41 @@ fi
 echo "==> embedding the provisioning profile"
 cp "$MAS_PROVISION_PROFILE" "$app_path/Contents/embedded.provisionprofile"
 
+echo "==> merging the app identifier from the provisioning profile"
+# Xcode は署名のときにプロファイルの entitlements を合成するが、codesign を直接叩くと
+# 合成されない。`com.apple.application-identifier` がプロファイルにあって署名に無いと、
+# App Store Connect はそのビルドを TestFlight の対象外にする（ITMS-90886）。
+# リポジトリの plist はチームに依存させず、一時コピーへ足して署名に使う。
+# plist に XML コメントは書かないこと — codesign が entitlements ごと黙って落とす。
+work_dir="$(mktemp -d -t layertalk-mas)"
+trap 'rm -rf "$work_dir"' EXIT
+profile_plist="$work_dir/profile.plist"
+signing_entitlements="$work_dir/entitlements.plist"
+security cms -D -i "$MAS_PROVISION_PROFILE" > "$profile_plist"
+
+profile_entitlement() {
+  /usr/libexec/PlistBuddy -c "Print :Entitlements:$1" "$profile_plist" 2>/dev/null || {
+    echo "error: the provisioning profile has no $1 entitlement" >&2
+    exit 1
+  }
+}
+app_identifier="$(profile_entitlement com.apple.application-identifier)"
+team_identifier="$(profile_entitlement com.apple.developer.team-identifier)"
+
+case "$app_identifier" in
+  "$team_identifier.app.layertalk.presenter") ;;
+  *)
+    echo "error: the provisioning profile is for $app_identifier, not $team_identifier.app.layertalk.presenter" >&2
+    exit 1
+    ;;
+esac
+
+cp "$entitlements" "$signing_entitlements"
+/usr/libexec/PlistBuddy \
+  -c "Add :com.apple.application-identifier string $app_identifier" \
+  -c "Add :com.apple.developer.team-identifier string $team_identifier" \
+  "$signing_entitlements"
+
 echo "==> signing nested code, then the app"
 # 内側から順に。`find -print0` なのは、パスに空白が入っても壊れないようにするため。
 while IFS= read -r -d '' nested; do
@@ -71,7 +106,7 @@ done < <(find "$app_path/Contents" \
   -not -path "$app_path/Contents/MacOS/*" -print0 2>/dev/null || true)
 
 codesign --force --timestamp --options runtime \
-  --entitlements "$entitlements" \
+  --entitlements "$signing_entitlements" \
   --sign "$MAS_APP_IDENTITY" "$app_path"
 
 echo "==> verifying the signature and entitlements"
