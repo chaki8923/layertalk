@@ -75,7 +75,9 @@ import {
   getPresentationState,
   isOverlaySelftest,
   listMonitors,
+  getQuestionCaptureRecording,
   onQuestionCaptureError,
+  onQuestionCaptureState,
   onOverlayPeek,
   onPresentationKeepalive,
   onPresentationStateChanged,
@@ -121,6 +123,8 @@ export function ControlWindow() {
   const [copied, setCopied] = useState(false);
   const [confirmSwitch, setConfirmSwitch] = useState(false);
   const [live, setLive] = useState(false);
+  // 画面を収録中か（App Store 2.5.14）。正は Rust の QuestionCaptureState。
+  const [recording, setRecording] = useState(false);
   const [peeking, setPeeking] = useState(false);
   const [moderation, setModeration] = useState<ModerationRules | null>(null);
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
@@ -409,6 +413,19 @@ export function ControlWindow() {
       void questionPanelReset();
     }
   }, [live, peeking, settings.emergencyPaused]);
+
+  // 撮影は発表中しか動かない。発表していなければ収録もしていない。
+  useEffect(() => {
+    if (!live) {
+      setRecording(false);
+      return;
+    }
+    void getQuestionCaptureRecording().then(setRecording).catch(() => {});
+    const unlisten = onQuestionCaptureState(setRecording);
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  }, [live]);
 
   useEffect(() => {
     const unlisten = onQuestionCaptureError((captureError) => {
@@ -1368,6 +1385,12 @@ export function ControlWindow() {
                 ? t.live.showingOn(settings.monitorName ?? t.monitor.primary)
                 : t.live.hidden}
           </p>
+          {live && recording && (
+            <p role="status" className="text-like flex items-center justify-center gap-1.5 text-center text-[11px] font-semibold leading-relaxed">
+              <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-[var(--lt-like)] animate-pulse motion-reduce:animate-none" />
+              {t.live.recording}
+            </p>
+          )}
         </section>
 
         {live && (

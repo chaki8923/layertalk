@@ -315,6 +315,10 @@ webview は、macOS が約 6 秒でページごと凍らせる**。実測（サ�
 - **質問は「流す」と「右端に残す」の両方。** `is_question` でも演出は通常コメントと同じで、
   加えて右端パネルに最大5件を積む（`OverlayWindow` の `handleInsert`）。
   流れて消えたあとも質問だけは参照できるようにするため
+- **画面収録中は、コントロール窓とメニューバーに出す**（App Store 2.5.14）。正は Rust の
+  `QuestionCaptureState::is_recording`（ストリームがあり、macOS に止められていない）。発表中だけ回る
+  `start_front_watchdog` が変化したときだけ `question-capture-state` を送り、トレイのタイトルを `● REC` にする。
+  コントロール窓は発表中に閉じられていることがあるので、**トレイ側の表示を消さないこと**
 - **「プレゼンを開始」を押すまでオーバーレイは `hide()`。** ライブ状態は Rust の `Mutex` が持ち、
   永続化しない（再起動したら必ず停止状態から始まる）
 - **開始より前の投稿は流さない。** リハーサルや前の発表で画面が埋まらないようにするため
@@ -367,10 +371,14 @@ webview は、macOS が約 6 秒でページごと凍らせる**。実測（サ�
   `?channel=app-store` を受け取り、支払方法・返金の窓口・価格の書き方を切り替える
   （`content/legal/channel.ts`）。**MAS 版から Stripe 前提の販売条件を開かせないため** —
   App Store 決済のアプリ内から別の決済手段の条件へ誘導する形になり 3.1.1 の指摘対象になる。
-  価格も Apple の価格表で決まるので「2,980円」固定はそもそも嘘になる。クエリを足すのは
-  `EventPassPurchaseSheet` と `AccountFooter` と `EventPassPanel`（`isMasBuild` のときだけ）。
+  価格も Apple の価格表で決まるので「2,980円」固定はそもそも嘘になる。クエリは
+  `apps/presenter-app/src/lib/legal-links.ts` の `legalPagePath` だけが組む（`channel` は `isMasBuild` のときだけ）。
   **プライバシーポリシーだけはチャネルで変えない** — App Store Connect に登録する URL は
   1 本で、クエリ違いで内容が変わるのは筋が悪い。両チャネルの記述を 1 枚に持たせてある
+- **法務ページの英語版は `?lang=en`（プライバシーポリシーと利用規約だけ）。** 正は日本語版で、英語版には
+  「相違があれば日本語版が優先」を出す。Accept-Language では決めない — 表示言語を決めるのは発表者で、
+  App Store Connect の英語ローカライズにも固定の URL を登録するため。**節の id と並びは日英で揃える**
+  （アンカーを共有している。`legal-content.test.ts` が固定）。日本語版を直したら英語版も直すこと
 - **Event Pass は App Store では Non-Renewing Subscription。** 期間限定アクセスを
   Consumable で売ると Purchasability Type で差し戻される。この型は「同じ Apple ID の
   全デバイスへ届ける責任は開発者にある」ので、**`Transaction.all` を見る「購入を復元」が要る**

@@ -79,6 +79,9 @@ const FRONT_WATCHDOG_INTERVAL: Duration = Duration::from_millis(1000);
 #[cfg(target_os = "macos")]
 const SCREEN_SAVER_LEVEL: isize = 1000;
 
+/// トレイの id。収録中の表示（`show_recording`）がタイトルを差し替えるときにも引く。
+const TRAY_ID: &str = "layertalk-tray";
+
 /// NSNormalWindowLevel。普通のアプリのウィンドウと同じ扱いに戻すとき使う。
 #[cfg(target_os = "macos")]
 const NORMAL_WINDOW_LEVEL: isize = 0;
@@ -841,6 +844,7 @@ fn start_front_watchdog(app: &AppHandle) {
     std::thread::spawn(move || {
         debug_log("watchdog: 開始");
         let mut keepalive: u64 = 0;
+        let mut recording = false;
 
         loop {
             std::thread::sleep(FRONT_WATCHDOG_INTERVAL);
@@ -871,6 +875,16 @@ fn start_front_watchdog(app: &AppHandle) {
             // 受け手は `ControlWindow` の `onPresentationKeepalive`。
             keepalive += 1;
             let _ = handle.emit("presentation-keepalive", keepalive);
+
+            // 収録中の表示（App Store 2.5.14）。撮影は発表中しか動かないので、判定もここに置く。
+            // macOS に止められたストリームは `is_recording` が false を返すので、表示も消える。
+            let now_recording = handle
+                .state::<question_capture::QuestionCaptureState>()
+                .is_recording();
+            if now_recording != recording {
+                recording = now_recording;
+                show_recording(&handle, recording);
+            }
 
             let app = handle.clone();
             // AppKit はメインスレッド専用。ここから直接 NSWindow を叩いてはいけない。
@@ -914,7 +928,25 @@ fn start_front_watchdog(app: &AppHandle) {
             });
         }
 
+        if recording {
+            show_recording(&handle, false);
+        }
         debug_log("watchdog: 停止");
+    });
+}
+
+/// 収録中をコントロール窓とメニューバーに出す（App Store 2.5.14「収録中は明確に示す」）。
+///
+/// コントロール窓は発表中に閉じられていることがあるので、常に見えるトレイのタイトルにも出す。
+/// フロントは `question-capture-state` を受け、開き直したときは `question_capture_recording` で取り直す。
+fn show_recording(app: &AppHandle, recording: bool) {
+    let _ = app.emit("question-capture-state", recording);
+    let handle = app.clone();
+    // NSStatusItem の変更はメインスレッドから行う。
+    let _ = app.run_on_main_thread(move || {
+        if let Some(tray) = handle.tray_by_id(TRAY_ID) {
+            let _ = tray.set_title(if recording { Some("● REC") } else { None });
+        }
     });
 }
 
@@ -1325,6 +1357,13 @@ fn question_capture_count(app: AppHandle, session_id: String) -> Result<usize, S
     question_capture::capture_count(&app_data, &session_id)
 }
 
+/// いま画面を収録しているか。コントロール窓を開き直したときの初期値に使う
+/// （以後の変化は `start_front_watchdog` が `question-capture-state` で送る）。
+#[tauri::command]
+fn question_capture_recording(app: AppHandle) -> bool {
+    app.state::<question_capture::QuestionCaptureState>().is_recording()
+}
+
 /// 最新フレームを質問IDへ固定する。
 ///
 /// **`async` を外さないこと。** Tauri の同期コマンドは**メインスレッド**で走る。
@@ -1556,7 +1595,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
         quit: quit_item.clone(),
     });
 
-    let mut builder = TrayIconBuilder::with_id("layertalk-tray")
+    let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .menu(&menu)
         .show_menu_on_left_click(true)
         .tooltip("LayerTalk")
@@ -1673,6 +1712,7 @@ pub fn run() {
             open_external_url,
             capture_question_slide,
             question_capture_count,
+            question_capture_recording,
             read_question_capture,
             storekit_product,
             storekit_purchase,

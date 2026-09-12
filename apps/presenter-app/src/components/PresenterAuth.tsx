@@ -5,6 +5,7 @@ import type { Locale } from "@layertalk/shared";
 
 import { useMessages } from "../i18n";
 import { isMasBuild, openAudiencePage } from "../lib/billing";
+import { legalPagePath } from "../lib/legal-links";
 import { supabase } from "../lib/supabase";
 
 const RESEND_COOLDOWN_MS = 60_000;
@@ -215,8 +216,8 @@ export function PresenterAuth({ locale, onSignedIn }: { locale: Locale; onSigned
           サインインできない相手はこの先の AccountFooter に到達できない。ここに置く。
         */}
         <div className="border-border mt-5 flex justify-center gap-4 border-t pt-4">
-          {/* `?channel=app-store` は AccountFooter と同じ理由。MAS 版から Stripe 前提の規約を開かせない（3.1.1）。 */}
-          {([[t.account.privacy, "/legal/privacy"], [t.account.terms, `/legal/terms${isMasBuild ? "?channel=app-store" : ""}`]] as const).map(([label, path]) => (
+          {/* クエリ（MAS の `channel`・英語の `lang`）は `legalPagePath` だけが組む。 */}
+          {([[t.account.privacy, legalPagePath("privacy", { locale, mas: isMasBuild })], [t.account.terms, legalPagePath("terms", { locale, mas: isMasBuild })]] as const).map(([label, path]) => (
             <button key={path} type="button" onClick={() => openLegal(path)}
               className="text-text-faint hover:text-brand flex items-center gap-1 text-[10px] font-semibold">
               {label}<ExternalLink size={9} />

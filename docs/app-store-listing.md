@@ -20,6 +20,7 @@ LP と App Store で言っていることがずれると、審査員が「説明
 | セカンダリカテゴリ | Business（任意） |
 | 価格 | 無料（機能は App 内課金） |
 | プライバシーポリシー URL | `<AUDIENCE_URL>/legal/privacy` |
+| プライバシーポリシー URL（英語ローカライズ） | `<AUDIENCE_URL>/legal/privacy?lang=en` |
 | サポート URL | `<AUDIENCE_URL>/support?channel=app-store` |
 | マーケティング URL | `<AUDIENCE_URL>` |
 

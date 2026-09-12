@@ -19,6 +19,9 @@ describe("PublicShell", () => {
     render(<PublicShell locale="en"><main>Content</main></PublicShell>);
     expect(screen.getByRole("navigation", { name: "Public pages" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Join" })).toHaveAttribute("href", "/#join");
-    expect(screen.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/legal/terms");
+    // 英語で見ている人には、英語版のある規約・プライバシーを英語で開く（特商法表記は日本語のみ）。
+    expect(screen.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/legal/terms?lang=en");
+    expect(screen.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/legal/privacy?lang=en");
+    expect(screen.getByRole("link", { name: "Seller information" })).toHaveAttribute("href", "/legal/tokusho");
   });
 });

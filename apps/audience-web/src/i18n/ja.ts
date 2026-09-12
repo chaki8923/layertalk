@@ -30,6 +30,19 @@ export const ja = {
       label: "サイト情報・法務・サポート",
       copyright: "© 2026 LayerTalk",
     },
+    /** 法務ページの見出し。英語版は `?lang=en`（`content/legal/locale.ts`）。 */
+    legal: {
+      eyebrow: "LayerTalk legal",
+      effective: "施行日",
+      updated: "最終更新日",
+      toc: "目次",
+      tocLabel: "この文書の目次",
+      switchLanguage: "English",
+      privacyTitle: "プライバシーポリシー | LayerTalk",
+      privacyDescription: "LayerTalkにおける個人情報と利用データの取り扱いについてご案内します。",
+      termsTitle: "利用規約 | LayerTalk",
+      termsDescription: "LayerTalkおよびEvent Passの利用条件を定める利用規約です。",
+    },
   },
 
   landing: {

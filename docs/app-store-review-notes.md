@@ -94,7 +94,8 @@ npm run create:review-account -- --delete
 > LayerTalk keeps a ScreenCaptureKit stream of the selected presentation display
 > (2 frames per second; LayerTalk's own windows and the cursor are excluded) and saves
 > a single frame only when an audience question arrives, so the slide can be embedded
-> in the exported report. macOS shows its screen-recording indicator during this time.
+> in the exported report. While recording, LayerTalk shows "● REC" in the menu bar and a
+> recording notice in the control window, in addition to macOS's own indicator.
 > Images stay on the user's Mac, are deleted after 30 days, and are never uploaded.
 > Presenting works without granting the permission.
 >
@@ -102,7 +103,7 @@ npm run create:review-account -- --delete
 > All of these work in free rooms, without any purchase:
 > - Terms: presenters agree to our Terms when they sign in, and audience members when
 >   they post. The Terms do not tolerate objectionable content or abusive users:
->   `<AUDIENCE_URL>/legal/terms?channel=app-store`
+>   `<AUDIENCE_URL>/legal/terms?channel=app-store&lang=en`
 > - Filtering: comments matching the room's blocked-word list are rejected before they
 >   are stored.
 > - Reporting: every comment has a Report button; custom stamps are reported with a
@@ -121,7 +122,7 @@ npm run create:review-account -- --delete
 > Control window → bottom → "Delete account". It is hidden while a presentation is
 > running so the dialog cannot open in front of a live slide.
 >
-> **Privacy policy**: `<AUDIENCE_URL>/legal/privacy` (also reachable in the app from
+> **Privacy policy**: `<AUDIENCE_URL>/legal/privacy?lang=en` (also reachable in the app from
 > the sign-in screen and from Account at the bottom of the control window).
 
 ---

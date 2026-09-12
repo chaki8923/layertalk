@@ -61,6 +61,7 @@ try {
       LAYERTALK_DISTRIBUTION_CHANNEL: "mas",
       // vite.config.ts の MAS ガードを満たすためだけの値。バンドルの中身の判定には効かない。
       VITE_AUDIENCE_BASE_URL: process.env.VITE_AUDIENCE_BASE_URL || "https://verify.invalid",
+      VITE_APPLE_EVENT_PASS_PRODUCT_ID: process.env.VITE_APPLE_EVENT_PASS_PRODUCT_ID || "verify.invalid.event_pass",
     },
   });
 

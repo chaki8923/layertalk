@@ -246,5 +246,14 @@ export type QuestionCaptureError = {
 export const onQuestionCaptureError = (handler: (error: QuestionCaptureError) => void) =>
   listen<QuestionCaptureError>("question-capture-error", (event) => handler(event.payload));
 
+/**
+ * 画面を収録しているか（App Store 2.5.14 の「収録中の表示」）。正は Rust で、
+ * 発表中だけ変化したときに届く。開き直したときの初期値は `getQuestionCaptureRecording` で取る。
+ */
+export const onQuestionCaptureState = (handler: (recording: boolean) => void) =>
+  listen<boolean>("question-capture-state", (event) => handler(event.payload));
+
+export const getQuestionCaptureRecording = () => invoke<boolean>("question_capture_recording");
+
 // クリックスルーは常時 ON の固定仕様。切り替える API は用意していない
 // （発表中に背面が操作できなくなる事故を作らないため）。

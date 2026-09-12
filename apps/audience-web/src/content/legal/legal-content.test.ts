@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { privacyContent } from "./privacy";
+import { privacyContentEn } from "./privacy.en";
 import { termsContent } from "./terms";
+import { termsContentEn } from "./terms.en";
 
 const config = {
   supportEmail: "support@example.com",
@@ -75,5 +77,45 @@ describe("legal content", () => {
     expect(JSON.stringify(privacy)).toContain("Stripe");
     expect(JSON.stringify(privacy)).toContain("Supabase");
     expect(JSON.stringify(privacy)).toContain("Cloudflare Turnstile");
+  });
+
+  describe("English translations", () => {
+    const ids = (document: { sections: { id: string }[] }) => document.sections.map((section) => section.id);
+
+    // アンカー（`#moderation` など）を日英で共有しているので、節の id と並びは揃える。
+    it("keeps the same sections as the Japanese originals", () => {
+      expect(ids(privacyContentEn(config))).toEqual(ids(privacyContent(config)));
+      for (const channel of ["stripe", "app-store"] as const) {
+        expect(ids(termsContentEn(config, channel))).toEqual(ids(termsContent(config, channel)));
+      }
+    });
+
+    it("keeps Stripe out of the English App Store channel terms", () => {
+      const appStore = JSON.stringify(termsContentEn(config, "app-store"));
+      expect(appStore).not.toContain("Stripe");
+      expect(appStore).not.toContain("2,980");
+      expect(appStore).toContain("App Store");
+      expect(appStore).toContain("does not renew");
+    });
+
+    it("states zero tolerance and the report response time in both channels", () => {
+      for (const channel of ["stripe", "app-store"] as const) {
+        const terms = JSON.stringify(termsContentEn(config, channel));
+        expect(terms).toContain("zero tolerance");
+        expect(terms).toContain("24 hours");
+      }
+    });
+
+    it("says the Japanese version prevails and discloses the same privacy facts", () => {
+      const privacy = privacyContentEn(config);
+      expect(privacy.notice).toContain("Japanese version prevails");
+      expect(termsContentEn(config).notice).toContain("Japanese version prevails");
+      const text = JSON.stringify(privacy);
+      for (const needle of ["App Store", "Stripe", "slide", "30 days", "Supabase", "Cloudflare Turnstile"]) {
+        expect(text).toContain(needle);
+      }
+      const numbers = privacy.sections.map((section) => Number(section.title.split(".")[0]));
+      expect(numbers).toEqual(numbers.map((_, index) => index + 1));
+    });
   });
 });

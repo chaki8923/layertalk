@@ -52,6 +52,7 @@ import { EventPassPurchaseSheet } from "./EventPassPurchaseSheet";
 import { DisplayPresetPicker } from "./DisplayPresetPicker";
 import { RecentComments } from "./RecentComments";
 import { getEventPassProduct, isMasBuild, loadCachedEntitlementLease, openAudiencePage, openEntitlementReceipt, refreshEntitlementLease, restorePurchases } from "../lib/billing";
+import { legalPagePath } from "../lib/legal-links";
 import { supabase } from "../lib/supabase";
 
 type Props = {
@@ -524,7 +525,7 @@ function EntitlementDetails({ entitlement, roomTitle, roomCode, ja, onError }: {
       </dl>
       <div className="mt-4 flex flex-wrap gap-2">
         {canOpenReceipt && <button type="button" disabled={receiptBusy} onClick={() => void openReceipt()} className="border-border text-text-muted flex items-center gap-1.5 rounded-control border px-3 py-2 text-[9px] font-bold disabled:opacity-40"><ReceiptText size={12} />{receiptBusy ? (ja ? "取得中" : "Loading") : (ja ? "領収書を開く" : "Open receipt")}</button>}
-        <button type="button" onClick={() => void openAudiencePage(isMasBuild ? "/support?channel=app-store" : "/support").catch(() => onError(ja ? "サポートページを開けませんでした" : "Could not open support"))} className="border-border text-text-muted flex items-center gap-1.5 rounded-control border px-3 py-2 text-[9px] font-bold">{ja ? "サポート" : "Support"}<ExternalLink size={11} /></button>
+        <button type="button" onClick={() => void openAudiencePage(legalPagePath("support", { locale: ja ? "ja" : "en", mas: isMasBuild })).catch(() => onError(ja ? "サポートページを開けませんでした" : "Could not open support"))} className="border-border text-text-muted flex items-center gap-1.5 rounded-control border px-3 py-2 text-[9px] font-bold">{ja ? "サポート" : "Support"}<ExternalLink size={11} /></button>
       </div>
     </div>
   );

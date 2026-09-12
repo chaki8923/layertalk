@@ -16,6 +16,7 @@
 #   MAS_INSTALLER_IDENTITY="3rd Party Mac Developer Installer: Example (TEAMID)" \
 #   MAS_PROVISION_PROFILE=~/Downloads/LayerTalk_MAS.provisionprofile \
 #   VITE_AUDIENCE_BASE_URL=https://example.com \
+#   VITE_APPLE_EVENT_PASS_PRODUCT_ID=app.layertalk.presenter.event_pass \
 #   ./scripts/build-mas.sh
 #
 # 署名は `--deep` を使わない。Apple は非推奨にしていて、入れ子の署名を
@@ -43,6 +44,10 @@ require MAS_PROVISION_PROFILE
 # ビルド時に注入される値。未設定だと `openAudiencePage` が
 # 「Audience URL is not configured」で落ち、法務リンクが全部死ぬ。
 require VITE_AUDIENCE_BASE_URL
+
+# App Store Connect の Event Pass の商品 ID。サーバの APPLE_EVENT_PASS_PRODUCT_ID と同じ値。
+# 未設定だと購入シートの価格が読めず、購入ボタンが押せないまま出荷される。
+require VITE_APPLE_EVENT_PASS_PRODUCT_ID
 
 if [ ! -f "$MAS_PROVISION_PROFILE" ]; then
   echo "error: provisioning profile not found: $MAS_PROVISION_PROFILE" >&2

@@ -5,6 +5,7 @@ import type { Locale } from "@layertalk/shared";
 
 import { useMessages } from "../i18n";
 import { deleteAccount, isMasBuild, openAudiencePage } from "../lib/billing";
+import { legalPagePath } from "../lib/legal-links";
 import { supabase } from "../lib/supabase";
 
 type Props = {
@@ -81,12 +82,11 @@ export function AccountFooter({ locale, onDeleted }: Props) {
       <p className="text-text-faint text-[10px] font-semibold tracking-wider uppercase">{t.account.title}</p>
 
       <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2">
-        {/* `?channel=app-store` は EventPassPurchaseSheet と同じ理由。MAS 版から
-            Stripe 前提の規約・返金案内を開かせない（3.1.1）。 */}
+        {/* クエリ（MAS の `channel`・英語の `lang`）は `legalPagePath` だけが組む。 */}
         {([
-          [t.account.privacy, "/legal/privacy"],
-          [t.account.terms, `/legal/terms${isMasBuild ? "?channel=app-store" : ""}`],
-          [t.account.support, `/support${isMasBuild ? "?channel=app-store" : ""}`],
+          [t.account.privacy, legalPagePath("privacy", { locale, mas: isMasBuild })],
+          [t.account.terms, legalPagePath("terms", { locale, mas: isMasBuild })],
+          [t.account.support, legalPagePath("support", { locale, mas: isMasBuild })],
         ] as const).map(([label, path]) => (
           <button
             key={path}

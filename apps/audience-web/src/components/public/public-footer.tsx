@@ -2,15 +2,18 @@ import Link from "next/link";
 
 import type { Locale } from "@layertalk/shared/i18n";
 
+import { legalDocumentQuery } from "@/content/legal/locale";
 import { messages } from "@/i18n";
 
 export function PublicFooter({ locale = "ja" }: { locale?: Locale }) {
   const footer = messages[locale].public.footer;
+  // 英語で見ている人には、英語版のある規約・プライバシーを英語で開く。
+  const legalQuery = legalDocumentQuery(locale);
   const links = [
     [footer.home, "/"],
     [footer.eventPass, "/event-pass"],
-    [footer.terms, "/legal/terms"],
-    [footer.privacy, "/legal/privacy"],
+    [footer.terms, `/legal/terms${legalQuery}`],
+    [footer.privacy, `/legal/privacy${legalQuery}`],
     [footer.commerce, "/legal/tokusho"],
     [footer.support, "/support"],
   ] as const;

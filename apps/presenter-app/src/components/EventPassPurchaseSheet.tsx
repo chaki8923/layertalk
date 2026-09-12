@@ -9,6 +9,7 @@ import {
   openAudiencePage,
   purchaseEventPass,
 } from "../lib/billing";
+import { legalPagePath } from "../lib/legal-links";
 
 type Props = {
   open: boolean;
@@ -20,22 +21,14 @@ type Props = {
 };
 
 /**
- * 法務ページは配布チャネルで中身が変わる。
- *
- * MAS 版から Stripe 前提の規約・特商法（「支払方法: Stripe Checkout」「2,980円」）を
- * 開かせると、App Store 決済のアプリ内から**別の決済手段の販売条件へ誘導している**
- * 形になり、3.1.1 の指摘対象になる。価格も Apple の価格表で決まるので、
- * 固定の円建て表記はそもそも嘘になる。`?channel=app-store` で出し分ける。
- * プライバシーポリシーだけは両チャネルの記述を1枚に持たせてあるので付けない
- * （App Store Connect に登録する URL は1本で、クエリ違いで内容が変わるのは筋が悪い）。
+ * 購入シートから開く案内ページ。クエリ（MAS の `channel`・英語の `lang`）は `legalPagePath` が組む。
+ * MAS 版から Stripe 前提の販売条件を開かせない理由（3.1.1）もそちらに書いてある。
  */
-const LEGAL_CHANNEL_QUERY = isMasBuild ? "?channel=app-store" : "";
-
 const legalLinks = [
-  ["返金・キャンセル", "Refunds and cancellation", `/support${LEGAL_CHANNEL_QUERY}#refunds`],
-  ["利用規約", "Terms", `/legal/terms${LEGAL_CHANNEL_QUERY}`],
-  ["プライバシー", "Privacy", "/legal/privacy"],
-  ["特商法表記", "Commerce disclosure", `/legal/tokusho${LEGAL_CHANNEL_QUERY}`],
+  ["返金・キャンセル", "Refunds and cancellation", "support", "refunds"],
+  ["利用規約", "Terms", "terms", undefined],
+  ["プライバシー", "Privacy", "privacy", undefined],
+  ["特商法表記", "Commerce disclosure", "tokusho", undefined],
 ] as const;
 
 /**
@@ -163,7 +156,7 @@ export function EventPassPurchaseSheet({ open, roomId, roomTitle, roomCode, loca
         <p className="text-text-muted mt-4 text-[11px] leading-5">{ja ? "決済確認後、このルームの承認制、入室パスコード、レポート、ブランド設定が利用できるようになります。" : "After payment, moderation, a passcode, reports, and branding become available in this room."}</p>
 
         <div className="mt-4 flex flex-wrap gap-x-3 gap-y-2">
-          {legalLinks.map(([labelJa, labelEn, path]) => <button key={path} type="button" onClick={() => void openAudiencePage(path).catch(() => setError(ja ? "案内ページを開けませんでした。" : "Could not open the information page."))} className="text-brand flex items-center gap-1 text-[10px] font-semibold">{ja ? labelJa : labelEn}<ExternalLink size={10} /></button>)}
+          {legalLinks.map(([labelJa, labelEn, page, hash]) => <button key={page} type="button" onClick={() => void openAudiencePage(legalPagePath(page, { locale, mas: isMasBuild, hash })).catch(() => setError(ja ? "案内ページを開けませんでした。" : "Could not open the information page."))} className="text-brand flex items-center gap-1 text-[10px] font-semibold">{ja ? labelJa : labelEn}<ExternalLink size={10} /></button>)}
         </div>
 
         {error && <p role="alert" className="text-like mt-4 text-[11px] leading-5">{error}</p>}

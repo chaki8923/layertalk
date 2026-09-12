@@ -18,6 +18,7 @@ export const en: Messages = {
     showingOn: (monitor: string) =>
       `Showing on ${monitor}. Only comments posted after you start will appear.`,
     hidden: "Nothing is shown anywhere until you start.",
+    recording: "Recording the screen to save slides (LayerTalk and the cursor are excluded)",
   },
 
   reorder: {

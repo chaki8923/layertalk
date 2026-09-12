@@ -11,8 +11,8 @@ import {
   type StoreKitTransaction,
 } from "./tauri";
 
-const PRODUCT_ID = import.meta.env.VITE_APPLE_EVENT_PASS_PRODUCT_ID
-  ?? "app.layertalk.presenter.event_pass";
+// 未設定なら vite.config.ts が MAS ビルドを落とす。既定値へ落とすと App Store Connect とずれても気付けない。
+const PRODUCT_ID = import.meta.env.VITE_APPLE_EVENT_PASS_PRODUCT_ID ?? "";
 
 export const isMasBuild = true;
 

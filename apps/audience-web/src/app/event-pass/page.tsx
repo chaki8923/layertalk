@@ -24,8 +24,8 @@ const steps = [
   "Presenterアプリでログイン",
   "対象ルームを作成または再開",
   "Event Passカードで内容を確認",
-  "Stripe Checkoutで支払い",
-  "アプリへ戻って有効化を確認",
+  "アプリの購入画面で支払い",
+  "アプリで有効化を確認",
 ];
 
 export default function EventPassPage() {
@@ -46,7 +46,7 @@ export default function EventPassPage() {
               <wbr /><span className="text-brand lt-nowrap">1イベント用</span><wbr /><span className="lt-nowrap">パス</span>
             </h1>
             <div className="mt-8 flex flex-wrap items-end gap-x-5 gap-y-2">
-              <p className="lt-nowrap"><span className="lt-num text-[32px] font-bold tracking-[-0.04em]">2,980円</span><span className="text-text-muted ml-2 text-[12px]">税込</span></p>
+              <p className="lt-nowrap"><span className="lt-num text-[32px] font-bold tracking-[-0.04em]">2,980円</span><span className="text-text-muted ml-2 text-[12px]">税込・直接配布版</span></p>
               <p className="lt-nowrap text-text-muted pb-1 text-[13px]">購入した1ルームで7日間</p>
             </div>
             <a href="#how-to-buy" className="lt-tap lt-nowrap bg-gradient-brand shadow-glow mt-8 inline-flex min-h-12 items-center gap-2 rounded-control px-5 text-[14px] font-bold text-white transition-transform active:scale-[.94]">
@@ -115,10 +115,14 @@ export default function EventPassPage() {
         <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6">
           <div className="border-border bg-bg-elev rounded-sheet border p-6 sm:p-8">
             <h2 className="text-[18px] font-bold">決済前にご確認ください</h2>
-            <p className="text-text-muted mt-3 text-[13px] leading-6"><ProtectedText text="決済にはStripeを使用します。カード情報はLayerTalkでは保持しません。購入前に返金条件と各文書をご確認ください。" /></p>
-            <div className="mt-5 flex flex-wrap gap-x-5 gap-y-3 text-[12px] font-semibold">
-              <Link className="lt-nowrap text-brand" href="/support#refunds">返金・キャンセル条件</Link><Link className="lt-nowrap" href="/legal/terms">利用規約</Link><Link className="lt-nowrap" href="/legal/privacy">プライバシーポリシー</Link><Link className="lt-nowrap" href="/legal/tokusho">特定商取引法に基づく表記</Link>
-            </div>
+            {/* 決済手段は配布チャネルで違う。このページは App Store のマーケティング URL からも辿られるので、
+                片方（Stripe）だけを「決済方法」として書かない。 */}
+            <p className="text-text-muted mt-3 text-[13px] leading-6"><ProtectedText text="お支払いは、Mac App Store版ではApp Store、直接配布版ではStripeを通じて行います。どちらの場合も、カード情報をLayerTalkが保持することはありません。購入前に、お使いの版の返金条件と各文書をご確認ください。" terms={["Mac App Store版", "App Store", "直接配布版"]} /></p>
+            <dl className="mt-5 grid gap-3 text-[12px] font-semibold">
+              <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2"><dt className="lt-nowrap text-text-faint w-full text-[11px] sm:w-auto">Mac App Store版</dt><dd className="flex flex-wrap gap-x-5 gap-y-2"><Link className="lt-nowrap text-brand" href="/support?channel=app-store#refunds">返金について</Link><Link className="lt-nowrap" href="/legal/terms?channel=app-store">利用規約</Link><Link className="lt-nowrap" href="/legal/tokusho?channel=app-store">特定商取引法に基づく表記</Link></dd></div>
+              <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2"><dt className="lt-nowrap text-text-faint w-full text-[11px] sm:w-auto">直接配布版</dt><dd className="flex flex-wrap gap-x-5 gap-y-2"><Link className="lt-nowrap text-brand" href="/support#refunds">返金・キャンセル条件</Link><Link className="lt-nowrap" href="/legal/terms">利用規約</Link><Link className="lt-nowrap" href="/legal/tokusho">特定商取引法に基づく表記</Link></dd></div>
+              <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2"><dt className="lt-nowrap text-text-faint w-full text-[11px] sm:w-auto">共通</dt><dd><Link className="lt-nowrap" href="/legal/privacy">プライバシーポリシー</Link></dd></div>
+            </dl>
           </div>
         </section>
       </main>

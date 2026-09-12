@@ -6,7 +6,8 @@ import { ArrowUp, CircleHelp } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
-import { useMessages } from "@/i18n/locale-context";
+import { legalDocumentQuery } from "@/content/legal/locale";
+import { useLocale, useMessages } from "@/i18n/locale-context";
 
 type Props = {
   onSubmit: (text: string, isQuestion: boolean) => void;
@@ -15,6 +16,7 @@ type Props = {
 
 export function Composer({ onSubmit, disabled }: Props) {
   const t = useMessages();
+  const locale = useLocale();
   const [draft, setDraft] = useState("");
   const [isQuestion, setIsQuestion] = useState(false);
 
@@ -124,7 +126,7 @@ export function Composer({ onSubmit, disabled }: Props) {
       {/* 別タブで開く。同じタブで遷移するとルームから抜けてしまう。 */}
       <p className="text-text-faint px-3 pb-0.5 text-[11px] leading-relaxed">
         {t.composer.consent.before}
-        <Link href="/legal/terms" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+        <Link href={`/legal/terms${legalDocumentQuery(locale)}`} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
           {t.composer.consent.link}
         </Link>
         {t.composer.consent.after}

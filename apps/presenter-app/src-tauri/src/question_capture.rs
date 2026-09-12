@@ -143,6 +143,11 @@ pub struct CaptureHealth {
     pub stopped: Option<String>,
 }
 
+/// 収録中の表示に使う判定。撮影していない（`None`）か、macOS が停止を報告していれば収録していない。
+fn recording(health: Option<&CaptureHealth>) -> bool {
+    health.is_some_and(|health| health.stopped.is_none())
+}
+
 #[derive(Clone)]
 struct Frame {
     width: u32,
@@ -197,6 +202,11 @@ impl QuestionCaptureState {
     #[cfg(not(target_os = "macos"))]
     pub fn health(&self) -> Option<CaptureHealth> {
         None
+    }
+
+    /// いま画面を収録しているか。**収録中の表示（コントロール窓とトレイ）の正はこれ**（App Store 2.5.14）。
+    pub fn is_recording(&self) -> bool {
+        recording(self.health().as_ref())
     }
 
     #[cfg(target_os = "macos")]
@@ -710,6 +720,17 @@ pub fn permission(request: bool) -> CapturePermission {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recording_needs_a_stream_that_macos_has_not_stopped() {
+        assert!(!super::recording(None));
+        assert!(super::recording(Some(&super::CaptureHealth::default())));
+        let stopped = super::CaptureHealth {
+            stopped: Some("user acknowledgement refused".into()),
+            ..super::CaptureHealth::default()
+        };
+        assert!(!super::recording(Some(&stopped)));
+    }
+
     use super::*;
 
     #[test]

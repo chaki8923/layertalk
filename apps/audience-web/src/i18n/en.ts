@@ -29,6 +29,18 @@ export const en: Messages = {
       label: "Site information, legal, and support",
       copyright: "© 2026 LayerTalk",
     },
+    legal: {
+      eyebrow: "LayerTalk legal",
+      effective: "Effective",
+      updated: "Last updated",
+      toc: "Contents",
+      tocLabel: "Contents of this document",
+      switchLanguage: "日本語",
+      privacyTitle: "Privacy Policy | LayerTalk",
+      privacyDescription: "How LayerTalk handles personal information and usage data.",
+      termsTitle: "Terms of Use | LayerTalk",
+      termsDescription: "The terms that govern LayerTalk and the Event Pass.",
+    },
   },
 
   landing: {
