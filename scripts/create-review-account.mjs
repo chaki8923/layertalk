@@ -25,6 +25,9 @@ import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+// Node 20 には WebSocket グローバルが無く、createClient が Realtime の初期化で落ちる
+// （CLAUDE.md の罠 #7。realtime-smoke.mjs と同じく ws を注入する。Node 22 以降なら不要）。
+import WS from "ws";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -85,6 +88,7 @@ const password = process.env.LAYERTALK_REVIEW_PASSWORD || generatePassword();
 
 const admin = createClient(url, secret, {
   auth: { persistSession: false, autoRefreshToken: false },
+  realtime: { transport: WS },
 });
 
 /**
