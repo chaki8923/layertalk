@@ -305,6 +305,11 @@ CSS の `paint-order: stroke fill` に当たる指定は無いので、**縁（�
 **画面の中で終わるアニメーションは opacity を 0 まで落とし（レイヤ自体の opacity も 0 にしておく）、
 発表中はウォッチドッグから `overlay_render::sweep_expired` で外す**
 
+**23. `CATextLayer` の枠をフォントサイズ四方にすると、絵文字の下が切れる**
+絵文字の字面はフォントサイズより背が高く、`CATextLayer` は枠の外を描かない。スタンプの絵文字を
+`size × size` の枠に入れていたため、下の数ピクセルが欠けた（アドホック署名版の実機で確認）。
+**組んだ文字列の実寸（`NSAttributedString::size`）で枠を取る**。→ `overlay_render.rs` の `glyph_frame_size`
+
 ## 設計上の決めごと
 
 - **コントロール窓の webview は、発表中だけ Rust が突いて起こし続ける**（罠 #20）。購読・ネイティブ描画への

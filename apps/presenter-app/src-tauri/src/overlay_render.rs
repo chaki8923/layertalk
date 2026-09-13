@@ -551,6 +551,16 @@ pub fn push_comment(
     }
 }
 
+/// 絵文字のレイヤの枠。**フォントサイズ四方にしないこと** — 絵文字の字面はフォントサイズより背が高く、
+/// `CATextLayer` は枠の外を描かないので下が切れる（罠 #23）。組んだ文字列の実寸に、
+/// アンチエイリアスのぶんの余白を足す。
+fn glyph_frame_size(measured: NSSize, font_size: f64) -> NSSize {
+    NSSize::new(
+        measured.width.max(font_size).ceil() + 4.0,
+        measured.height.max(font_size).ceil() + 4.0,
+    )
+}
+
 pub fn push_stamp(
     emoji: Option<&str>,
     image_png: Option<&[u8]>,
@@ -575,17 +585,7 @@ pub fn push_stamp(
         for _ in 0..count.min(200) {
             let size = 34.0 + pseudo_random_unit() * 38.0;
             let x = bounds.size.width * (0.04 + pseudo_random_unit() * 0.92);
-            let start_y = if reduced_motion {
-                bounds.size.height * (0.18 + pseudo_random_unit() * 0.55)
-            } else {
-                -size - 12.0
-            };
-            let end_y = if reduced_motion {
-                start_y
-            } else {
-                bounds.size.height * (0.62 + pseudo_random_unit() * 0.34)
-            };
-            let layer: Retained<CALayer> = if let Some(bytes) = image_png {
+            let (layer, frame_size): (Retained<CALayer>, NSSize) = if let Some(bytes) = image_png {
                 let data =
                     unsafe { NSData::dataWithBytes_length(bytes.as_ptr().cast(), bytes.len()) };
                 let Some(image) = NSImage::initWithData(mtm.alloc::<NSImage>(), &data) else {
@@ -595,21 +595,32 @@ pub fn push_stamp(
                 unsafe {
                     layer.setContents(Some(&*image));
                 }
-                layer
+                (layer, NSSize::new(size, size))
             } else {
                 let text_layer = CATextLayer::layer();
                 let value = plain_string(emoji.unwrap_or(""), size, &NSColor::whiteColor());
+                let frame_size = glyph_frame_size(value.size(), size);
                 unsafe {
                     text_layer.setString(Some(&*value));
                 }
+                // SAFETY: The linked QuartzCore framework provides this immutable alignment constant.
+                text_layer.setAlignmentMode(unsafe { objc2_quartz_core::kCAAlignmentCenter });
                 text_layer.setContentsScale(state.scale);
-                Retained::into_super(text_layer)
+                (Retained::into_super(text_layer), frame_size)
+            };
+            // 枠の高さで出発点を決める。size で決めると、背の高い絵文字が画面の下端から覗く。
+            let start_y = if reduced_motion {
+                bounds.size.height * (0.18 + pseudo_random_unit() * 0.55)
+            } else {
+                -frame_size.height - 12.0
+            };
+            let end_y = if reduced_motion {
+                start_y
+            } else {
+                bounds.size.height * (0.62 + pseudo_random_unit() * 0.34)
             };
             layer.setOpacity(opacity as f32);
-            layer.setFrame(NSRect::new(
-                NSPoint::new(x, start_y),
-                NSSize::new(size, size),
-            ));
+            layer.setFrame(NSRect::new(NSPoint::new(x, start_y), frame_size));
             let effective_duration = if reduced_motion {
                 4.0
             } else {
@@ -618,8 +629,8 @@ pub fn push_stamp(
             let animation = CABasicAnimation::animationWithKeyPath(Some(ns_string!("position.y")));
             // SAFETY: position.y is a scalar property, so both values have the required NSNumber type.
             unsafe {
-                animation.setFromValue(Some(&*NSNumber::new_f64(start_y + size / 2.0)));
-                animation.setToValue(Some(&*NSNumber::new_f64(end_y + size / 2.0)));
+                animation.setFromValue(Some(&*NSNumber::new_f64(start_y + frame_size.height / 2.0)));
+                animation.setToValue(Some(&*NSNumber::new_f64(end_y + frame_size.height / 2.0)));
             }
             animation.setDuration(effective_duration);
             // SAFETY: These immutable constants are provided by the linked QuartzCore framework.
@@ -815,6 +826,16 @@ mod tests {
         // 負値にすると塗りが縁で潰れて黒い字になる（罠 #21）。3px を 30pt に載せると 10%。
         assert!((outline_stroke_percent(30.0) - 10.0).abs() < 1e-9);
         assert!(outline_stroke_percent(18.0) > 0.0);
+    }
+
+    #[test]
+    fn emoji_frame_is_never_smaller_than_the_measured_glyph() {
+        // 絵文字の字面はフォントサイズより背が高い。実寸が上回っても枠に収まること（罠 #23）。
+        let tall = glyph_frame_size(NSSize::new(50.0, 58.0), 48.0);
+        assert!(tall.width > 50.0 && tall.height > 58.0);
+        // 実寸が小さく測れても、フォントサイズより小さい枠にはしない。
+        let small = glyph_frame_size(NSSize::new(10.0, 10.0), 48.0);
+        assert!(small.width >= 48.0 && small.height >= 48.0);
     }
 
     #[test]
