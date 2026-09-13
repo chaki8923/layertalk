@@ -29,11 +29,13 @@ serde_json = "1"
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 uuid = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 # NSWindow のレベルと collectionBehavior を直接いじるために使う。
 # Tauri の alwaysOnTop (NSFloatingWindowLevel) だけでは Keynote / PowerPoint の
 # スライドショーより前面に出られないため、objc の生メッセージ送信が必要。
 [target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"
 objc2 = "0.6"
 # オーバーレイ窓を自前の NSWindow にするために使う。tao が作る窓は他アプリの
 # 全画面 Space（Canva のプレゼン等）に入れないため（罠 #9）。

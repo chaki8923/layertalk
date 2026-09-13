@@ -25,8 +25,8 @@ export async function generateMetadata(props: PageProps<"/legal/privacy">): Prom
 export default async function PrivacyPage(props: PageProps<"/legal/privacy">) {
   const locale = resolveLegalLocale((await props.searchParams).lang);
   const document = locale === "en"
-    ? privacyContentEn({ supportEmail: legalConfig.supportEmail, effectiveDate: legalConfig.effectiveDateEn, updatedDate: legalConfig.updatedDateEn })
-    : privacyContent(legalConfig);
+    ? privacyContentEn({ supportEmail: legalConfig.supportEmail, effectiveDate: legalConfig.effectiveDateEn, updatedDate: legalConfig.privacyUpdatedDateEn })
+    : privacyContent({ ...legalConfig, updatedDate: legalConfig.privacyUpdatedDate });
   const alternateHref = `/legal/privacy${legalDocumentQuery(locale === "en" ? "ja" : "en")}`;
   return <PublicShell locale={locale}><LegalDocument document={document} locale={locale} alternateHref={alternateHref} /></PublicShell>;
 }

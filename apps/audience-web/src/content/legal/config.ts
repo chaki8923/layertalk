@@ -14,11 +14,13 @@ export const legalConfig = {
   effectiveDate: "2026年8月16日",
   updatedDate: "2026年8月16日",
   // 利用規約だけを 1.2 対応（不適切な投稿を容認しない・通報への対応期限）で改定した。
-  // プライバシーポリシーと特商法表記は変えていないので、共通の updatedDate は動かさない。
+  // 文書ごとに更新日を持ち、特商法表記の更新日は変更しない。
+  privacyUpdatedDate: "2026年9月13日",
   termsUpdatedDate: "2026年9月12日",
   // 英語版（`?lang=en`）の表示用。日付そのものは上と同じ。
   effectiveDateEn: "August 16, 2026",
   updatedDateEn: "August 16, 2026",
+  privacyUpdatedDateEn: "September 13, 2026",
   termsUpdatedDateEn: "September 12, 2026",
 };
 

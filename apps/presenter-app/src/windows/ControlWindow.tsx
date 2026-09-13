@@ -1,3 +1,5 @@
+import { RoomNotifications } from "../components/RoomNotifications";
+import { useNotifications } from "../lib/notifications";
 import {
   createRoom,
   customStampKey,
@@ -132,6 +134,10 @@ export function ControlWindow() {
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
   const [authReady, setAuthReady] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
+  const [accountId, setAccountId] = useState<string | null>(null);
+  const [transitioning, setTransitioning] = useState(false);
+  const transitionLock = useRef(false);
+  const notifications = useNotifications(accountId, settings.roomId, settings.language, buildAudienceUrl(settings.roomCode));
 
   const t = useMessages(settings.language);
   useDocumentLang(settings.language);
@@ -139,10 +145,12 @@ export function ControlWindow() {
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => {
       setSignedIn(Boolean(data.session && !data.session.user.is_anonymous));
+      setAccountId(data.session && !data.session.user.is_anonymous ? data.session.user.id : null);
       setAuthReady(true);
     });
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       setSignedIn(Boolean(session && !session.user.is_anonymous));
+      setAccountId(session && !session.user.is_anonymous ? session.user.id : null);
       setAuthReady(true);
     });
     return () => data.subscription.unsubscribe();
@@ -539,38 +547,53 @@ export function ControlWindow() {
   };
 
   const handleToggleLive = async () => {
-    if (live) {
-      captureSessionIdRef.current = null;
-      await stopPresentation();
-      if (settings.presentationSessionId) {
-        void endPresentationSession(supabase, settings.presentationSessionId).catch(() => undefined);
-      }
-      update({ presentationSessionId: null, emergencyPaused: false });
-    } else {
-      let serverSession: PresentationSession | null = null;
-      if (settings.roomId) {
-        try {
-          const session = await startPresentationSession(supabase, settings.roomId);
-          serverSession = session;
-          update({ presentationSessionId: session.id, emergencyPaused: false });
-        } catch {
-          // 通信障害で本番開始そのものを止めない。ローカルオーバーレイは開始できる。
-          update({ presentationSessionId: crypto.randomUUID(), emergencyPaused: false });
+    if (transitionLock.current) return;
+    transitionLock.current = true;
+    setTransitioning(true);
+    const invitation = live ? null : notifications.prepare();
+    try {
+      if (live) {
+        captureSessionIdRef.current = null;
+        await stopPresentation();
+        setLive(false);
+        if (settings.presentationSessionId) {
+          void endPresentationSession(supabase, settings.presentationSessionId).catch(() => undefined);
         }
+        update({ presentationSessionId: null, emergencyPaused: false });
+      } else {
+        let serverSession: PresentationSession | null = null;
+        if (settings.roomId) {
+          try {
+            const session = await startPresentationSession(supabase, settings.roomId);
+            serverSession = session;
+            update({ presentationSessionId: session.id, emergencyPaused: false });
+          } catch {
+            // 通信障害で本番開始そのものを止めない。ローカルオーバーレイは開始できる。
+            update({ presentationSessionId: crypto.randomUUID(), emergencyPaused: false });
+          }
+        }
+        const captureSessionId = serverSession
+          && isPaidPresentationSession(serverSession)
+          && settings.roomId
+          && loadQuestionCapturePreference(settings.roomId)
+          ? serverSession.id
+          : null;
+        captureSessionIdRef.current = captureSessionId;
+        // 発表を開始し直したら、前回のキャプチャ失敗は忘れて1度だけ出し直す。
+        // **`presentation-state-changed` では戻せない** — `start_presentation` は
+        // キャプチャ開始（＝エラーを投げうる）→ `set_live` の順なので、開始時のエラーを
+        // 受け取った直後に true が届いてフラグを消してしまう。
+        captureFailureShown.current = false;
+        await startPresentation(settings.monitorName, captureSessionId);
+        setLive(true);
+        void invitation?.send();
       }
-      const captureSessionId = serverSession
-        && isPaidPresentationSession(serverSession)
-        && settings.roomId
-        && loadQuestionCapturePreference(settings.roomId)
-        ? serverSession.id
-        : null;
-      captureSessionIdRef.current = captureSessionId;
-      // 発表を開始し直したら、前回のキャプチャ失敗は忘れて1度だけ出し直す。
-      // **`presentation-state-changed` では戻せない** — `start_presentation` は
-      // キャプチャ開始（＝エラーを投げうる）→ `set_live` の順なので、開始時のエラーを
-      // 受け取った直後に true が届いてフラグを消してしまう。
-      captureFailureShown.current = false;
-      await startPresentation(settings.monitorName, captureSessionId);
+    } catch (err) {
+      void invitation?.cancel();
+      setError(resolveErrorMessage(err, settings.language));
+    } finally {
+      transitionLock.current = false;
+      setTransitioning(false);
     }
   };
 
@@ -624,7 +647,7 @@ export function ControlWindow() {
    */
   const handleSwitchRoom = () => {
     // 発表中に外すとコメントが流れなくなる。開始ボタンの側から live になった場合も塞ぐ。
-    if (live) {
+    if (live || transitionLock.current) {
       setConfirmSwitch(false);
       return;
     }
@@ -880,6 +903,7 @@ export function ControlWindow() {
     room: (
       <section className="space-y-3">
         <SectionLabel>{t.room.section}</SectionLabel>
+        {accountId && settings.roomId && <RoomNotifications key={`${accountId}:${settings.roomId}`} notifications={notifications} locale={settings.language} audienceUrl={audienceUrl} disabled={live || transitioning} />}
 
         {settings.roomCode ? (
           <div className="border-border bg-bg-elev space-y-3 rounded-[20px] border p-4">
@@ -1380,7 +1404,7 @@ export function ControlWindow() {
           <motion.button
             type="button"
             onClick={() => void handleToggleLive()}
-            disabled={!settings.roomId}
+            disabled={!settings.roomId || transitioning || (!live && notifications.working)}
             whileTap={settings.roomId ? { scale: 0.98 } : undefined}
             transition={{ type: "spring", stiffness: 500, damping: 32, mass: 0.6 }}
             className={`lt-tap flex w-full items-center justify-center gap-2.5 rounded-[18px] px-4 py-4 text-[15px] font-bold text-white disabled:opacity-35 ${
@@ -1393,6 +1417,10 @@ export function ControlWindow() {
             {live ? t.live.stop : t.live.start}
           </motion.button>
 
+          {notifications.items.some(item => item.enabled) && <p className="text-text-muted text-center text-[11px]">
+            {settings.language === "ja" ? "開始時の送信先：" : "Send on start: "}
+            {notifications.items.filter(item => item.enabled).map(item => `${item.provider === "slack" ? "Slack" : "Teams"} / ${item.name}`).join(", ")}
+          </p>}
           <p className="text-text-faint text-center text-[11px] leading-relaxed">
             {!settings.roomId
               ? t.live.needsRoom

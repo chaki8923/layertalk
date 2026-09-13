@@ -1,3 +1,4 @@
+mod notifications;
 mod overlay_render;
 mod question_capture;
 #[cfg(target_os = "macos")]
@@ -1724,8 +1725,15 @@ pub fn run() {
                 .build(),
         )
         .manage(SessionState::default())
+        .manage(notifications::NotificationState::default())
         .manage(question_capture::QuestionCaptureState::default())
         .invoke_handler(tauri::generate_handler![
+            notifications::notification_list,
+            notifications::notification_save,
+            notifications::notification_delete,
+            notifications::notification_prepare,
+            notifications::notification_dispatch,
+            notifications::notification_cancel,
             list_monitors,
             set_overlay_monitor,
             is_native_overlay,

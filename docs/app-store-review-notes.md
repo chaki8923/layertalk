@@ -156,3 +156,11 @@ npm run create:review-account -- --delete
 - [ ] 2回目以降のアップロードでは、`src-tauri/tauri.mas.conf.json` の `bundleVersion` を上げた
       （App Store Connect は同じビルド番号を二度受け付けない）
 - [ ] `docs/app-store-listing.md` の値を ASC へ入れた
+
+## Optional Slack / Microsoft Teams invitation posting
+
+The Mac app includes an optional, free room invitation integration. It is off by default and does not require granting access to contacts, screen content, or channel history. In Room → Send the join URL on start, the presenter can register their own Slack Incoming Webhook or Teams Workflows webhook, inspect the fixed message, and explicitly enable sending on presentation start. The selected destination is also shown next to the start control. Each new room starts unconfigured.
+
+Only the participation URL and a fixed invitation are sent directly from the Mac. Webhook URLs and settings stay in macOS Keychain, separated by LayerTalk account and room; they are not uploaded to LayerTalk servers or included in diagnostic logs. The user can disable sending or delete the destination in the app. Existing channel posts are managed in the destination service. The app works normally without this integration or when delivery fails.
+
+Testing: register a designated review/test destination using the setup steps in `docs/channel-notifications.md`, then use Send test to post a labeled test, or enable automatic sending and start a presentation. Teams may acknowledge the HTTP request before its workflow posts the message. Test destination credentials must be supplied privately in App Review notes when submitting; do not commit credentials to the repository. Verify save, relaunch, send, and deletion in the signed sandbox build before submission.
