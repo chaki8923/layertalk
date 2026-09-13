@@ -9,6 +9,7 @@ apps/presenter-app/    発表者用 macOS Tauri v2 + Vite + React
 packages/shared/       型・Supabase クライアント・Realtime フック・デザイントークン
 supabase/migrations/   MCP で適用済みスキーマのミラー
 docs/design-system.md  デザインの唯一の正
+assets/branding/       アプリアイコンの原本（`npx tauri icon` の入力。サイトのファビコンも同じ icon.ico）
 scripts/realtime-smoke.mjs  Realtime 疎通テスト
 ```
 

@@ -633,8 +633,8 @@ LEGAL_REFUND_POLICY=デジタルコンテンツの性質上、決済完了後の
         "title": "アプリアイコンの 1024px 原本を用意する",
         "blocker": true,
         "body": [
-          "今の <code>icon.icns</code> は 512px（<code>ic09</code>）しか持っていない。512@2x（<code>ic10</code>）が無いと、Transporter が ITMS-90236 でアップロードを受け付けない。",
-          "1024×1024 の PNG を用意し、<code>apps/presenter-app</code> で <code>npx tauri icon &lt;path&gt;</code>。作り直した icns に <code>ic10</code> が入ったかを確かめる。"
+          "2026-09-13 に LayerTalk のアイコン（<code>assets/branding/layertalk-icon-v1-1024.png</code>）から作り直し済み。icns に <code>ic10</code>（1024×1024）が入り、MAS ビルドの <code>.app</code> にも同じ icns が載っていることを確認した。",
+          "以前は Tauri のひな形ロゴのままで、512px しか無かった（ITMS-90236 でアップロードが止まり、他者のロゴなので 5.2.1 にも当たる）。作り直すときは原本を差し替えて <code>apps/presenter-app</code> で <code>npx tauri icon &lt;path&gt;</code> を実行し、サイトのファビコン（<code>apps/audience-web/src/app/favicon.ico</code>）も同じ <code>icon.ico</code> にそろえる。"
         ]
       },
       {

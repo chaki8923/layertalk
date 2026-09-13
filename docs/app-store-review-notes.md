@@ -140,7 +140,8 @@ npm run create:review-account -- --delete
       適用より前に投稿されたコメントは、投稿者の記録が無いのでブロックできない）
 - [ ] Vercel の Production に数値の `APPLE_APP_ID` が入っている（無いと審査の Sandbox は通るのに、
       公開後の実購入が検証できない。`lib/server/app-store.ts` の `verifiers`）
-- [ ] `icon.icns` に 512@2x（`ic10` チャンク）が入っている（無いと ITMS-90236 でアップロードが止まる）
+- [x] `icon.icns` に 512@2x（`ic10` チャンク）が入っている（2026-09-13 に `assets/branding/layertalk-icon-v1-1024.png` から
+      作り直して確認済み。無いと ITMS-90236 でアップロードが止まる）
 - [ ] 審査用アカウントでサインインでき、ルーム作成 → 発表開始まで通る
 - [ ] 署名済み sandbox ビルドで、プライバシー／利用規約／サポート／画面収録設定の
       4つのボタンが**実際に開く**（`open_external_url` が効いているか）

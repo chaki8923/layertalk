@@ -1,0 +1,10 @@
+Generation method: built-in image_gen tool.
+Final PNG: layertalk-icon-v1-1024.png
+Output normalization: sips, 1024 x 1024, embedded sRGB profile, preserved alpha.
+
+Use case: logo-brand
+Asset type: final original macOS application icon for LayerTalk.
+Primary request: Create one beautifully simple, distinctive app icon for a live presentation app that overlays audience comments on presentation slides. Express a voice layered over a slide using a restrained overlapping composition.
+Canvas: exactly 1024 x 1024 PNG, sRGB, true alpha transparency outside the icon. Center an approximately 824 x 824 rounded-square tile with generous transparent padding of about 100px on all four sides. Rounded corners must be drawn into the artwork. No opaque canvas background and no checkerboard imitation.
+Design: a rich periwinkle-blue to soft violet rounded-square tile using brand colors #6B8AFF and #B47CFF, subtle refined depth and softly illuminated edges. Center a bold white rounded rectangular speech bubble, slightly offset up and right over one secondary lavender slide panel offset down and left. The rear panel has no tail; the front speech bubble has one short, clean tail on its lower left edge. Two short thick rounded horizontal strokes inside the white bubble, in the tile's blue-violet color, suggest flowing audience comments. Only these essential forms, spacious and balanced. The layers must be clearly readable as two separate overlapping silhouettes at small sizes. Front-on orthographic view, no tilt or isometric perspective. Sophisticated crisp curves, modest tactile relief rather than shiny glass. Minimal soft shadow contained within the transparent margin.
+Constraints: original abstract mark, no text, no letters, no watermark, no rings, no yellow, no Tauri or other company logos, no Apple logos, no Apple UI components, no screenshots, no extra stars or decoration. Deliver the icon itself, not a mockup or presentation board.
