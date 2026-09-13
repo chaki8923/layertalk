@@ -31,20 +31,21 @@ use std::cell::RefCell;
 use std::time::{Duration, Instant};
 
 use objc2::rc::Retained;
+use objc2::runtime::AnyObject;
 use objc2::MainThreadMarker;
 use objc2_app_kit::{
     NSAttributedStringNSStringDrawing, NSColor, NSFont, NSFontWeightBold, NSImage,
     NSStrokeColorAttributeName, NSStrokeWidthAttributeName, NSView,
 };
 use objc2_foundation::{
-    ns_string, NSAttributedString, NSData, NSMutableAttributedString, NSNumber, NSPoint, NSRect,
-    NSSize, NSString,
+    ns_string, NSArray, NSAttributedString, NSData, NSMutableAttributedString, NSNumber, NSPoint,
+    NSRect, NSSize, NSString,
 };
 // `setDuration` / `setFillMode` は CAAnimation 固有ではなく **CAMediaTiming プロトコル**の
 // メソッドなので、トレイトを import しないと生えてこない。
 use objc2_quartz_core::{
-    kCAFillModeForwards, kCAMediaTimingFunctionLinear, CABasicAnimation, CALayer, CAMediaTiming,
-    CAMediaTimingFunction, CATextLayer, CATransaction,
+    kCAFillModeForwards, kCAMediaTimingFunctionLinear, CABasicAnimation, CAKeyframeAnimation, CALayer,
+    CAMediaTiming, CAMediaTimingFunction, CATextLayer, CATransaction,
 };
 
 /// レーンの間隔(px)。**`FlowLayer.tsx` の `LANE_GAP_PX` と同じ値であること。**
@@ -100,14 +101,20 @@ fn top_to_bottom_origin(host_height: f64, top: f64, item_height: f64) -> f64 {
     host_height - top - item_height
 }
 
-/// 縁取り文字を組む。
+/// 縁の太さ（px）。`lt-overlay-text`（`packages/shared/styles/theme.css`）の `-webkit-text-stroke` と同じ。
+const OUTLINE_PX: f64 = 3.0;
+
+/// 縁の太さを `NSStrokeWidthAttributeName` の値（フォントサイズに対する百分率）へ直す。
 ///
-/// `lt-overlay-text`（`theme.css:121-126`）と同じ見た目にする:
-/// 白の塗り + 3px の黒縁（85%）。CSS の `-webkit-text-stroke` は輪郭の**中心**に引かれ、
-/// `NSStrokeWidthAttributeName` も同じく中心なので対応が付く。ただし後者は
-/// **フォントサイズに対する百分率で、負値のときだけ「塗りと縁の両方」**になる
-/// （正値にすると中抜きの縁だけになり、文字が読めなくなる）。
-fn outlined_string(text: &str, font_size: f64) -> Retained<NSAttributedString> {
+/// **正値にすること。** 正値は「縁だけ」、負値は「塗りと縁の両方」だが、負値では AppKit が
+/// 塗りの上に輪郭の中心で縁を引くので、白い塗りが潰れて黒い字になる（罠 #21）。
+fn outline_stroke_percent(font_size: f64) -> f64 {
+    OUTLINE_PX / font_size * 100.0
+}
+
+/// 縁取り文字の「縁だけ」を組む（塗りは透明）。白い塗りは `plain_string` で別のレイヤに組み、
+/// 上に重ねる — CSS の `paint-order: stroke fill`（縁を下に敷く）と同じ見え方になる。
+fn outline_only_string(text: &str, font_size: f64) -> Retained<NSAttributedString> {
     let ns_text = NSString::from_str(text);
     let attributed = NSMutableAttributedString::from_nsstring(&ns_text);
     let full_range = objc2_foundation::NSRange {
@@ -120,16 +127,12 @@ fn outlined_string(text: &str, font_size: f64) -> Retained<NSAttributedString> {
         attributed.addAttribute_value_range(objc2_app_kit::NSFontAttributeName, &*font, full_range);
         attributed.addAttribute_value_range(
             objc2_app_kit::NSForegroundColorAttributeName,
-            &*NSColor::whiteColor(),
+            &*NSColor::clearColor(),
             full_range,
         );
-
         let stroke_color = NSColor::colorWithSRGBRed_green_blue_alpha(0.0, 0.0, 0.0, 0.85);
         attributed.addAttribute_value_range(NSStrokeColorAttributeName, &*stroke_color, full_range);
-
-        // 3px 相当を百分率へ。負値 = 塗りと縁の両方を描く。
-        let percent = -(3.0 / font_size) * 100.0;
-        let width = NSNumber::new_f64(percent);
+        let width = NSNumber::new_f64(outline_stroke_percent(font_size));
         attributed.addAttribute_value_range(NSStrokeWidthAttributeName, &*width, full_range);
     }
 
@@ -207,8 +210,8 @@ pub fn clear() {
 /// 完了ブロックを使わないのは、レイヤ1枚ごとに Rust のクロージャを Objective-C の
 /// ブロックとして生かし続けることになり、`STATE` への借用と寿命が絡むから
 /// （`block2` 自体は CALayer が既に引き込んでいるので、依存の話ではない）。
-/// 押されたときに掃くだけで足りる — 流れ終わったレイヤは画面外に居るので、
-/// 残っていても見えない。
+/// 押されたときに加えて、発表中はウォッチドッグからも 1 秒ごとに掃く（`sweep_expired`）。
+/// 押されたときだけだと、画面の中で止まるスタンプが次の投稿まで残る（罠 #22）。
 fn sweep(state: &mut RenderState) {
     let now = Instant::now();
     state.live.retain(|entry| {
@@ -224,6 +227,18 @@ fn sweep(state: &mut RenderState) {
         let entry = state.live.remove(0);
         entry.layer.removeFromSuperlayer();
     }
+}
+
+/// 期限切れのレイヤを外す。発表中は `start_front_watchdog` が 1 秒ごとに呼ぶ。
+pub fn sweep_expired() {
+    if MainThreadMarker::new().is_none() {
+        return;
+    }
+    STATE.with(|cell| {
+        if let Some(state) = cell.borrow_mut().as_mut() {
+            sweep(state);
+        }
+    });
 }
 
 /// コメントを1件、右から左へ流す。
@@ -302,32 +317,49 @@ fn push_flow_comment(
         let jitter = (pseudo_random_unit() * 2.0 - 1.0) * (LANE_GAP_PX / 2.0);
         let top = usable_top + lane as f64 * (lane_height + LANE_GAP_PX) + jitter;
 
-        let layer = CATextLayer::layer();
-        let attributed = outlined_string(text, font_size);
-        unsafe {
-            layer.setString(Some(&*attributed));
-            layer.setContentsScale(state.scale);
-            layer.setOpacity(opacity as f32);
-            // 見積もり幅では足りないことがあるので、実際に要る幅を取る。
-            // ここで切り詰めると末尾が消える（140文字でも省略しない方針）。
-            let measured = attributed.size();
-            let w = measured.width.max(width) + font_size; // 縁のぶん少し広く
-            let h = lane_height.max(measured.height);
-            let y = top_to_bottom_origin(viewport_h, top, h);
-            let x = if reduced_motion {
-                24.0 + pseudo_random_unit() * (viewport_w - w - 48.0).max(0.0)
-            } else {
-                viewport_w
-            };
-            layer.setFrame(NSRect::new(NSPoint::new(x, y), NSSize::new(w, h)));
+        let fill_text = plain_string(text, font_size, &NSColor::whiteColor());
+        let outline_text = outline_only_string(text, font_size);
+        // 見積もり幅では足りないことがあるので、実際に要る幅を取る。
+        // ここで切り詰めると末尾が消える（140文字でも省略しない方針）。
+        let measured = fill_text.size();
+        let w = measured.width.max(width) + font_size; // 縁と影のぶん少し広く
+        let h = lane_height.max(measured.height);
+        let y = top_to_bottom_origin(viewport_h, top, h);
+        let x = if reduced_motion {
+            24.0 + pseudo_random_unit() * (viewport_w - w - 48.0).max(0.0)
+        } else {
+            viewport_w
+        };
 
-            let key_path = if reduced_motion {
-                "opacity"
-            } else {
-                "position.x"
-            };
-            let key_path = NSString::from_str(key_path);
-            let animation = CABasicAnimation::animationWithKeyPath(Some(&key_path));
+        // 縁（下）と塗り（上）を別のレイヤに分け、入れ物ごと動かす（罠 #21）。
+        // 影は入れ物に付けて、縁と塗りを合わせた字面に落とす（CSS の text-shadow と同じ）。
+        let container = CALayer::layer();
+        container.setFrame(NSRect::new(NSPoint::new(x, y), NSSize::new(w, h)));
+        container.setOpacity(opacity as f32);
+        container.setShadowColor(Some(&NSColor::blackColor().CGColor()));
+        container.setShadowOpacity(0.6);
+        container.setShadowRadius(4.0);
+        container.setShadowOffset(NSSize::new(0.0, -2.0));
+        let inner = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(w, h));
+        for attributed in [&outline_text, &fill_text] {
+            let layer = CATextLayer::layer();
+            unsafe {
+                layer.setString(Some(&**attributed));
+            }
+            layer.setContentsScale(state.scale);
+            layer.setFrame(inner);
+            container.addSublayer(&layer);
+        }
+
+        let key_path = if reduced_motion {
+            "opacity"
+        } else {
+            "position.x"
+        };
+        let key_path = NSString::from_str(key_path);
+        let animation = CABasicAnimation::animationWithKeyPath(Some(&key_path));
+        // SAFETY: position.x and opacity are scalar properties, so NSNumber values have the required type.
+        unsafe {
             if reduced_motion {
                 animation.setFromValue(Some(&*NSNumber::new_f64(opacity)));
                 animation.setToValue(Some(&*NSNumber::new_f64(0.0)));
@@ -338,28 +370,31 @@ fn push_flow_comment(
                 animation.setFromValue(Some(&*NSNumber::new_f64(from)));
                 animation.setToValue(Some(&*NSNumber::new_f64(to)));
             }
-            let effective_duration = if reduced_motion { 6.0 } else { duration_sec };
-            animation.setDuration(effective_duration);
+        }
+        let effective_duration = if reduced_motion { 6.0 } else { duration_sec };
+        animation.setDuration(effective_duration);
+        // SAFETY: These immutable constants are provided by the linked QuartzCore framework.
+        unsafe {
             animation.setTimingFunction(Some(&CAMediaTimingFunction::functionWithName(
                 kCAMediaTimingFunctionLinear,
             )));
             // 終わった位置（画面外）に留める。既定だと開始位置へ戻って再表示される。
-            animation.setRemovedOnCompletion(false);
             animation.setFillMode(kCAFillModeForwards);
-
-            // 追加とアニメーションを 1 トランザクションにまとめ、暗黙アニメーションを切る。
-            // 切らないと、レイヤ追加時のフェードが縁取りの見た目を濁らせる。
-            CATransaction::begin();
-            CATransaction::setDisableActions(true);
-            state.root.addSublayer(&layer);
-            layer.addAnimation_forKey(&animation, Some(ns_string!("flow")));
-            CATransaction::commit();
-
-            state.live.push(LiveLayer {
-                layer: Retained::into_super(layer),
-                expires_at: now + Duration::from_secs_f64(effective_duration + 0.2),
-            });
         }
+        animation.setRemovedOnCompletion(false);
+
+        // 追加とアニメーションを 1 トランザクションにまとめ、暗黙アニメーションを切る。
+        // 切らないと、レイヤ追加時のフェードが縁取りの見た目を濁らせる。
+        CATransaction::begin();
+        CATransaction::setDisableActions(true);
+        state.root.addSublayer(&container);
+        container.addAnimation_forKey(&animation, Some(ns_string!("flow")));
+        CATransaction::commit();
+
+        state.live.push(LiveLayer {
+            layer: container,
+            expires_at: now + Duration::from_secs_f64(effective_duration + 0.2),
+        });
     });
 }
 
@@ -380,6 +415,27 @@ fn plain_string(text: &str, font_size: f64, color: &NSColor) -> Retained<NSAttri
         );
     }
     Retained::into_super(attributed)
+}
+
+fn as_object(value: &NSNumber) -> &AnyObject {
+    value
+}
+
+/// 出現と消滅の opacity。`StampLayer.tsx` / `BubbleLayer.tsx` と同じく、出だしで現れて終盤で消える
+/// （keyTimes も同じ値）。位置のアニメーションと同じ長さで並べて付ける。
+fn fade_in_out(opacity: f64, duration: f64) -> Retained<CAKeyframeAnimation> {
+    let animation = CAKeyframeAnimation::animationWithKeyPath(Some(ns_string!("opacity")));
+    let values = [0.0, opacity, opacity, opacity, 0.0].map(NSNumber::new_f64);
+    let objects: Vec<&AnyObject> = values.iter().map(|value| as_object(value)).collect();
+    // SAFETY: opacity is a scalar property, so an array of NSNumber has the required type.
+    unsafe { animation.setValues(Some(&NSArray::from_slice(&objects))) };
+    let key_times = [0.0, 0.03, 0.7, 0.82, 1.0].map(NSNumber::new_f64);
+    animation.setKeyTimes(Some(&NSArray::from_retained_slice(&key_times)));
+    animation.setDuration(duration);
+    animation.setRemovedOnCompletion(false);
+    // SAFETY: The linked QuartzCore framework provides this immutable constant.
+    unsafe { animation.setFillMode(kCAFillModeForwards) };
+    animation
 }
 
 fn push_bubble_comment(
@@ -464,10 +520,14 @@ fn push_bubble_comment(
             animation.setFillMode(kCAFillModeForwards);
         }
         animation.setRemovedOnCompletion(false);
+        let fade = fade_in_out(opacity, effective_duration);
         CATransaction::begin();
         CATransaction::setDisableActions(true);
         state.root.addSublayer(&bubble);
         bubble.addAnimation_forKey(&animation, Some(ns_string!("bubble")));
+        bubble.addAnimation_forKey(&fade, Some(ns_string!("fade")));
+        // 終わった状態で見えないように、レイヤ自体の opacity も 0 にしておく（罠 #22）。
+        bubble.setOpacity(0.0);
         CATransaction::commit();
         state.live.push(LiveLayer {
             layer: bubble,
@@ -570,8 +630,15 @@ pub fn push_stamp(
                 animation.setFillMode(kCAFillModeForwards);
             }
             animation.setRemovedOnCompletion(false);
+            let fade = fade_in_out(opacity, effective_duration);
+            CATransaction::begin();
+            CATransaction::setDisableActions(true);
             state.root.addSublayer(&layer);
             layer.addAnimation_forKey(&animation, Some(ns_string!("stamp")));
+            layer.addAnimation_forKey(&fade, Some(ns_string!("fade")));
+            // 画面の中で止まるので、最後は必ず見えなくしておく（罠 #22）。
+            layer.setOpacity(0.0);
+            CATransaction::commit();
             state.live.push(LiveLayer {
                 layer,
                 expires_at: Instant::now() + Duration::from_secs_f64(effective_duration + 0.2),
@@ -741,6 +808,13 @@ mod tests {
     fn top_origin_is_flipped_into_appkit_coordinates() {
         // 上から 100px、高さ 40px のものは、高さ 1000px の中では下から 860px。
         assert_eq!(top_to_bottom_origin(1000.0, 100.0, 40.0), 860.0);
+    }
+
+    #[test]
+    fn outline_is_drawn_as_a_positive_stroke() {
+        // 負値にすると塗りが縁で潰れて黒い字になる（罠 #21）。3px を 30pt に載せると 10%。
+        assert!((outline_stroke_percent(30.0) - 10.0).abs() < 1e-9);
+        assert!(outline_stroke_percent(18.0) > 0.0);
     }
 
     #[test]

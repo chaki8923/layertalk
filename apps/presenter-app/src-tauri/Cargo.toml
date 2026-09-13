@@ -47,6 +47,8 @@ objc2-app-kit = { version = "0.3", features = [
   "NSGraphics",
   "NSColor",
   "NSResponder",
+  # 質問パネルのクリック（`mouseDown:` / `acceptsFirstMouse:`）を受けるため。
+  "NSEvent",
   "NSScreen",
   "NSView",
   "NSImage",

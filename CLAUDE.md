@@ -293,6 +293,18 @@ webview は、macOS が約 6 秒でページごと凍らせる**。実測（サ�
 計測は `LAYERTALK_DEBUG_OVERLAY=1 LAYERTALK_OVERLAY_SELFTEST=pump-control-live` と
 `scripts/pump-poke-outside.mjs`（ログは `pump/control-*` を grep）。
 
+**21. `NSStrokeWidthAttributeName` を負にすると、縁が塗りを潰して文字が黒くなる**
+負値は「塗りと縁を両方描く」指定だが、AppKit は塗りの**上に**、輪郭の中心で縁を引く。3px の黒縁（85%）を
+載せると白い塗りがほとんど残らず、横流しのコメントが黒い字になった（アドホック署名版の実機で確認）。
+CSS の `paint-order: stroke fill` に当たる指定は無いので、**縁（正値＝縁だけ）と塗り（白）を 2 枚の
+`CATextLayer` に分け、縁を下に敷く**。→ `overlay_render.rs` の `push_flow_comment`
+
+**22. `kCAFillModeForwards` で止めたレイヤは、外すまで最後の位置に残る**
+`setRemovedOnCompletion(false)` + forwards は「終わった状態を保つ」指定なので、画面の中で止まるスタンプは
+上部に残り続けた。しかも `sweep` を次の投稿のときにしか呼んでおらず、最後のスタンプがいつまでも消えなかった。
+**画面の中で終わるアニメーションは opacity を 0 まで落とし（レイヤ自体の opacity も 0 にしておく）、
+発表中はウォッチドッグから `overlay_render::sweep_expired` で外す**
+
 ## 設計上の決めごと
 
 - **コントロール窓の webview は、発表中だけ Rust が突いて起こし続ける**（罠 #20）。購読・ネイティブ描画への
@@ -301,6 +313,11 @@ webview は、macOS が約 6 秒でページごと凍らせる**。実測（サ�
 - **コメント／スタンプの全面オーバーレイはクリックスルー常時 ON。** 切り替え UI も
   ショートカットも持たない。操作できるのは右端の質問窓の範囲だけで、そこで
   展開／折りたたみを操作できる（スライド全面の操作を塞がないため）
+- **質問パネルの開閉はパネル自身のクリックで行う**（macOS）。この窓だけ `setIgnoresMouseEvents(false)` にし、
+  `question_render.rs` の `QuestionPanelView` が `acceptsFirstMouse:` を true にしてクリックを受ける
+  （nonactivating な NSPanel なので、スライドショーからフォーカスを奪わない）。展開中の窓はカードの分の
+  高さしか取らず、折りたたみ中は右上の小さなタブだけにする — 画面の高さいっぱいに取ると、
+  右端のスライドまで操作できなくなる
 - **参加 QR は手動トグルだけ。** 自動表示はしない（スライドを勝手に隠さない）。
   URL は `VITE_AUDIENCE_BASE_URL`（未設定なら localhost）で、LAN IP の自動検出はしない
 - **フキダシは白の不透明板。** 縁取り文字（`.lt-overlay-text`）とは併用しない（白板の上に

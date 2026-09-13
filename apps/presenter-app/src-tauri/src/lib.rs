@@ -21,7 +21,10 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 const OVERLAY: &str = "overlay";
 const CONTROL: &str = "control";
 const QUESTIONS: &str = "questions";
+// macOS の質問パネルの大きさは `question_render` が持つ。これは macOS 以外の webview 窓用。
+#[cfg(not(target_os = "macos"))]
 const QUESTION_PANEL_WIDTH: f64 = 430.0;
+#[cfg(not(target_os = "macos"))]
 const QUESTION_TAB_WIDTH: f64 = 56.0;
 
 /// 発表中かどうか。ウィンドウの表示・非表示は Rust の責務なので、
@@ -179,7 +182,7 @@ mod native_overlay {
 
     /// ネイティブ描画を載せる窓は 2 つある。性質が違うので作り方も分ける。
     ///   * `Overlay` — 全面・クリックスルー。素の `NSWindow`
-    ///   * `Panel`   — 右端・クリックスルー。`NSPanel` の nonactivating にして、
+    ///   * `Panel`   — 右端。開閉のクリックだけ受ける。`NSPanel` の nonactivating にして、
     ///     スライドショーからフォーカスを奪わないようにする
     #[derive(Copy, Clone, PartialEq, Eq)]
     pub enum Hosted {
@@ -270,8 +273,10 @@ mod native_overlay {
         // 与えていないが、明示しておく。
         unsafe { window.setReleasedWhenClosed(false) };
 
-        // 発表中の操作を妨げないよう、どちらの表示もクリックスルーにする。
-        window.setIgnoresMouseEvents(true);
+        // 全面オーバーレイはクリックスルー固定（発表中の操作を妨げない）。
+        // 質問パネルだけは開閉のクリックを受ける。窓はカードの分の大きさしか取らない
+        // （`question_render::frame_for`）ので、右端のスライドの操作は塞がない。
+        window.setIgnoresMouseEvents(kind == Hosted::Overlay);
 
         let raw = Retained::into_raw(window);
         slots(kind).0.store(raw as usize, Ordering::Relaxed);
@@ -405,36 +410,29 @@ mod native_overlay {
         show(Hosted::Overlay, frame);
     }
 
-    /// 質問パネル（右端の縦帯）を表示する。幅はポイント単位。
-    pub fn show_panel(target: Option<&str>, width: f64) {
+    /// 最後に質問パネルを出したモニター。パネル自身のクリックで開閉したとき、
+    /// どの画面の右端へ出し直すかをここから引く（ビューは `AppHandle` を持たない）。
+    static PANEL_TARGET: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+    /// 質問パネルを表示する。大きさは `question_render` の状態（展開／折りたたみ・件数）で決まる。
+    pub fn show_panel(target: Option<&str>) {
         let Some(mtm) = MainThreadMarker::new() else {
             return;
         };
+        if let Ok(mut remembered) = PANEL_TARGET.lock() {
+            *remembered = target.map(str::to_owned);
+        }
         let Some(screen) = screen_frame(mtm, target) else {
             super::debug_log("native/panel: 表示できる画面が見つかりません");
             return;
         };
-        let frame = NSRect::new(
-            NSPoint::new(screen.origin.x + screen.size.width - width, screen.origin.y),
-            NSSize::new(width, screen.size.height),
-        );
-        show(Hosted::Panel, frame);
+        show(Hosted::Panel, super::question_render::frame_for(screen));
     }
 
-    /// いまの質問パネルの幅（ポイント）。モニターを貼り直すときに、
-    /// 展開中／折りたたみ中のどちらだったかを保つために使う。
-    pub fn panel_width() -> Option<f64> {
-        MainThreadMarker::new()?;
-        existing(Hosted::Panel).map(|window| window.frame().size.width)
-    }
-
-    /// いまの幅を保ったまま、指定モニターの右端へ貼り直す。
-    /// 載せ替えは済んでいるので tao 窓のポインタは要らない。
-    pub fn refit_panel(target: Option<&str>) {
-        let Some(width) = panel_width() else {
-            return;
-        };
-        show_panel(target, width);
+    /// 最後に出したモニターのまま出し直す。パネル内のクリックで開閉したときに呼ばれる。
+    pub fn reshow_panel() {
+        let target = PANEL_TARGET.lock().ok().and_then(|guard| guard.clone());
+        show_panel(target.as_deref());
     }
 
     /// 位置を変えずに最前面へ出し直すだけ。Space の切り替えに追従するために
@@ -679,8 +677,12 @@ fn refit_question_panel(app: &AppHandle) {
 
     #[cfg(target_os = "macos")]
     {
+        // まだ出していない（最初の質問が来ていない・発表していない）パネルを勝手に出さない。
+        if !is_panel_shown(app) {
+            return;
+        }
         let _ = app.run_on_main_thread(move || {
-            native_overlay::refit_panel(monitor.as_deref());
+            native_overlay::show_panel(monitor.as_deref());
         });
     }
 
@@ -702,33 +704,17 @@ fn refit_question_panel(app: &AppHandle) {
     }
 }
 
-/// 質問パネルを指定幅で出す。
-///
-/// macOS ではオーバーレイと同じ理由で自前の窓（nonactivating な `NSPanel`）に
-/// 載せ替える。tao の窓では他アプリの全画面 Space に入れない（罠 #9）。
+/// 質問パネルを指定幅で出す（macOS 以外）。macOS は `native_overlay::show_panel` が
+/// 自前の NSPanel に出し、大きさは `question_render` の状態で決まる。
+#[cfg(not(target_os = "macos"))]
 fn show_question_panel(app: &AppHandle, logical_width: f64) {
     let monitor = target_monitor(app);
-
-    #[cfg(target_os = "macos")]
-    {
-        let _ = app.run_on_main_thread(move || {
-            native_overlay::show_panel(monitor.as_deref(), logical_width);
-            debug_log(&format!(
-                "native/panel/show: {}",
-                native_overlay::state(native_overlay::Hosted::Panel)
-            ));
-        });
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        let Some(questions) = app.get_webview_window(QUESTIONS) else {
-            return;
-        };
-        elevate_overlay_window(&questions);
-        fit_question_panel_to_monitor(&questions, monitor.as_deref(), logical_width);
-        let _ = questions.show();
-    }
+    let Some(questions) = app.get_webview_window(QUESTIONS) else {
+        return;
+    };
+    elevate_overlay_window(&questions);
+    fit_question_panel_to_monitor(&questions, monitor.as_deref(), logical_width);
+    let _ = questions.show();
 }
 
 /// オーバーレイはクリックスルー固定。切り替える手段は用意しない。
@@ -894,6 +880,11 @@ fn start_front_watchdog(app: &AppHandle) {
                 if !is_live(&app) {
                     return;
                 }
+
+                // 期限切れのレイヤを外す。押されたときにしか掃かないと、画面の中で止まる
+                // スタンプが次の投稿まで残る（罠 #22）。コントロール窓の判定より前に置く。
+                #[cfg(target_os = "macos")]
+                overlay_render::sweep_expired();
 
                 // コントロール窓を操作しているあいだは触らない。⇧⌘L で前に出した窓を
                 // 1 秒後に自分で覆い隠してしまうため（「呼び出し中だけ最前面」の決めごと）。
@@ -1179,9 +1170,16 @@ fn question_panel_push(app: AppHandle, text: String) {
     #[cfg(target_os = "macos")]
     {
         let monitor = target_monitor(&app);
+        // ウォッチドッグが毎周前面へ出し直す対象に入れる。立てないと全画面の Space に追従しない。
+        set_panel_shown(&app, true);
         let _ = app.run_on_main_thread(move || {
-            native_overlay::show_panel(monitor.as_deref(), QUESTION_PANEL_WIDTH);
+            // 折りたたみ中なら折りたたんだまま未読数を積む。大きさは件数で変わるので、積んでから出す。
             question_render::push(&text);
+            native_overlay::show_panel(monitor.as_deref());
+            debug_log(&format!(
+                "native/panel/show: {}",
+                native_overlay::state(native_overlay::Hosted::Panel)
+            ));
         });
     }
     #[cfg(not(target_os = "macos"))]
@@ -1460,12 +1458,23 @@ fn set_question_panel_expanded(app: AppHandle, expanded: bool) {
         return;
     }
 
-    let width = if expanded {
-        QUESTION_PANEL_WIDTH
-    } else {
-        QUESTION_TAB_WIDTH
-    };
-    show_question_panel(&app, width);
+    #[cfg(target_os = "macos")]
+    {
+        let monitor = target_monitor(&app);
+        let _ = app.run_on_main_thread(move || {
+            question_render::set_expanded(expanded);
+            native_overlay::show_panel(monitor.as_deref());
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let width = if expanded {
+            QUESTION_PANEL_WIDTH
+        } else {
+            QUESTION_TAB_WIDTH
+        };
+        show_question_panel(&app, width);
+    }
     set_panel_shown(&app, true);
 }
 
