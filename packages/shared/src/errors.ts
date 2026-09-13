@@ -18,6 +18,11 @@ export type LayerTalkErrorCode =
   | "room_not_found"
   | "room_create_failed"
   | "room_join_failed"
+  /**
+   * パスコード違い。ブロック・匿名サインイン・通信の失敗（= room_join_failed）と必ず区別する。
+   * 一緒くたにすると、正しいパスコードを何度も打ち直させることになる。
+   */
+  | "room_passcode_invalid"
   | "room_language_failed"
   | "comment_empty"
   | "comment_too_long"
@@ -53,6 +58,7 @@ const ja: Record<LayerTalkErrorCode, string> = {
   room_not_found: "このルームは見つかりませんでした",
   room_create_failed: "ルームの作成に失敗しました",
   room_join_failed: "ルームに入室できませんでした。コードとパスコードを確認してください",
+  room_passcode_invalid: "パスコードが違います",
   room_language_failed: "表示言語をルームに保存できませんでした",
   comment_empty: "コメントが空です",
   comment_too_long: `コメントは${COMMENT_MAX_LENGTH}文字までです`,
@@ -86,6 +92,7 @@ const en: Record<LayerTalkErrorCode, string> = {
   room_not_found: "That room no longer exists",
   room_create_failed: "Could not create the room",
   room_join_failed: "Could not join the room. Check the code and passcode",
+  room_passcode_invalid: "Incorrect passcode",
   room_language_failed: "Could not save the language to the room",
   comment_empty: "Your comment is empty",
   comment_too_long: `Comments can be up to ${COMMENT_MAX_LENGTH} characters`,
@@ -144,6 +151,11 @@ function hasErrorCode(err: unknown): err is { code: LayerTalkErrorCode } {
     typeof (err as { code: unknown }).code === "string" &&
     (err as { code: string }).code in ja
   );
+}
+
+/** 投げられたものが、指定したコードの LayerTalkError か。`instanceof` を使わない理由は `hasErrorCode` と同じ。 */
+export function isLayerTalkError(err: unknown, code: LayerTalkErrorCode): boolean {
+  return hasErrorCode(err) && err.code === code;
 }
 
 /**

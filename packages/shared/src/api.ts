@@ -36,7 +36,12 @@ export async function joinRoom(
     p_code: normalizeRoomCode(code),
     p_passcode: passcode || null,
   });
-  if (error) throw new LayerTalkError("room_join_failed", error.message);
+  if (error) {
+    // パスコード違いだけは別のコードで返す（`invalid_password` = SQLSTATE 28P01）。
+    // ブロックされた identity もここで落ちるが、それは `room_join_failed` に丸めて観客には伝えない。
+    const wrongPasscode = error.code === "28P01" || error.message === "invalid room passcode";
+    throw new LayerTalkError(wrongPasscode ? "room_passcode_invalid" : "room_join_failed", error.message);
+  }
   const room = data?.[0];
   return room ? ({ ...room, requires_passcode: Boolean(passcode) } as PublicRoom) : null;
 }
@@ -366,6 +371,15 @@ export async function updateModerationRules(
   return data;
 }
 
+/**
+ * 入室パスコードを、DB の `private.normalize_room_passcode` と同じ形にそろえる
+ * （NFKC で全角英数字を半角に、前後の半角スペースを除く。大文字と小文字はそのまま）。
+ * 保存も照合もサーバ側で正規化するので、これは「実際に何が保存されたか」を見せるためだけに使う。
+ */
+export function normalizeRoomPasscode(passcode: string): string {
+  return passcode.normalize("NFKC").replace(/^ +| +$/g, "");
+}
+
 export async function setRoomPasscode(client: LayerTalkClient, roomId: string, passcode?: string) {
   const { error } = await client.rpc("set_room_passcode", { p_room_id: roomId, p_passcode: passcode || null });
   if (error) throw new LayerTalkError("moderation_failed", error.message);
@@ -463,6 +477,15 @@ export async function endPresentationSession(client: LayerTalkClient, sessionId:
   return data;
 }
 
+/**
+ * 発表レポートに載せる質問か。**承認済みだけ。** 承認待ち・非表示の質問はスライドにも出ていない
+ * （承認されなかった質問はスライド画像も保存しない）ので、レポートにも残さない。
+ * 件数・HTML・画像の読み込みを必ずこの条件でそろえること。
+ */
+export function isReportQuestion(comment: { is_question: boolean; status: string }): boolean {
+  return comment.is_question && comment.status === "approved";
+}
+
 export async function fetchPresentationReport(
   client: LayerTalkClient,
   session: PresentationSession,
@@ -483,7 +506,7 @@ export async function fetchPresentationReport(
     minuteCounts.set(minute, (minuteCounts.get(minute) ?? 0) + stamp.count);
   }
   const peakMinute = [...minuteCounts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0] ?? null;
-  const questions = (comments ?? []).filter((comment) => comment.is_question);
+  const questions = (comments ?? []).filter(isReportQuestion);
   return {
     session,
     comments: comments ?? [],

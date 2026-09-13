@@ -55,6 +55,12 @@ export type UseCommentsOptions = {
   limit?: number;
   /** 発表者の承認キュー用にpending/hiddenも保持する。観客はfalse。 */
   includeModerated?: boolean;
+  /**
+   * 承認待ちの新着1件ごとに呼ばれる（`includeModerated` のときだけ）。演出には使わない。
+   * 発表者側が「届いた時点」を知るためのもの（質問スライドの取り置き）。承認されると
+   * あらためて `onInsert` が呼ばれる。
+   */
+  onPending?: (comment: Comment) => void;
 };
 
 export type UseCommentsResult = {
@@ -79,6 +85,7 @@ export function useComments({
   client,
   roomId,
   onInsert,
+  onPending,
   limit = INITIAL_COMMENT_LIMIT,
   includeModerated = false,
 }: UseCommentsOptions): UseCommentsResult {
@@ -92,6 +99,10 @@ export function useComments({
   useEffect(() => {
     onInsertRef.current = onInsert;
   }, [onInsert]);
+  const onPendingRef = useRef(onPending);
+  useEffect(() => {
+    onPendingRef.current = onPending;
+  }, [onPending]);
 
   /**
    * 演出を発火済みのコメント id。
@@ -178,13 +189,20 @@ export function useComments({
       setError(null);
       const rows = data ?? [];
 
-      for (const row of rows) markSeen(row.id);
+      // markSeen は立てると同時に「初めて見たか」を返すので、ここで控えておく。
+      const fresh = rows.filter((row) => markSeen(row.id));
       if (announce) {
         // id は既知でも、切断中に pending -> approved へ変わった可能性がある。
         // approvedIds で状態遷移を判定し、古い順に新規承認だけを流す。
         for (const row of [...rows].reverse()) {
           if (registerApprovedComment(row, approvedIdsRef.current)) {
             onInsertRef.current?.(row);
+          }
+        }
+        // 購読の隙間や凍結中に届いていた承認待ち。INSERT のイベントで拾えなかった分だけが fresh に残る。
+        if (includeModerated) {
+          for (const row of [...fresh].reverse()) {
+            if (row.status === "pending") onPendingRef.current?.(row);
           }
         }
       } else {
@@ -214,6 +232,8 @@ export function useComments({
           setComments((prev) => [comment, ...prev]);
           if (registerApprovedComment(comment, approvedIdsRef.current)) {
             onInsertRef.current?.(comment);
+          } else if (comment.status === "pending") {
+            onPendingRef.current?.(comment);
           }
         },
       )

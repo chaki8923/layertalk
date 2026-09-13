@@ -111,6 +111,17 @@ export type CaptureQuestionResult = {
 export const captureQuestionSlide = (questionId: string) =>
   invoke<CaptureQuestionResult>("capture_question_slide", { questionId });
 
+/**
+ * 承認待ちの質問のために、届いた時点のスライドをメモリにだけ取り置く（ディスクには書かない）。
+ * 承認されたら `captureQuestionSlide` がこれを保存する。`captured` は「取り置けた」の意味。
+ */
+export const holdQuestionSlide = (questionId: string) =>
+  invoke<CaptureQuestionResult>("hold_question_slide", { questionId });
+
+/** 取り置いたスライドを捨てる（非表示・ブロック）。発表を終えると Rust 側がまとめて捨てる。 */
+export const discardQuestionSlide = (questionId: string) =>
+  invoke<void>("discard_question_slide", { questionId });
+
 /** レポートへ埋め込むローカルJPEGを data URL として読む。 */
 export const readQuestionCapture = (sessionId: string, questionId: string) =>
   invoke<string | null>("read_question_capture", { sessionId, questionId });

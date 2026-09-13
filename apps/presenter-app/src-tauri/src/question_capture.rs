@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -12,6 +13,9 @@ const CAPTURE_DIRECTORY: &str = "question-captures";
 const RETENTION: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 const JPEG_QUALITY: u8 = 82;
 const MAX_LONG_EDGE: u32 = 1920;
+/// 承認待ちの質問のために取り置くスライドの上限。1枚は数百KBの JPEG なので、溢れたら古いものから捨てる
+/// （その質問は、承認されたときのスライドで諦める）。
+const MAX_HELD_CAPTURES: usize = 30;
 
 /// フォールバック撮影の待ち上限。`SCScreenshotManager` はタイムアウトを持たない
 /// Condvar 待ちなので、replayd が黙ると永久に返らない。
@@ -156,6 +160,38 @@ struct Frame {
     bgra: Vec<u8>,
 }
 
+/// 承認待ちの質問のために取り置いた、届いた時点のスライド（JPEG）。**ディスクには書かない。**
+///
+/// 承認されたら `capture_question` がここから取り出して保存する。非表示にされたら
+/// `discard_question` が捨て、発表を終えると `ActiveCapture` ごと消える。
+/// → 承認されなかった質問のスライドはどこにも残らない。
+#[derive(Default)]
+struct HeldCaptures {
+    entries: VecDeque<(Uuid, Vec<u8>)>,
+}
+
+impl HeldCaptures {
+    /// 同じ質問は最初の1枚を残す（届いた時点のスライドを後から上書きしない）。
+    fn insert(&mut self, question_id: Uuid, jpeg: Vec<u8>) {
+        if self.contains(question_id) {
+            return;
+        }
+        self.entries.push_back((question_id, jpeg));
+        while self.entries.len() > MAX_HELD_CAPTURES {
+            self.entries.pop_front();
+        }
+    }
+
+    fn contains(&self, question_id: Uuid) -> bool {
+        self.entries.iter().any(|(id, _)| *id == question_id)
+    }
+
+    fn take(&mut self, question_id: Uuid) -> Option<Vec<u8>> {
+        let index = self.entries.iter().position(|(id, _)| *id == question_id)?;
+        self.entries.remove(index).map(|(_, jpeg)| jpeg)
+    }
+}
+
 #[cfg(target_os = "macos")]
 struct ActiveCapture {
     session_id: Uuid,
@@ -166,13 +202,43 @@ struct ActiveCapture {
     /// クレートの勧めどおり `Arc` で共有する。
     filter: Arc<screencapturekit::stream::content_filter::SCContentFilter>,
     configuration: Arc<screencapturekit::stream::configuration::SCStreamConfiguration>,
+    /// 発表ごとに持つ。`ActiveCapture` と一緒に消えるので、発表を終えれば取り置きも必ず消える。
+    held: Arc<Mutex<HeldCaptures>>,
     stream: screencapturekit::stream::SCStream,
+}
+
+/// 撮影に要るものを `active` のロックの中で写し取ったもの。**ロックを握ったまま撮らない**ため
+/// （単発撮影の待ちで `stop_presentation` まで巻き添えで固まる。罠 #17）。
+#[cfg(target_os = "macos")]
+struct CaptureParts {
+    session_id: Uuid,
+    latest: Arc<Mutex<Option<Frame>>>,
+    filter: Arc<screencapturekit::stream::content_filter::SCContentFilter>,
+    configuration: Arc<screencapturekit::stream::configuration::SCStreamConfiguration>,
+    held: Arc<Mutex<HeldCaptures>>,
+}
+
+#[cfg(target_os = "macos")]
+impl CaptureParts {
+    /// 最新フレーム。ストリームがまだ1枚も出していなければ、ここで単発撮影を試す。
+    fn grab_frame(&self) -> Result<Option<Frame>, String> {
+        let latest = self
+            .latest
+            .lock()
+            .map_err(|_| "latest frame lock failed")?
+            .clone();
+        Ok(latest.or_else(|| snapshot_frame(&self.filter, &self.configuration)))
+    }
 }
 
 #[derive(Default)]
 pub struct QuestionCaptureState {
     #[cfg(target_os = "macos")]
     active: Mutex<Option<ActiveCapture>>,
+    /// 取り置き・保存・破棄を1件ずつ通す。承認が取り置きの途中に届くと、取り置きを見つけられずに
+    /// **承認した瞬間のスライド**を保存してしまう。`start` / `stop` はこれを取らない（発表の停止を待たせない）。
+    #[cfg(target_os = "macos")]
+    order: Mutex<()>,
 }
 
 impl QuestionCaptureState {
@@ -338,6 +404,7 @@ impl QuestionCaptureState {
             health,
             filter,
             configuration,
+            held: Arc::new(Mutex::new(HeldCaptures::default())),
             stream,
         });
         Ok(())
@@ -360,6 +427,27 @@ impl QuestionCaptureState {
     #[cfg(not(target_os = "macos"))]
     pub fn stop(&self) {}
 
+    /// 撮影に要るものを写し取る。撮影していなければ `None`。
+    #[cfg(target_os = "macos")]
+    fn parts(&self) -> Result<Option<CaptureParts>, String> {
+        let state = self
+            .active
+            .lock()
+            .map_err(|_| "capture state lock failed")?;
+        Ok(state.as_ref().map(|active| CaptureParts {
+            session_id: active.session_id,
+            latest: Arc::clone(&active.latest),
+            filter: Arc::clone(&active.filter),
+            configuration: Arc::clone(&active.configuration),
+            held: Arc::clone(&active.held),
+        }))
+    }
+
+    /// 質問のスライドを保存する。
+    ///
+    /// 1. 保存済みなら何もしない（承認の更新でも hook が再度呼ばれる。質問到着時の画像を上書きしない）
+    /// 2. 承認待ちのあいだ取り置いた、届いた時点のスライドがあればそれを書く
+    /// 3. どちらでもなければ、いまのスライドを撮る（承認制でなければ、ここが届いた時点になる）
     #[cfg(target_os = "macos")]
     pub fn capture_question(
         &self,
@@ -367,45 +455,80 @@ impl QuestionCaptureState {
         question_id: &str,
     ) -> Result<CaptureQuestionResult, String> {
         let question_id = parse_id(question_id, "question")?;
-        let (path, frame, filter, configuration) = {
-            let state = self
-                .active
-                .lock()
-                .map_err(|_| "capture state lock failed")?;
-            let Some(active) = state.as_ref() else {
-                return Ok(CaptureQuestionResult::inactive());
-            };
-            let path = capture_path(app_data, active.session_id, question_id);
-            if path.exists() {
-                // pending → approved の更新でも hook が再度呼ばれる。質問到着時の画像を上書きしない。
-                return Ok(CaptureQuestionResult::captured());
-            }
-            let frame = active
-                .latest
-                .lock()
-                .map_err(|_| "latest frame lock failed")?
-                .clone();
-            (
-                path,
-                frame,
-                Arc::clone(&active.filter),
-                Arc::clone(&active.configuration),
-            )
+        let _order = self.order.lock().map_err(|_| "capture order lock failed")?;
+        let Some(parts) = self.parts()? else {
+            return Ok(CaptureQuestionResult::inactive());
         };
+        let path = capture_path(app_data, parts.session_id, question_id);
+        if path.exists() {
+            return Ok(CaptureQuestionResult::captured());
+        }
+        let held = parts
+            .held
+            .lock()
+            .map_err(|_| "held capture lock failed")?
+            .take(question_id);
+        if let Some(jpeg) = held {
+            write_jpeg(&path, &jpeg)?;
+            return Ok(CaptureQuestionResult::captured());
+        }
 
         // ストリームが 1 枚も出していなくても、ここで単発撮影を試す。
-        // **`active` のロックは既に外してある**（握ったまま待つと `stop_presentation`
+        // **`active` のロックは `parts` が既に外してある**（握ったまま待つと `stop_presentation`
         // まで巻き添えで固まる）。
-        let frame = match frame {
-            Some(frame) => Some(frame),
-            None => snapshot_frame(&filter, &configuration),
-        };
-
-        let Some(frame) = frame else {
+        let Some(frame) = parts.grab_frame()? else {
             return Ok(CaptureQuestionResult::pending(self.pending_reason()));
         };
-        write_frame(&path, frame)?;
+        write_jpeg(&path, &encode_jpeg(frame)?)?;
         Ok(CaptureQuestionResult::captured())
+    }
+
+    /// 承認待ちの質問のために、いまのスライドを JPEG にしてメモリにだけ取り置く。
+    /// **ディスクには書かない** — 承認されなかった質問のスライドを残さないため。
+    /// 返り値の `Captured` は「取り置けた」の意味。
+    #[cfg(target_os = "macos")]
+    pub fn hold_question(&self, question_id: &str) -> Result<CaptureQuestionResult, String> {
+        let question_id = parse_id(question_id, "question")?;
+        let _order = self.order.lock().map_err(|_| "capture order lock failed")?;
+        let Some(parts) = self.parts()? else {
+            return Ok(CaptureQuestionResult::inactive());
+        };
+        if parts
+            .held
+            .lock()
+            .map_err(|_| "held capture lock failed")?
+            .contains(question_id)
+        {
+            return Ok(CaptureQuestionResult::captured());
+        }
+        let Some(frame) = parts.grab_frame()? else {
+            return Ok(CaptureQuestionResult::pending(self.pending_reason()));
+        };
+        let jpeg = encode_jpeg(frame)?;
+        parts
+            .held
+            .lock()
+            .map_err(|_| "held capture lock failed")?
+            .insert(question_id, jpeg);
+        Ok(CaptureQuestionResult::captured())
+    }
+
+    /// 取り置いたスライドを捨てる（非表示・ブロック）。
+    ///
+    /// **保存済みのファイルは消さない。** 承認済みの質問を非表示から戻したとき、届いた時点の
+    /// 1枚が要る。レポートは承認済みの質問しか載せないので、非表示のあいだは出ない。
+    #[cfg(target_os = "macos")]
+    pub fn discard_question(&self, question_id: &str) -> Result<(), String> {
+        let question_id = parse_id(question_id, "question")?;
+        let _order = self.order.lock().map_err(|_| "capture order lock failed")?;
+        if let Some(parts) = self.parts()? {
+            parts
+                .held
+                .lock()
+                .map_err(|_| "held capture lock failed")?
+                .take(question_id);
+        }
+        Ok(())
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -415,6 +538,16 @@ impl QuestionCaptureState {
         _question_id: &str,
     ) -> Result<CaptureQuestionResult, String> {
         Ok(CaptureQuestionResult::inactive())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn hold_question(&self, _question_id: &str) -> Result<CaptureQuestionResult, String> {
+        Ok(CaptureQuestionResult::inactive())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn discard_question(&self, _question_id: &str) -> Result<(), String> {
+        Ok(())
     }
 
     #[cfg(target_os = "macos")]
@@ -461,6 +594,7 @@ pub fn error_event(kind: CaptureErrorKind, detail: impl Into<String>) -> Capture
     }
 }
 
+/// 撮影を止める。取り置いていたスライド（承認されないまま終わった質問の分）も `ActiveCapture` ごとここで消える。
 #[cfg(target_os = "macos")]
 fn stop_locked(active: &mut Option<ActiveCapture>) {
     if let Some(previous) = active.take() {
@@ -580,22 +714,29 @@ fn capture_path(app_data: &Path, session_id: Uuid, question_id: Uuid) -> PathBuf
         .join(format!("{question_id}.jpg"))
 }
 
-fn write_frame(path: &Path, frame: Frame) -> Result<(), String> {
+/// BGRA のフレームを JPEG にする。取り置き（メモリ）と保存（ディスク）で共用する。
+fn encode_jpeg(frame: Frame) -> Result<Vec<u8>, String> {
     let mut rgb = Vec::with_capacity(frame.bgra.len() / 4 * 3);
     for pixel in frame.bgra.chunks_exact(4) {
         rgb.extend_from_slice(&[pixel[2], pixel[1], pixel[0]]);
     }
     let image = ImageBuffer::<Rgb<u8>, _>::from_raw(frame.width, frame.height, rgb)
         .ok_or_else(|| "captured frame had invalid dimensions".to_string())?;
+    let mut jpeg = Vec::new();
+    JpegEncoder::new_with_quality(&mut jpeg, JPEG_QUALITY)
+        .encode_image(&image)
+        .map_err(|err| err.to_string())?;
+    Ok(jpeg)
+}
+
+/// 一時ファイルに書いてから名前を変える（書きかけの JPEG をレポートに読ませない）。
+fn write_jpeg(path: &Path, jpeg: &[u8]) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| "capture path has no parent".to_string())?;
     fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     let temporary = path.with_extension("jpg.tmp");
-    let file = fs::File::create(&temporary).map_err(|err| err.to_string())?;
-    JpegEncoder::new_with_quality(file, JPEG_QUALITY)
-        .encode_image(&image)
-        .map_err(|err| err.to_string())?;
+    fs::write(&temporary, jpeg).map_err(|err| err.to_string())?;
     fs::rename(&temporary, path).map_err(|err| err.to_string())?;
     Ok(())
 }
@@ -785,6 +926,24 @@ mod tests {
             pending,
             serde_json::json!({ "status": "framePending", "reason": "captureBlocked" })
         );
+    }
+
+    #[test]
+    fn held_captures_keep_the_arrival_slide_and_drop_the_oldest() {
+        let mut held = HeldCaptures::default();
+        let first = Uuid::from_u128(1);
+        held.insert(first, vec![1]);
+        // 承認待ちのまま取り直されても、届いた時点の1枚を上書きしない。
+        held.insert(first, vec![2]);
+        assert_eq!(held.take(first), Some(vec![1]));
+        assert_eq!(held.take(first), None);
+
+        for n in 0..=MAX_HELD_CAPTURES as u128 {
+            held.insert(Uuid::from_u128(100 + n), vec![0]);
+        }
+        assert_eq!(held.entries.len(), MAX_HELD_CAPTURES);
+        assert!(!held.contains(Uuid::from_u128(100)));
+        assert!(held.contains(Uuid::from_u128(101)));
     }
 
     #[cfg(target_os = "macos")]

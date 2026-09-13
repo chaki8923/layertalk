@@ -5,6 +5,7 @@ import {
   fetchLikedIds,
   getClientId,
   insertComment,
+  isLayerTalkError,
   joinRoom,
   motionPresets,
   normalizeRoomCode,
@@ -106,8 +107,13 @@ export function RoomClient({ code, fallbackLocale }: { code: string; fallbackLoc
         return;
       }
       setRoomState({ kind: "ready", room: { ...roomState.room, ...joined } });
-    } catch {
-      setJoinError(locale === "ja" ? "パスコードが違います" : "Incorrect passcode");
+    } catch (err) {
+      // パスコード違いのときだけそう言う。匿名サインイン・確認・通信の失敗まで「パスコードが違います」と
+      // 出すと、正しいパスコードを何度も打ち直させることになる。ブロックされたことは伝えない
+      // （`joinRoom` が `room_join_failed` に丸めている）。
+      setJoinError(isLayerTalkError(err, "room_passcode_invalid")
+        ? resolveErrorMessage(err, locale)
+        : locale === "ja" ? "入室できませんでした。時間をおいてもう一度お試しください" : "Could not join the room. Please try again in a moment");
     } finally {
       setJoining(false);
     }
@@ -283,6 +289,10 @@ export function RoomClient({ code, fallbackLocale }: { code: string; fallbackLoc
           {roomState.room.requires_passcode && <input
             autoFocus
             type="password"
+            autoCapitalize="off"
+            autoCorrect="off"
+            autoComplete="off"
+            spellCheck={false}
             value={passcode}
             onChange={(event) => setPasscode(event.target.value)}
             minLength={4}

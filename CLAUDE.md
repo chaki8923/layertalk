@@ -310,6 +310,22 @@ CSS の `paint-order: stroke fill` に当たる指定は無いので、**縁（�
 `size × size` の枠に入れていたため、下の数ピクセルが欠けた（アドホック署名版の実機で確認）。
 **組んだ文字列の実寸（`NSAttributedString::size`）で枠を取る**。→ `overlay_render.rs` の `glyph_frame_size`
 
+**24. WKWebView の文字入力欄には macOS の自動大文字化・スペル修正が効く — 一字一句の一致が要る欄では切る**
+入室パスコードを保存したのに「正しく打っても弾かれる」件（2026-09-13、アドホック署名版）。本番のログは
+`invalid room passcode`（＝照合そのものの不一致）だけで、通信の失敗ではなかった。発表者の保存欄は普通の
+`<input>` で、この Mac は `NSAutomaticCapitalizationEnabled = 1`。観客側は `type="password"` なので補正されず、
+しかも保存と同時に欄を空にしていたので、変わった値が保存されても気付けない。**原因はこの見立てで、
+補正された瞬間そのものは実測していない。** なので対策を3つ重ねてある:
+- 欄に `autoCapitalize="off"` `autoCorrect="off"` `spellCheck={false}` を付ける（観客側も同じ）
+- 保存した値を画面に出す（`EventPassPanel` の `passcodeNotice`）
+- 保存と照合の両方で `private.normalize_room_passcode`（NFKC＋前後の空白除去。大文字小文字は区別したまま）を通す
+
+同じ調査で、`join_room` が 9/5 のマイグレーション（ブロック対応）で `private.active_room_passcode_hash` を
+通らなくなっていたのも見つかった。Event Pass が切れても古いパスコードを要求し続ける一方、入室画面は
+`find_public_room_by_code` に従って欄を出さないので、**誰も入室できなくなる**。
+**`join_room` を書き換えるときは、照合を必ず `active_room_passcode_hash` に通すこと。**
+→ `supabase/migrations/20260913050326_normalize_room_passcode.sql`
+
 ## 設計上の決めごと
 
 - **コントロール窓の webview は、発表中だけ Rust が突いて起こし続ける**（罠 #20）。購読・ネイティブ描画への
@@ -338,6 +354,11 @@ CSS の `paint-order: stroke fill` に当たる指定は無いので、**縁（�
 - **質問は「流す」と「右端に残す」の両方。** `is_question` でも演出は通常コメントと同じで、
   加えて右端パネルに最大5件を積む（`OverlayWindow` の `handleInsert`）。
   流れて消えたあとも質問だけは参照できるようにするため
+- **承認制の質問は、届いた時点のスライドをメモリにだけ取り置く。** ディスクへの保存は承認されてから。
+  非表示にされたら取り置きを捨て、発表を終えれば `ActiveCapture` ごと消えるので、**承認されなかった質問の
+  スライドはどこにも残らない**（`question_capture.rs` の `HeldCaptures`、`useComments` の `onPending`）。
+  承認済みで保存した画像は、非表示にしても消さない（戻したときに届いた時点の1枚が要る）。
+  **レポートは承認済みの質問だけ**を載せ、件数も同じ条件で数える（`isReportQuestion`）
 - **画面収録中は、コントロール窓とメニューバーに出す**（App Store 2.5.14）。正は Rust の
   `QuestionCaptureState::is_recording`（ストリームがあり、macOS に止められていない）。発表中だけ回る
   `start_front_watchdog` が変化したときだけ `question-capture-state` を送り、トレイのタイトルを `● REC` にする。

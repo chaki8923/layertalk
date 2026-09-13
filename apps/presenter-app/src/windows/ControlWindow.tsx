@@ -69,13 +69,15 @@ import {
 import { clientId, supabase } from "../lib/supabase";
 import { startSelftestPump } from "../lib/selftest-pump";
 import { initializeBillingRecovery } from "../lib/billing";
-import { isPaidPresentationSession, loadQuestionCapturePreference, questionCaptureErrorMessage, questionCapturePendingMessage } from "../lib/question-capture";
+import { isPaidPresentationSession, loadQuestionCapturePreference, questionCaptureAction, questionCaptureErrorMessage, questionCapturePendingMessage } from "../lib/question-capture";
 import {
   captureQuestionSlide,
+  discardQuestionSlide,
   getPresentationState,
   isOverlaySelftest,
   listMonitors,
   getQuestionCaptureRecording,
+  holdQuestionSlide,
   onQuestionCaptureError,
   onQuestionCaptureState,
   onOverlayPeek,
@@ -230,12 +232,18 @@ export function ControlWindow() {
     // 識別子が変わると `useComments` の購読が張り直しになり、罠 #3
     // （SUBSCRIBED 直後は流れてこない）を踏みに行くことになる。
     if (!captureSessionIdRef.current) return;
+    // 承認待ちは届いた時点のスライドをメモリにだけ取り置き、承認されて approved で
+    // もう一度届いたときに保存する。非表示にされたら `handleCommentModerated` が捨て、
+    // 発表を終えると Rust 側がまとめて捨てる（承認されなかった質問のスライドは残らない）。
+    const action = questionCaptureAction(comment.status);
+    if (!action) return;
+    const grab = action === "hold" ? holdQuestionSlide : captureQuestionSlide;
     // 開始直後は ScreenCaptureKit の初回フレームがまだ無い場合がある。そのときだけ
     // 500ms空けてもう一度だけ試す。Rust側が単発撮影へ落ちるので長く待つ意味は無い。
-    // 既に保存済みならRust側が上書きを防ぐ。
+    // 既に保存済み・取り置き済みならRust側が上書きを防ぐ。
     void (async () => {
       for (let attempt = 0; attempt < 2; attempt += 1) {
-        const result = await captureQuestionSlide(comment.id);
+        const result = await grab(comment.id);
         if (result.status === "captured" || result.status === "inactive") return;
         if (attempt === 0) {
           await new Promise((resolve) => window.setTimeout(resolve, 500));
@@ -291,6 +299,8 @@ export function ControlWindow() {
     roomId: settings.roomId,
     includeModerated: true,
     onInsert: handleIncomingComment,
+    // 承認待ちの質問は、届いた時点でスライドを取り置く（保存は承認されてから）。
+    onPending: captureIncomingQuestion,
   });
 
   const handleCommentModerated = useCallback((comment: Comment) => {
@@ -298,6 +308,11 @@ export function ControlWindow() {
       const timer = delayedCommentsRef.current.get(comment.id);
       if (timer !== undefined) window.clearTimeout(timer);
       delayedCommentsRef.current.delete(comment.id);
+    }
+    // 非表示・ブロックされた質問の取り置きを捨てる。保存済みの画像は消さない — 非表示から戻したとき
+    // 届いた時点の1枚が要る（レポートは承認済みの質問しか載せないので、非表示のあいだは出ない）。
+    if (comment.is_question && comment.status === "hidden" && captureSessionIdRef.current) {
+      void discardQuestionSlide(comment.id).catch(() => undefined);
     }
     upsertLocal(comment);
   }, [upsertLocal]);

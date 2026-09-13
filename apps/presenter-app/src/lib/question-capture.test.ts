@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { questionCaptureErrorMessage, questionCapturePendingMessage, screenCapturePermissionTargetName, shouldOpenScreenCaptureSettings } from "./question-capture";
+import { questionCaptureAction, questionCaptureErrorMessage, questionCapturePendingMessage, screenCapturePermissionTargetName, shouldOpenScreenCaptureSettings } from "./question-capture";
 
 describe("shouldOpenScreenCaptureSettings", () => {
   it("opens settings only when supported capture is not usable", () => {
@@ -57,5 +57,13 @@ describe("questionCapturePendingMessage", () => {
       expect(questionCapturePendingMessage(reason, "ja")).toContain("発表は継続できます");
       expect(questionCapturePendingMessage(reason, "en")).toContain("presentation can continue");
     }
+  });
+});
+
+describe("questionCaptureAction", () => {
+  it("only holds pending questions in memory and saves approved ones", () => {
+    expect(questionCaptureAction("pending")).toBe("hold");
+    expect(questionCaptureAction("approved")).toBe("save");
+    expect(questionCaptureAction("hidden")).toBeNull();
   });
 });

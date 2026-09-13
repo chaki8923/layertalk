@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  fetchPresentationReport,
   fetchRoomStampUrl,
+  joinRoom,
   resolveRoomStampImageUrl,
   resumeAudienceRoom,
   roomStampUrl,
 } from "./api";
 import type { LayerTalkClient } from "./client";
-import type { PublicRoom } from "./types";
+import type { Comment, PresentationSession, PublicRoom } from "./types";
 
 const room: PublicRoom = {
   id: "11111111-1111-1111-1111-111111111111",
@@ -50,6 +52,62 @@ describe("resumeAudienceRoom", () => {
   it("returns null when the access is missing or expired", async () => {
     const { client } = accessClient({ data: null, error: null });
     await expect(resumeAudienceRoom(client, room)).resolves.toBeNull();
+  });
+});
+
+describe("joinRoom", () => {
+  const rpcFailing = (error: { code: string; message: string }) =>
+    ({ rpc: vi.fn().mockResolvedValue({ data: null, error }) }) as unknown as LayerTalkClient;
+
+  it("tells a wrong passcode apart from other join failures", async () => {
+    await expect(joinRoom(rpcFailing({ code: "28P01", message: "invalid room passcode" }), "abc234", "secret"))
+      .rejects.toMatchObject({ code: "room_passcode_invalid" });
+    // ブロックはパスコード違いとして見せない（正しい値を打ち直させない）が、ブロックとも言わない。
+    await expect(joinRoom(rpcFailing({ code: "42501", message: "room participant blocked" }), "abc234", "secret"))
+      .rejects.toMatchObject({ code: "room_join_failed" });
+  });
+});
+
+describe("fetchPresentationReport", () => {
+  it("counts approved questions only, the same ones the HTML report lists", async () => {
+    const session: PresentationSession = {
+      id: "44444444-4444-4444-4444-444444444444",
+      room_id: room.id,
+      owner_id: "33333333-3333-3333-3333-333333333333",
+      entitlement_id: null,
+      entitlement_snapshot: { paid: true },
+      started_at: "2026-09-13T01:00:00.000Z",
+      ended_at: "2026-09-13T01:30:00.000Z",
+      created_at: "2026-09-13T01:00:00.000Z",
+    };
+    const row = (id: string, isQuestion: boolean, status: Comment["status"]): Comment => ({
+      id,
+      room_id: room.id,
+      content: id,
+      is_question: isQuestion,
+      likes_count: 0,
+      status,
+      status_before_hidden: status === "hidden" ? "pending" : null,
+      question_status: isQuestion ? "open" : null,
+      presentation_session_id: session.id,
+      moderated_by: null,
+      moderated_at: null,
+      created_at: "2026-09-13T01:05:00.000Z",
+    });
+    const table = (data: unknown[]) => {
+      const builder = { select: vi.fn(), eq: vi.fn(), order: vi.fn().mockResolvedValue({ data, error: null }) };
+      builder.select.mockReturnValue(builder);
+      builder.eq.mockReturnValue(builder);
+      return builder;
+    };
+    const tables: Record<string, ReturnType<typeof table>> = {
+      comments: table([row("approved", true, "approved"), row("pending", true, "pending"), row("hidden", true, "hidden"), row("comment", false, "approved")]),
+      stamp_events: table([]),
+    };
+    const client = { from: vi.fn((name: string) => tables[name]) } as unknown as LayerTalkClient;
+
+    const report = await fetchPresentationReport(client, session);
+    expect(report.totals).toMatchObject({ comments: 4, questions: 1, openQuestions: 1 });
   });
 });
 

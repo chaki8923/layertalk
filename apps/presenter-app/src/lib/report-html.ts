@@ -1,4 +1,4 @@
-import type { Locale, PresentationReport } from "@layertalk/shared";
+import { isReportQuestion, type Locale, type PresentationReport } from "@layertalk/shared";
 
 type ReportHtmlInput = {
   report: PresentationReport;
@@ -65,27 +65,24 @@ function groupQuestionsByCapture(
 export function generatePresentationReportHtml({ report, roomTitle, roomCode, locale, captures }: ReportHtmlInput) {
   const ja = locale === "ja";
   const { session } = report;
-  const questions = report.comments.filter((comment) => comment.is_question);
+  // 承認済みの質問だけを載せる。件数も `fetchPresentationReport` が同じ条件（`isReportQuestion`）で数えている。
+  const questions = report.comments.filter(isReportQuestion);
   const dateLocale = ja ? "ja-JP" : "en-US";
   const started = new Date(session.started_at).toLocaleString(dateLocale);
   const ended = session.ended_at ? new Date(session.ended_at).toLocaleString(dateLocale) : "—";
   const durationSeconds = session.ended_at
     ? Math.max(0, Math.floor((new Date(session.ended_at).getTime() - new Date(session.started_at).getTime()) / 1000))
     : 0;
-  const statusText = (status: string, questionStatus: string | null) => {
-    const moderation = status === "approved" ? "" : ja
-      ? status === "pending" ? "・承認待ち" : "・非表示"
-      : status === "pending" ? " · Pending approval" : " · Hidden";
-    const answered = questionStatus === "answered";
-    return `${answered ? (ja ? "回答済み" : "Answered") : (ja ? "未回答" : "Open")}${moderation}`;
-  };
+  const statusText = (questionStatus: string | null) => questionStatus === "answered"
+    ? (ja ? "回答済み" : "Answered")
+    : (ja ? "未回答" : "Open");
   const questionCards = groupQuestionsByCapture(questions, captures).map((group) => {
     const questionBodies = group.questions.map(({ question, index }) => {
       const elapsed = formatElapsed(elapsedSeconds(session.started_at, question.created_at));
       return `<section class="question-body">
           <div class="eyebrow"><span>${ja ? `質問 ${index + 1}` : `Question ${index + 1}`}</span><time>+${elapsed}</time></div>
           <h2>${escapeHtml(question.content)}</h2>
-          <div class="meta"><span>${escapeHtml(statusText(question.status, question.question_status))}</span><span>♥ ${question.likes_count}</span></div>
+          <div class="meta"><span>${escapeHtml(statusText(question.question_status))}</span><span>♥ ${question.likes_count}</span></div>
         </section>`;
     }).join("\n");
 

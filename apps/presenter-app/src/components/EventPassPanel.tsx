@@ -20,6 +20,8 @@ import {
   fetchPresentationReport,
   moderateComment,
   resolveErrorMessage,
+  isReportQuestion,
+  normalizeRoomPasscode,
   setRoomPasscode,
   updateModerationRules,
   type Comment,
@@ -98,6 +100,8 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [passcode, setPasscode] = useState("");
+  /** 保存した値の知らせ。欄は保存と同時に空にするので、何が保存されたかはここでしか確かめられない。 */
+  const [passcodeNotice, setPasscodeNotice] = useState<string | null>(null);
   const [presetName, setPresetName] = useState("");
   const [appliedPresetId, setAppliedPresetId] = useState<string | null>(null);
   const [captureEnabled, setCaptureEnabled] = useState(() => loadQuestionCapturePreference(roomId));
@@ -374,14 +378,24 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
         <div className="border-border border-t pt-4">
           <p className="flex items-center gap-2 text-[13px] font-bold"><KeyRound size={14} />{ja ? "入室パスコード" : "Room passcode"}</p>
           <div className="mt-2 flex gap-2">
-            <input disabled={!entitlement} value={passcode} onChange={(event) => setPasscode(event.target.value)} minLength={4} maxLength={12} placeholder={ja ? "4〜12文字、空欄で解除" : "4–12 characters"} className="border-border min-w-0 flex-1 rounded-[12px] border bg-transparent px-3 py-2 text-[12px] outline-none disabled:opacity-40" />
+            {/* 自動補正を必ず切る。WKWebView の文字入力欄には macOS の自動大文字化・スペル修正が効き、
+                打った値と違うパスコードが保存されて観客が入室できなくなる（CLAUDE.md の罠 #24）。 */}
+            <input disabled={!entitlement} value={passcode} onChange={(event) => { setPasscode(event.target.value); setPasscodeNotice(null); }} autoCapitalize="off" autoCorrect="off" autoComplete="off" spellCheck={false} minLength={4} maxLength={12} placeholder={ja ? "4〜12文字、空欄で解除" : "4–12 characters"} className="border-border min-w-0 flex-1 rounded-[12px] border bg-transparent px-3 py-2 text-[12px] outline-none disabled:opacity-40" />
             <button type="button" disabled={!entitlement} onClick={() => {
               setError(null);
+              setPasscodeNotice(null);
+              const saved = normalizeRoomPasscode(passcode);
               void setRoomPasscode(supabase, roomId, passcode)
-                .then(() => setPasscode(""))
+                .then(() => {
+                  setPasscode("");
+                  setPasscodeNotice(saved
+                    ? ja ? `パスコード「${saved}」を保存しました。観客にはこのとおり伝えてください。` : `Passcode saved: ${saved}. Share it with your audience exactly as shown.`
+                    : ja ? "パスコードを解除しました。" : "Passcode removed.");
+                })
                 .catch((err: unknown) => setError(resolveErrorMessage(err, locale)));
             }} className="border-border rounded-[12px] border px-3 text-[11px] font-bold disabled:opacity-40">{ja ? "保存" : "Save"}</button>
           </div>
+          {passcodeNotice && <p className="text-online mt-1.5 text-[10px] leading-relaxed">{passcodeNotice}</p>}
           {!entitlement && <p className="text-text-faint mt-1.5 text-[10px] leading-relaxed">{ja ? "Event Passの期限切れ後は、新しく参加する人にパスコードを求めません。" : "After the Event Pass expires, new participants are not asked for a passcode."}</p>}
         </div>
 
@@ -665,7 +679,8 @@ type ExportReportResult = "saved" | "cancelled" | "no-captures";
 
 async function exportReport(session: PresentationSession, locale: Locale, roomTitle: string | null, roomCode: string | null): Promise<ExportReportResult> {
   const report = await fetchPresentationReport(supabase, session);
-  const questions = report.comments.filter((comment) => comment.is_question);
+  // レポートに載せる質問（承認済み）の分だけ読む。
+  const questions = report.comments.filter(isReportQuestion);
   const entries = await Promise.all(questions.map(async (question) => [
     question.id,
     await readQuestionCapture(session.id, question.id).catch(() => null),

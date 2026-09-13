@@ -105,4 +105,32 @@ describe("useComments on becoming visible", () => {
     expect(onInsert).toHaveBeenCalledTimes(1);
     expect(onInsert).toHaveBeenCalledWith(expect.objectContaining({ id: "2" }));
   });
+
+  it("reports a pending comment missed while frozen once, then announces its approval", async () => {
+    const onInsert = vi.fn();
+    const onPending = vi.fn();
+    const fake = fakeClient([comment("1")]);
+    const { result } = renderHook(() =>
+      useComments({ client: fake.client, roomId: "room-1", includeModerated: true, onInsert, onPending }),
+    );
+
+    fake.subscribed();
+    await waitFor(() => expect(result.current.comments).toHaveLength(1));
+
+    // 凍っていたあいだに承認待ちの 2 件目が届いた。
+    fake.setRows([{ ...comment("2"), status: "pending" }, comment("1")]);
+    change("hidden");
+    change("visible");
+    await waitFor(() => expect(onPending).toHaveBeenCalledTimes(1));
+    expect(onPending).toHaveBeenCalledWith(expect.objectContaining({ id: "2", status: "pending" }));
+    expect(onInsert).not.toHaveBeenCalled();
+
+    // その後に承認された。承認待ちとしては二度と知らせず、承認として一度だけ流す。
+    fake.setRows([comment("2"), comment("1")]);
+    change("hidden");
+    change("visible");
+    await waitFor(() => expect(onInsert).toHaveBeenCalledTimes(1));
+    expect(onInsert).toHaveBeenCalledWith(expect.objectContaining({ id: "2", status: "approved" }));
+    expect(onPending).toHaveBeenCalledTimes(1);
+  });
 });

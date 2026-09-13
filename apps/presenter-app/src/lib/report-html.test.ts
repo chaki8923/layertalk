@@ -130,4 +130,33 @@ describe("generatePresentationReportHtml", () => {
     expect(html.match(/<article class="slide">/g)).toHaveLength(2);
     expect(html.match(/スライド画像なし/g)).toHaveLength(2);
   });
+
+  it("lists approved questions only and leaves out pending and hidden ones", () => {
+    const pending = { ...report.comments[0], id: "77777777-7777-7777-7777-777777777777", content: "承認待ちの質問", status: "pending" as const };
+    const hidden = {
+      ...report.comments[0],
+      id: "88888888-8888-8888-8888-888888888888",
+      content: "非表示にした質問",
+      status: "hidden" as const,
+      status_before_hidden: "approved" as const,
+    };
+    const html = generatePresentationReportHtml({
+      report: { ...report, comments: [report.comments[0], pending, hidden] },
+      roomTitle: null,
+      roomCode: null,
+      locale: "ja",
+      captures: {
+        [report.comments[0].id]: "data:image/jpeg;base64,APPROVED",
+        [pending.id]: "data:image/jpeg;base64,PENDING",
+        [hidden.id]: "data:image/jpeg;base64,HIDDEN",
+      },
+    });
+
+    expect(html.match(/<article class="slide">/g)).toHaveLength(1);
+    expect(html).toContain("APPROVED");
+    expect(html).not.toContain("承認待ちの質問");
+    expect(html).not.toContain("非表示にした質問");
+    expect(html).not.toContain("PENDING");
+    expect(html).not.toContain("HIDDEN");
+  });
 });

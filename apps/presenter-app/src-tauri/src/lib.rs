@@ -1386,6 +1386,35 @@ fn capture_question_slide(
     Ok(result)
 }
 
+/// 承認待ちの質問のために、届いた時点のスライドをメモリにだけ取り置く（ディスクには書かない）。
+/// 承認されたら `capture_question_slide` がこれを保存する。
+///
+/// **`async` を外さないこと。** `capture_question_slide` と同じく単発撮影で最大1.5秒待つ。
+#[tauri::command(async)]
+fn hold_question_slide(
+    app: AppHandle,
+    question_id: String,
+) -> Result<question_capture::CaptureQuestionResult, String> {
+    let state = app.state::<question_capture::QuestionCaptureState>();
+    let result = state.hold_question(&question_id)?;
+    if result.status == question_capture::CaptureQuestionStatus::FramePending {
+        debug_log(&format!(
+            "question hold pending ({:?}): {:?}",
+            result.reason,
+            state.health()
+        ));
+    }
+    Ok(result)
+}
+
+/// 取り置いたスライドを捨てる（非表示・ブロック）。承認されなかった質問のスライドを残さないため。
+/// 取り置き中の撮影が終わるのを待つことがあるので、これも `async`。
+#[tauri::command(async)]
+fn discard_question_slide(app: AppHandle, question_id: String) -> Result<(), String> {
+    app.state::<question_capture::QuestionCaptureState>()
+        .discard_question(&question_id)
+}
+
 #[tauri::command]
 fn read_question_capture(
     app: AppHandle,
@@ -1720,6 +1749,8 @@ pub fn run() {
             open_screen_capture_settings,
             open_external_url,
             capture_question_slide,
+            hold_question_slide,
+            discard_question_slide,
             question_capture_count,
             question_capture_recording,
             read_question_capture,

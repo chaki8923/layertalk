@@ -1,4 +1,4 @@
-import type { Locale, PresentationSession } from "@layertalk/shared";
+import type { Comment, Locale, PresentationSession } from "@layertalk/shared";
 import type { CapturePendingReason, QuestionCaptureError, ScreenCapturePermission, ScreenCapturePermissionTarget } from "./tauri";
 
 const preferenceKey = (roomId: string) => `layertalk:question-capture:${roomId}`;
@@ -19,6 +19,19 @@ export function isPaidPresentationSession(session: PresentationSession): boolean
     && snapshot !== null
     && !Array.isArray(snapshot)
     && snapshot.paid === true;
+}
+
+/**
+ * 届いた質問のスライドをどう扱うか。
+ *
+ * 承認待ちは**取り置くだけ**（メモリにだけ持ち、ディスクには書かない）。承認されると approved として
+ * もう一度届くので、そこで取り置いた1枚を保存する。承認されないまま非表示にされるか発表が終われば、
+ * スライドはどこにも残らない。承認制でなければ approved で直接届き、その場で保存する。
+ */
+export function questionCaptureAction(status: Comment["status"]): "hold" | "save" | null {
+  if (status === "pending") return "hold";
+  if (status === "approved") return "save";
+  return null;
 }
 
 export function shouldOpenScreenCaptureSettings(permission: ScreenCapturePermission): boolean {
