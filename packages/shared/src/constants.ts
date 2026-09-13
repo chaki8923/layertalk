@@ -73,7 +73,7 @@ export const customStampKey = (id: string) => `${CUSTOM_STAMP_PREFIX}${id}`;
 export const parseCustomStampKey = (key: string) =>
   key.startsWith(CUSTOM_STAMP_PREFIX) ? key.slice(CUSTOM_STAMP_PREFIX.length) : null;
 
-/** ルームコードの形（DB の gen_room_code と揃える）: 紛らわしい文字を除いた6桁 */
+/** ルームコードの形（DB の gen_room_code と揃える）: 紛らわしい文字を除いた6文字 */
 export const ROOM_CODE_LENGTH = 6;
 export const ROOM_CODE_PATTERN = /^[2-9A-HJ-NP-Z]{6}$/;
 

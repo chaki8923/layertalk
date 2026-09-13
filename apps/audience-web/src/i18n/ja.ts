@@ -52,7 +52,7 @@ export const ja = {
     description: "LayerTalkは、観客のコメント・質問・スタンプをプレゼン画面へリアルタイムに重ねる、macOS向けの参加型プレゼンツールです。",
     primaryCta: "Event Passを見る",
     secondaryCta: "参加コードを入力",
-    signals: ["観客アプリ不要", "QR・6桁コード参加", "観客数の制限なし"],
+    signals: ["観客アプリ不要", "QR・6文字コードで参加", "観客数の制限なし"],
     stage: {
       label: "LIVE SLIDE",
       status: "参加受付中",
@@ -64,7 +64,7 @@ export const ja = {
     join: {
       eyebrow: "Join a room",
       title: "観客として参加する",
-      description: "発表者から共有された6桁の参加コードを入力してください。QRコードから開いた場合は入力不要です。",
+      description: "発表者から共有された6文字の参加コードを入力してください。QRコードから開いた場合は入力不要です。",
     },
     features: {
       eyebrow: "In the room",
@@ -95,7 +95,7 @@ export const ja = {
       title: "共有するのは、ひとつのコードだけ",
       steps: [
         { title: "ルームをつくる", description: "Presenterアプリで発表用ルームを作成します。" },
-        { title: "QRかコードを共有", description: "スライド上のQR、または6桁コードを観客へ案内します。" },
+        { title: "QRかコードを共有", description: "スライド上のQR、または6文字コードを観客へ案内します。" },
         { title: "会場の反応を映す", description: "コメント、質問、スタンプがスライドの上へ届きます。" },
       ],
     },

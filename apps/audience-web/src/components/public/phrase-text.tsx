@@ -17,7 +17,7 @@ const DEFAULT_PROTECTED_TERMS = [
   "Supabase Access Token",
   "Stripe API Key",
   "QRコード",
-  "6桁コード",
+  "6文字コード",
   "IPアドレス",
   "メールアドレス",
   "セキュリティコード",

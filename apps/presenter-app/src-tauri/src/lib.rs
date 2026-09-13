@@ -855,7 +855,7 @@ fn start_front_watchdog(app: &AppHandle) {
             //
             // この webview が Supabase の購読・ネイティブ描画への送り出し・質問スライド撮影の起点を
             // すべて持っている。**閉じた窓の webview は macOS が約 6 秒でページごと凍らせる**
-            // （実測。`docs/mas-migration-handover.md` の 2026-09-11 追記）。凍ると `setInterval` も
+            // （実測。`CLAUDE.md` の罠 #20）。凍ると `setInterval` も
             // 止まり、Supabase の購読は繋がったまま何も届かない — 外から来たデータでは起きない。
             // 起こせるのは「窓を表示する」か「ネイティブ側から IPC を送る」かの二択で、ここは後者。
             // **届くのは JS 側で listener を登録した webview だけ**（Tauri の `emit_js_filter`）。

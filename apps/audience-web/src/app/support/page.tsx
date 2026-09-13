@@ -24,6 +24,10 @@ export default async function SupportPage(props: PageProps<"/support">) {
   const purchaseFacts = appStore
     ? ["Presenterのメールアドレス", "ルームコード", "購入日時", "App Storeの領収書メール（Appleから届くもの）", "発生している状況"]
     : ["Presenterのメールアドレス", "ルームコード", "購入日時と金額", "Stripeの領収書番号または領収書メール", "発生している状況"];
+  // 送ってはいけない情報も同じ。App Store 版で Stripe の鍵に触れても、別の決済手段を匂わせるだけになる（3.1.1）。
+  const secretItems = appStore
+    ? ["カード番号の全文", "セキュリティコード", "LayerTalkのパスワードや確認コード"]
+    : ["カード番号の全文", "セキュリティコード", "Stripe API Key", "Supabase Access Token"];
   return (
     <PublicShell>
       <main className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
@@ -40,7 +44,7 @@ export default async function SupportPage(props: PageProps<"/support">) {
 
         <div className="mt-12 grid gap-8 sm:grid-cols-2">
           <section><h2 className="text-[17px] font-bold"><PhraseText phrases={["購入トラブル時に", "送る情報"]} /></h2><ul className="text-text-muted mt-4 space-y-2 pl-5 text-[13px] leading-6">{purchaseFacts.map((item) => <li key={item} className="list-disc"><ProtectedText text={item} terms={["メールアドレス", "ルームコード", "購入日時", "領収書番号", "領収書メール"]} /></li>)}</ul></section>
-          <section><h2 className="flex items-center gap-2 text-[17px] font-bold"><ShieldAlert className="text-like shrink-0" size={18} /><span className="lt-nowrap">送ってはいけない情報</span></h2><ul className="text-text-muted mt-4 space-y-2 pl-5 text-[13px] leading-6">{["カード番号の全文", "セキュリティコード", "Stripe API Key", "Supabase Access Token"].map((item) => <li key={item} className="list-disc"><ProtectedText text={item} terms={[item]} /></li>)}</ul></section>
+          <section><h2 className="flex items-center gap-2 text-[17px] font-bold"><ShieldAlert className="text-like shrink-0" size={18} /><span className="lt-nowrap">送ってはいけない情報</span></h2><ul className="text-text-muted mt-4 space-y-2 pl-5 text-[13px] leading-6">{secretItems.map((item) => <li key={item} className="list-disc"><ProtectedText text={item} terms={[item]} /></li>)}</ul></section>
         </div>
 
         <section id="reports" className="border-border mt-12 scroll-mt-24 border-t pt-10">

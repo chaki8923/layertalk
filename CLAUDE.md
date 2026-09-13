@@ -9,6 +9,7 @@ apps/presenter-app/    発表者用 macOS Tauri v2 + Vite + React
 packages/shared/       型・Supabase クライアント・Realtime フック・デザイントークン
 supabase/migrations/   MCP で適用済みスキーマのミラー
 docs/design-system.md  デザインの唯一の正
+docs/remaining-tasks.md  App Store 審査までの残作業（唯一の正）
 assets/branding/       アプリアイコンの原本（`npx tauri icon` の入力。サイトのファビコンも同じ icon.ico）
 scripts/realtime-smoke.mjs  Realtime 疎通テスト
 ```
@@ -325,6 +326,21 @@ CSS の `paint-order: stroke fill` に当たる指定は無いので、**縁（�
 `find_public_room_by_code` に従って欄を出さないので、**誰も入室できなくなる**。
 **`join_room` を書き換えるときは、照合を必ず `active_room_passcode_hash` に通すこと。**
 → `supabase/migrations/20260913050326_normalize_room_passcode.sql`
+
+**25. `supabase/migrations/` は本番のミラーで、本番より遅れていることがある — 関数を書き換える前に本番の定義を読む**
+マイグレーションは MCP（止められたら SQL Editor）で**本番に直接**当てていて、このディレクトリは後から置くミラー。
+**`git revert` / `git checkout .` でコードを戻しても DB は戻らない。** SQL Editor で当てたものは `list_migrations` にも載らない。
+ミラーだけを見て `create or replace function` を書き、本番を2度壊した:
+- 9/8 の3本が 9/5 の `post_comment` / `create_room` を知らずに上書きし、コメントからのブロックが全件落ちた（9/11 に修正）
+- 9/5 のブロック対応で `join_room` を書き直したとき、8/24 に入れた `active_room_passcode_hash` 経由の照合が外れた（罠 #24）
+
+**関数を書き換えるマイグレーションは、先に本番の定義を読んでから書くこと**:
+`select pg_get_functiondef('public.join_room(text,text)'::regprocedure);`
+
+**26. entitlements の plist に XML コメントを書くと、`codesign` は成功したまま entitlement を落とす**
+`plutil -lint` は通り、`codesign` も終了コード 0 を返すのに、**entitlement 抜きで署名される**（＝sandbox が効かない。
+退避ブランチ `archive/native-overlay-sandbox-2026-09-11` での実測）。`Entitlements.mas.plist` にコメントを書かないこと。
+署名したら `codesign -d --entitlements - --xml <app> | plutil -p -` で `com.apple.security.app-sandbox => true` を必ず確かめる。
 
 ## 設計上の決めごと
 

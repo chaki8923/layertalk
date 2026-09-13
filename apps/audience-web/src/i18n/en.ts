@@ -50,7 +50,7 @@ export const en: Messages = {
     description: "LayerTalk is a participatory presentation tool for macOS that puts audience comments, questions, and reactions directly over your slides in real time.",
     primaryCta: "Explore Event Pass",
     secondaryCta: "Enter a join code",
-    signals: ["No audience app", "Join by QR or 6-digit code", "No audience limit"],
+    signals: ["No audience app", "Join by QR or 6-character code", "No audience limit"],
     stage: {
       label: "LIVE SLIDE",
       status: "Open for joining",
@@ -62,7 +62,7 @@ export const en: Messages = {
     join: {
       eyebrow: "Join a room",
       title: "Join as an audience member",
-      description: "Enter the 6-digit code shared by the presenter. If you opened a QR link, there is nothing else to enter.",
+      description: "Enter the 6-character code shared by the presenter. If you opened a QR link, there is nothing else to enter.",
     },
     features: {
       eyebrow: "In the room",
@@ -92,7 +92,7 @@ export const en: Messages = {
       title: "All you share is one room code",
       steps: [
         { title: "Create a room", description: "Start a presentation room in the Presenter app." },
-        { title: "Share a QR or code", description: "Show the QR on your slides or share the 6-digit code." },
+        { title: "Share a QR or code", description: "Show the QR on your slides or share the 6-character code." },
         { title: "Bring reactions on screen", description: "Comments, questions, and stamps appear over your slides." },
       ],
     },

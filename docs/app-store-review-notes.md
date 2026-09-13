@@ -130,32 +130,9 @@ npm run create:review-account -- --delete
 
 ---
 
-## 提出前チェック
+## 提出までの残作業
 
-- [ ] `<REVIEW_PASSWORD>` を App Store Connect に入れた（リポジトリには書かない）
-- [x] 本番 DB に `20260911041638_restore_post_comment_authors_and_presenter_gate` を適用し（2026-09-12 に関数定義で確認済み）、
-      ファイル末尾の確認 SQL が3つとも true になった。**未適用だとコメントからのブロックが全件失敗し、
-      NG ワードも拒否ではなく保留になる** — 上の 1.2 の説明と実挙動が食い違う
-- [ ] 審査用アカウントで**新しいルームを作った**（既定の NG ワードは作成時にしか入らない。
-      適用より前に投稿されたコメントは、投稿者の記録が無いのでブロックできない）
-- [ ] Vercel の Production に数値の `APPLE_APP_ID` が入っている（無いと審査の Sandbox は通るのに、
-      公開後の実購入が検証できない。`lib/server/app-store.ts` の `verifiers`）
-- [x] `icon.icns` に 512@2x（`ic10` チャンク）が入っている（2026-09-13 に `assets/branding/layertalk-icon-v1-1024.png` から
-      作り直して確認済み。無いと ITMS-90236 でアップロードが止まる）
-- [ ] 審査用アカウントでサインインでき、ルーム作成 → 発表開始まで通る
-- [ ] 署名済み sandbox ビルドで、プライバシー／利用規約／サポート／画面収録設定の
-      4つのボタンが**実際に開く**（`open_external_url` が効いているか）
-- [ ] MAS ビルドから開いた法務ページに **Stripe の文字列が出ない**
-      （`?channel=app-store` が付いているか）
-- [ ] Vercel に `LEGAL_*` が入っていて、法務ページに `［…を公開前に設定］` が出ない
-- [ ] Sandbox tester で購入・Ask to Buy・未完了復旧・返金・**別 Mac での復元**を確認した
-      （Distribution 署名の `.app` は手元で起動できないので、開発署名のビルドか TestFlight で行う）
-- [ ] `npm run verify:mas-bundle` が緑（Ed25519 の鍵と Stripe の checkout が
-      MAS バンドルに1件も無いこと）
-- [ ] `./scripts/build-mas.sh` が `.pkg` を吐き、Transporter が受け付けた
-- [ ] 2回目以降のアップロードでは、`src-tauri/tauri.mas.conf.json` の `bundleVersion` を上げた
-      （App Store Connect は同じビルド番号を二度受け付けない）
-- [ ] `docs/app-store-listing.md` の値を ASC へ入れた
+チェックリストは `docs/remaining-tasks.md` にまとめた。このファイルは App Store Connect に貼る本文と、審査用アカウントの作り方だけを持つ。
 
 ## Optional Slack / Microsoft Teams invitation posting
 

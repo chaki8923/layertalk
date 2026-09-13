@@ -5,7 +5,7 @@ Apple Developer Program の登録が済んだら、これを見ながら App Sto
 LP と App Store で言っていることがずれると、審査員が「説明と違う」と読む余地を作るので、
 どちらかを直したらもう一方も直すこと。
 
-関連: 審査メモの本文と提出前チェックは `docs/app-store-review-notes.md`。
+関連: 審査メモの本文は `docs/app-store-review-notes.md`、提出までの残作業は `docs/remaining-tasks.md`。
 
 ---
 
@@ -68,7 +68,7 @@ LP と App Store で言っていることがずれると、審査員が「説明
 LayerTalkは、観客のコメント・質問・スタンプをプレゼン画面へリアルタイムに重ねる、
 macOS向けの参加型プレゼンツールです。
 
-観客はアプリのインストールも登録も不要。スライドに表示したQRコード、または6桁の
+観客はアプリのインストールも登録も不要。スライドに表示したQRコード、または6文字の
 参加コードだけで参加できます。
 
 ■ 会場の反応が、スライドの上に見える
@@ -87,7 +87,7 @@ LayerTalkはスライドを読み込みません。画面の一番上に透明�
 
 ■ 使いかた
 1. Presenterアプリで発表用ルームをつくる
-2. スライド上のQR、または6桁コードを観客へ案内する
+2. スライド上のQR、または6文字コードを観客へ案内する
 3. 「プレゼンを開始」を押すと、コメント・質問・スタンプがスライドの上へ届きます
 
 開始する前の投稿は表示しません。リハーサルや前の発表の反応が本番の画面に出ることは
@@ -122,7 +122,7 @@ LayerTalk is a participatory presentation tool for macOS that puts audience
 comments, questions, and reactions directly over your slides in real time.
 
 Your audience needs no app and no account. They join with a QR code shown on your
-slides, or a 6-digit room code.
+slides, or a 6-character room code.
 
 WHAT THE ROOM SEES
 - Comments move with the talk. Put quick audience thoughts over the slides without
@@ -142,7 +142,7 @@ browser presentation mode.
 
 HOW IT WORKS
 1. Create a presentation room in the Presenter app.
-2. Share the QR on your slides, or the 6-digit code.
+2. Share the QR on your slides, or the 6-character code.
 3. Press "Start presentation" and comments, questions, and stamps arrive on screen.
 
 Nothing posted before you start is shown, so rehearsal traffic never reaches a live
@@ -173,8 +173,8 @@ Product names are trademarks of their respective owners.
 
 ### プロモーションテキスト（170字以内、審査なしで差し替えられる欄）
 
-- 日本語: `観客のコメント・質問・スタンプを、スライドの上へリアルタイムに。観客はQRか6桁コードだけ、アプリも登録も不要です。`
-- English: `Audience comments, questions, and reactions, live on top of your slides. They join with a QR or a 6-digit code. No app, no sign-up.`
+- 日本語: `観客のコメント・質問・スタンプを、スライドの上へリアルタイムに。観客はQRか6文字コードだけ、アプリも登録も不要です。`
+- English: `Audience comments, questions, and reactions, live on top of your slides. They join with a QR or a 6-character code. No app, no sign-up.`
 
 ---
 
@@ -197,6 +197,10 @@ Product names are trademarks of their respective owners.
   だけで、サーバへ送っていない（`question_capture.rs` の `RETENTION`）。Apple の定義では
   デバイスから出ないデータは collection ではない。ただし審査員は画面収録の許可を見て
   身構えるので、**Review Notes 側で明示してある**
+- **Slack / Teams への参加 URL 送信**（任意・無料）: 「収集」に当たらない。送るのは参加 URL と定型文だけで、
+  発表者が自分で登録した送信先へ **Mac から直接**送る。Webhook URL と設定は Mac の Keychain に置き、
+  LayerTalk のサーバへは送らない（`notifications.rs`、プライバシーポリシー8章）。質問票で迷ったら、
+  審査メモ末尾の Slack / Teams の節と同じ説明にそろえること
 - **位置情報・連絡先・写真ライブラリ・健康**: 一切触っていない
 
 > 迷ったら「多めに申告」が安全側。ただし**実際より広く申告すると、それ自体が
@@ -255,6 +259,10 @@ room for seven days. It does not renew automatically.
 ## 7. スクリーンショット
 
 macOS は 1280×800 / 1440×900 / 2560×1600 / 2880×1800 のいずれか。最低1枚、最大10枚。
+
+**この Mac の画面はどちらも 16:10 ではない**（内蔵 2560×1664、外部 1920×1080）ので、撮ったままでは受け付けられない。
+撮ったら `./scripts/app-store-screenshot.sh <画像...>` で規定サイズにそろえる（中央を 16:10 で切り出して縮める。
+元の画像は触らず、隣に `-appstore.png` を作る）。スライドショーは全画面にして、端が切れても困らない構図で撮ること。
 
 撮るもの（この順で並べると、審査員が機能を追える）:
 
