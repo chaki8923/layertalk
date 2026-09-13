@@ -148,7 +148,7 @@ if (existing) {
   console.log("新しい審査用アカウントを作った。");
 }
 
-console.log("\n--- docs/app-store-review-notes.md の <REVIEW_EMAIL> / <REVIEW_PASSWORD> へ ---");
+console.log("\n--- App Store Connect の App Review Information（サインイン情報）へ。パスワードはリポジトリに書かない ---");
 console.log(`Email:    ${email}`);
 console.log(`Password: ${password}`);
 console.log("\nサインイン画面で「パスワードでログイン」に切り替えて使う。");
