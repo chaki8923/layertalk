@@ -1,8 +1,8 @@
 # App Store Review Notes（App Store Connect に貼る用）
 
-残っている空欄は `<REVIEW_PASSWORD>` だけ。アカウントを作ったときに決まる値なので、
+残っている空欄は `<REVIEW_PASSWORD>` と `<REVIEW_TEAMS_WEBHOOK_URL>` の2つ。どちらも
 App Store Connect に直接貼る（**リポジトリには書かない**）。空欄のまま貼ると
-「デモアカウントが動かない」で差し戻される。
+「デモアカウントが動かない」「送信先が無くて試せない」で差し戻される。
 
 ## 記入済みの値と、残りの空欄
 
@@ -13,6 +13,7 @@ App Store Connect に直接貼る（**リポジトリには書かない**）。�
 | サポート窓口（Vercel の `LEGAL_SUPPORT_EMAIL`） | `layertalk0816@gmail.com` |
 | 審査用アカウントのメール | `layertalk0816+appreview@gmail.com`（`create:review-account` の既定値。サポート窓口と同じ受信箱に届く） |
 | `<REVIEW_PASSWORD>` | **空欄のまま。** `npm run create:review-account` の出力を App Store Connect に直接貼る |
+| `<REVIEW_TEAMS_WEBHOOK_URL>` | **空欄のまま。** 審査用に作った Teams Workflows の Webhook URL を App Store Connect に直接貼る。審査が通ったらワークフローを止める |
 
 ### 審査用アカウントの作り方
 
@@ -140,4 +141,12 @@ The Mac app includes an optional, free room invitation integration. It is off by
 
 Only the participation URL and a fixed invitation are sent directly from the Mac. Webhook URLs and settings stay in macOS Keychain, separated by LayerTalk account and room; they are not uploaded to LayerTalk servers or included in diagnostic logs. The user can disable sending or delete the destination in the app. Existing channel posts are managed in the destination service. The app works normally without this integration or when delivery fails.
 
-Testing: register a designated review/test destination using the setup steps in `docs/channel-notifications.md`, then use Send test to post a labeled test, or enable automatic sending and start a presentation. Teams may acknowledge the HTTP request before its workflow posts the message. Test destination credentials must be supplied privately in App Review notes when submitting; do not commit credentials to the repository. Verify save, relaunch, send, and deletion in the signed sandbox build before submission.
+**How to test (a Microsoft Teams destination is provided for this review)**
+
+Webhook URL: `<REVIEW_TEAMS_WEBHOOK_URL>`
+
+1. In the control window, open Room → "Send the join URL on start" → Configure destinations and message.
+2. Under Microsoft Teams, type any name, paste the URL above, and tap Save.
+3. Tap "Send test" to post a labeled test message, or tick the automatic-sending checkbox and start a presentation.
+
+Teams acknowledges the HTTP request before its workflow posts, so the app reports that the request was accepted and the message appears in the channel a moment later. Legacy Office 365 connector URLs are not supported. Saving, relaunching the app, sending, and deleting a destination can all be checked without any other account. Slack behaves the same way with an Incoming Webhook if you prefer to use your own destination.
