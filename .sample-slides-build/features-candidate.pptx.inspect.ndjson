@@ -1,0 +1,39 @@
+{"kind":"deck","id":"pr/hpx39u","name":"Deck"}
+{"kind":"layout","layoutId":"287c519a-2b54-4eda-841a-6041677563a1","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"ef553d7e-826c-4c43-91e0-ce62d4583948","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/0b3ba6","slide":1,"title":"LayerTalk","textShapes":4}
+{"kind":"textbox","id":"sh/et836xwj","slide":1,"text":"LayerTalk","textPreview":"LayerTalk","textChars":9,"textLines":1,"bbox":[76,64,460,30]}
+{"kind":"textbox","id":"sh/1gjm1svu","slide":1,"text":"コメント表示","textPreview":"コメント表示","textChars":6,"textLines":1,"bbox":[76,204,545,80]}
+{"kind":"textbox","id":"sh/0fa587e9","slide":1,"text":"いつものスライドに、観客のリアクションが\nリアルタイムで届く。\n\nコメントやスタンプで、会場が盛り上がります。","textPreview":"いつものスライドに、観客のリアクションが | リアルタイムで届く。 |  | コメントやスタンプで、会場が盛り上がります。","textChars":55,"textLines":4,"bbox":[76,320,550,230]}
+{"kind":"textbox","id":"sh/rqh4vids","slide":1,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[76,641,90,30]}
+{"kind":"notes","id":"nt/0b3ba6","slide":1,"text":""}
+{"kind":"slide","id":"sl/xlg5e5","slide":2,"title":"LayerTalk","textShapes":4}
+{"kind":"textbox","id":"sh/obatgvi9","slide":2,"text":"LayerTalk","textPreview":"LayerTalk","textChars":9,"textLines":1,"bbox":[76,64,460,30]}
+{"kind":"textbox","id":"sh/na1s7q1o","slide":2,"text":"質問パネル","textPreview":"質問パネル","textChars":5,"textLines":1,"bbox":[76,204,545,80]}
+{"kind":"textbox","id":"sh/m9sbe503","slide":2,"text":"質問は流れず、パネルに残ります。\n\n発表中も見逃さず、\n好きなタイミングで回答できます。","textPreview":"質問は流れず、パネルに残ります。 |  | 発表中も見逃さず、 | 好きなタイミングで回答できます。","textChars":44,"textLines":4,"bbox":[76,320,550,230]}
+{"kind":"textbox","id":"sh/18ja50ji","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[76,641,90,30]}
+{"kind":"notes","id":"nt/xlg5e5","slide":2,"text":""}
+{"kind":"slide","id":"sl/8c1ift","slide":3,"title":"LayerTalk","textShapes":4}
+{"kind":"textbox","id":"sh/pc72honu","slide":3,"text":"LayerTalk","textPreview":"LayerTalk","textChars":9,"textLines":1,"bbox":[76,64,460,30]}
+{"kind":"textbox","id":"sh/2pgjm94j","slide":3,"text":"参加QR","textPreview":"参加QR","textChars":4,"textLines":1,"bbox":[76,204,545,80]}
+{"kind":"textbox","id":"sh/3apkfe5o","slide":3,"text":"スライドに参加用のQRコードを表示。\n\n観客はスマートフォンで読み取って、\nすぐに参加できます。","textPreview":"スライドに参加用のQRコードを表示。 |  | 観客はスマートフォンで読み取って、 | すぐに参加できます。","textChars":48,"textLines":4,"bbox":[76,320,550,230]}
+{"kind":"textbox","id":"sh/gne1kjmd","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[76,641,90,30]}
+{"kind":"notes","id":"nt/8c1ift","slide":3,"text":""}
+{"kind":"slide","id":"sl/aqkbmi","slide":4,"title":"LayerTalk","textShapes":4}
+{"kind":"textbox","id":"sh/tgvy98bu","slide":4,"text":"LayerTalk","textPreview":"LayerTalk","textChars":9,"textLines":1,"bbox":[76,64,460,30]}
+{"kind":"textbox","id":"sh/6d4zeds3","slide":4,"text":"コントロール窓","textPreview":"コントロール窓","textChars":7,"textLines":1,"bbox":[76,204,545,80]}
+{"kind":"textbox","id":"sh/7edg7yto","slide":4,"text":"表示するモニターの切り替えも、\n参加URLの共有も。\n\nひとつの窓から、かんたんに操作できます。","textPreview":"表示するモニターの切り替えも、 | 参加URLの共有も。 |  | ひとつの窓から、かんたんに操作できます。","textChars":48,"textLines":4,"bbox":[76,320,550,230]}
+{"kind":"textbox","id":"sh/gj6hkna5","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[76,641,90,30]}
+{"kind":"notes","id":"nt/aqkbmi","slide":4,"text":""}
+{"kind":"slide","id":"sl/5ism5e","slide":5,"title":"LayerTalk","textShapes":4}
+{"kind":"textbox","id":"sh/qxk3e5gj","slide":5,"text":"LayerTalk","textPreview":"LayerTalk","textChars":9,"textLines":1,"bbox":[76,64,460,30]}
+{"kind":"textbox","id":"sh/dkvmpkzu","slide":5,"text":"安全管理","textPreview":"安全管理","textChars":4,"textLines":1,"bbox":[76,204,545,80]}
+{"kind":"textbox","id":"sh/cjmlgfy9","slide":5,"text":"NGワード設定、投稿の非表示、\n参加者のブロックを無料で。\n\n不適切な投稿を防ぎ、安心して発表できます。","textPreview":"NGワード設定、投稿の非表示、 | 参加者のブロックを無料で。 |  | 不適切な投稿を防ぎ、安心して発表できます。","textChars":52,"textLines":4,"bbox":[76,320,550,230]}
+{"kind":"textbox","id":"sh/zmd4ruh0","slide":5,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[76,641,90,30]}
+{"kind":"notes","id":"nt/5ism5e","slide":5,"text":""}
+{"kind":"slide","id":"sl/s9xmmb","slide":6,"title":"LayerTalk","textShapes":4}
+{"kind":"textbox","id":"sh/2hobylgv","slide":6,"text":"LayerTalk","textPreview":"LayerTalk","textChars":9,"textLines":1,"bbox":[76,64,460,30]}
+{"kind":"textbox","id":"sh/pkzu9gzm","slide":6,"text":"Event Pass","textPreview":"Event Pass","textChars":10,"textLines":1,"bbox":[76,204,545,80]}
+{"kind":"textbox","id":"sh/ojqt0vy1","slide":6,"text":"コメントの承認制、入室パスコード、\n発表レポート、ブランド設定を追加。\n\n購入した1ルームで7日間利用できます。\n自動更新はありません。","textPreview":"コメントの承認制、入室パスコード、 | 発表レポート、ブランド設定を追加。 |  | 購入した1ルームで7日間利用できます。 | 自動更新はありません。","textChars":68,"textLines":5,"bbox":[76,320,550,230]}
+{"kind":"textbox","id":"sh/fuxc36hk","slide":6,"text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[76,641,90,30]}
+{"kind":"notes","id":"nt/s9xmmb","slide":6,"text":""}
