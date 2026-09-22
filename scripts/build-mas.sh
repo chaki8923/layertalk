@@ -62,6 +62,12 @@ fi
 
 echo "==> embedding the provisioning profile"
 cp "$MAS_PROVISION_PROFILE" "$app_path/Contents/embedded.provisionprofile"
+# ブラウザで落としたプロファイルには `com.apple.quarantine` と `kMDItemWhereFroms` が付いていて、
+# `cp` がそれごと .app の中へ運ぶ。App Store Connect は拡張属性の付いたファイルを含む
+# パッケージを **アップロード後の処理で** 弾く（ITMS-91109 Invalid package contents）。
+# ローカルの検証（codesign / verify:mas-bundle）は全部通るので、ここで落とさないと気付けない。
+# **署名より前**にやること。署名後に消すと codesign が付けた `com.apple.cs.*` まで飛ぶ。
+xattr -cr "$app_path" 2>/dev/null || true
 
 echo "==> merging the app identifier from the provisioning profile"
 # Xcode は署名のときにプロファイルの entitlements を合成するが、codesign を直接叩くと

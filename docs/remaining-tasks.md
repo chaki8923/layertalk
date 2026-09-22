@@ -180,6 +180,10 @@ open apps/presenter-app/src-tauri/target/dev-signed/LayerTalk.app
 ## 4. 提出
 
 - [ ] **Review Notes を貼る** — 本文は `docs/app-store-review-notes.md`
+  **メモ欄は 4,000 字が上限。ドキュメントの本文はそのままでは入らない**（本文だけで 4,884 字、
+  Slack / Teams の節を足すと 5,900 字）。2026-09-22 の提出では、言い回しを詰めて 3,994 字にし、
+  **Slack / Teams の節は PDF にして「添付ファイル」欄へ回した**。
+  審査用の Teams Webhook URL は添付ファイルの中だけに置く（リポジトリには書かない）。
   `<REVIEW_PASSWORD>` は App Store Connect に直接入れる（リポジトリには書かない）。
 - [ ] **Transporter でアップロードして提出する** — IAP は初回だけ、アプリ本体と一緒に審査へ出す
 - [ ] **2 回目以降は `bundleVersion` を上げてからビルドする**
@@ -198,6 +202,14 @@ open apps/presenter-app/src-tauri/target/dev-signed/LayerTalk.app
 - **Individual で登録すると、App Store の販売者名が本名になる。** 法人名なら Organization（D-U-N-S が先）
 - **Vercel の環境変数はビルド時に注入される。** `LEGAL_*` や `APPLE_APP_ID` は、入れたら必ず再デプロイする
 - **法務リンクが死んでも画面には何も出ない。** 押しても無反応になるだけ。署名済み sandbox の `.app` で目で確かめるまで証拠はない
+- **ブラウザで落としたプロファイルの拡張属性が、アップロード後まで表に出ない。**
+  `com.apple.quarantine` と `kMDItemWhereFroms` が付いたまま `cp` で `.app` に入り、
+  **Transporter のアップロードは成功したのに処理で弾かれた**
+  （`ITMS-91109: Invalid package contents`、2026-09-22）。
+  **`codesign --verify` も `verify:mas-bundle` も全部緑のまま通る**ので、ローカルでは気付けない。
+  `build-mas.sh` / `build-dev.sh` が**署名の前に** `xattr -cr` で全部落とすようにしてある。
+  署名の**後**に消すと codesign が付けた `com.apple.cs.*` まで飛ぶので、順序を入れ替えないこと。
+  確認: `find <app> -exec xattr {} \; | sort | uniq -c` が空であること
 - **プロビジョニングプロファイルは種類を取り違えても最後まで気付けない。** ポータルで
   「Mac App Store Connect」ではなく「App Store Connect」を選ぶと iOS 用ができ、entitlements のキーが
   `com.apple.application-identifier` ではなく `application-identifier` になる。
