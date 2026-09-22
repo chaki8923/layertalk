@@ -1,0 +1,39 @@
+{"kind":"deck","id":"pr/rquimw","name":"Deck"}
+{"kind":"layout","layoutId":"1c7958a1-9516-4712-8415-60fdd07e3eb7","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"41238ef6-6c18-45dc-883d-71ace525894b","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/62dof0","slide":1,"title":"アイデア共有会","textShapes":4}
+{"kind":"textbox","id":"sh/7q5griho","slide":1,"text":"アイデア共有会","textPreview":"アイデア共有会","textChars":7,"textLines":1,"bbox":[76,64,460,30]}
+{"kind":"textbox","id":"sh/8rex0ny9","slide":1,"text":"チームの\nアイデア共有","textPreview":"チームの | アイデア共有","textChars":11,"textLines":2,"bbox":[76,205,545,150]}
+{"kind":"textbox","id":"sh/tsnytszu","slide":1,"text":"小さな気づきから、次の一歩へ。","textPreview":"小さな気づきから、次の一歩へ。","textChars":15,"textLines":1,"bbox":[76,391,550,180]}
+{"kind":"textbox","id":"sh/utwf2xgf","slide":1,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[76,641,90,30]}
+{"kind":"notes","id":"nt/62dof0","slide":1,"text":""}
+{"kind":"slide","id":"sl/9ejdmp","slide":2,"title":"アイデア共有会","textShapes":4}
+{"kind":"textbox","id":"sh/twnalcvi","slide":2,"text":"アイデア共有会","textPreview":"アイデア共有会","textChars":7,"textLines":1,"bbox":[76,64,460,30]}
+{"kind":"textbox","id":"sh/6twbaxc7","slide":2,"text":"今日のテーマ","textPreview":"今日のテーマ","textChars":6,"textLines":1,"bbox":[76,204,545,80]}
+{"kind":"textbox","id":"sh/ru5sj2dc","slide":2,"text":"日々の仕事で感じる\n「もう少し、こうだったら」を考えます。","textPreview":"日々の仕事で感じる | 「もう少し、こうだったら」を考えます。","textChars":29,"textLines":2,"bbox":[76,322,550,180]}
+{"kind":"textbox","id":"sh/4ru987u1","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[76,641,90,30]}
+{"kind":"notes","id":"nt/9ejdmp","slide":2,"text":""}
+{"kind":"slide","id":"sl/0fwd43","slide":3,"title":"アイデア共有会","textShapes":4}
+{"kind":"textbox","id":"sh/idgjahsb","slide":3,"text":"アイデア共有会","textPreview":"アイデア共有会","textChars":7,"textLines":1,"bbox":[76,64,460,30]}
+{"kind":"textbox","id":"sh/5g725crm","slide":3,"text":"アイデアのヒント","textPreview":"アイデアのヒント","textChars":8,"textLines":1,"bbox":[76,204,545,80]}
+{"kind":"textbox","id":"sh/4fy1cra1","slide":3,"text":"時間がかかっていること\n何度も聞かれること\n少し工夫すると楽になること","textPreview":"時間がかかっていること | 何度も聞かれること | 少し工夫すると楽になること","textChars":35,"textLines":3,"bbox":[76,322,550,180]}
+{"kind":"textbox","id":"sh/va5kz29k","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[76,641,90,30]}
+{"kind":"notes","id":"nt/0fwd43","slide":3,"text":""}
+{"kind":"slide","id":"sl/xhccst","slide":4,"title":"アイデア共有会","textShapes":4}
+{"kind":"textbox","id":"sh/ho3qdkjq","slide":4,"text":"アイデア共有会","textPreview":"アイデア共有会","textChars":7,"textLines":1,"bbox":[76,64,460,30]}
+{"kind":"textbox","id":"sh/u1s7ip0z","slide":4,"text":"共有のしかた","textPreview":"共有のしかた","textChars":6,"textLines":1,"bbox":[76,204,545,80]}
+{"kind":"textbox","id":"sh/v218bu1k","slide":4,"text":"思いついたことを、短い言葉で。\nまだまとまっていなくても大丈夫です。","textPreview":"思いついたことを、短い言葉で。 | まだまとまっていなくても大丈夫です。","textChars":34,"textLines":2,"bbox":[76,322,550,180]}
+{"kind":"textbox","id":"sh/8zapgfi9","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[76,641,90,30]}
+{"kind":"notes","id":"nt/xhccst","slide":4,"text":""}
+{"kind":"slide","id":"sl/d92cnc","slide":5,"title":"アイデア共有会","textShapes":4}
+{"kind":"textbox","id":"sh/jqhk72t4","slide":5,"text":"アイデア共有会","textPreview":"アイデア共有会","textChars":7,"textLines":1,"bbox":[76,64,460,30]}
+{"kind":"textbox","id":"sh/kra107ap","slide":5,"text":"次に試すこと","textPreview":"次に試すこと","textChars":6,"textLines":1,"bbox":[76,204,545,80]}
+{"kind":"textbox","id":"sh/lsj29cbu","slide":5,"text":"集まったアイデアから、ひとつ選ぶ。\n小さく試して、気づきを持ち寄る。","textPreview":"集まったアイデアから、ひとつ選ぶ。 | 小さく試して、気づきを持ち寄る。","textChars":34,"textLines":2,"bbox":[76,322,550,180]}
+{"kind":"textbox","id":"sh/6tsj2hsf","slide":5,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[76,641,90,30]}
+{"kind":"notes","id":"nt/d92cnc","slide":5,"text":""}
+{"kind":"slide","id":"sl/o28vrz","slide":6,"title":"アイデア共有会","textShapes":4}
+{"kind":"textbox","id":"sh/nepw76t8","slide":6,"text":"アイデア共有会","textPreview":"アイデア共有会","textChars":7,"textLines":1,"bbox":[76,64,460,30]}
+{"kind":"textbox","id":"sh/ofyd0bat","slide":6,"text":"質問・感想","textPreview":"質問・感想","textChars":5,"textLines":1,"bbox":[76,204,545,80]}
+{"kind":"textbox","id":"sh/9gre9wby","slide":6,"text":"気になったことや、\n試してみたいことを教えてください。","textPreview":"気になったことや、 | 試してみたいことを教えてください。","textChars":27,"textLines":2,"bbox":[76,322,550,180]}
+{"kind":"textbox","id":"sh/epgvuhsb","slide":6,"text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[76,641,90,30]}
+{"kind":"notes","id":"nt/o28vrz","slide":6,"text":""}

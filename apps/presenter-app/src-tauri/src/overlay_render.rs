@@ -669,6 +669,25 @@ fn image_sublayer(mtm: MainThreadMarker, bytes: &[u8], frame: NSRect) -> Option<
     Some(layer)
 }
 
+/// 参加 QR カードの幅。QR も文字も、この幅の中心（112）に揃える。
+const JOIN_CARD_WIDTH: f64 = 224.0;
+
+/// カードの文字3行（「スマホで参加」／参加コード／LayerTalk）の (左端, 幅)。
+///
+/// ロゴは左端（18..56）に敷くので、**ロゴがあるときだけ**文字を右へ寄せて
+/// 「ロゴ＋文字」をひとかたまりとして中央に見せる。ロゴが無いときに寄せたままだと、
+/// 文字の中心が 133 になってカード中心 112 から**右へ 21px ずれる**。
+/// **無料ルームはロゴを設定できない**ので、これを固定値にすると全ユーザーが踏む。
+/// `kCAAlignmentCenter` は frame の内側の中央なので、frame 自体を正さないと直らない。
+fn join_card_text_frame(has_logo: bool) -> (f64, f64) {
+    if has_logo {
+        (58.0, 150.0)
+    } else {
+        // QR（20..204）と左右端をそろえる。中心は 20 + 184/2 = 112 でカード中心と一致。
+        (20.0, 184.0)
+    }
+}
+
 pub fn set_join_card(
     visible: bool,
     qr_png: &[u8],
@@ -697,7 +716,7 @@ pub fn set_join_card(
         card.setBackgroundColor(Some(&NSColor::whiteColor().CGColor()));
         card.setFrame(NSRect::new(
             NSPoint::new(34.0, 34.0),
-            NSSize::new(224.0, 274.0),
+            NSSize::new(JOIN_CARD_WIDTH, 274.0),
         ));
         if let Some(qr) = image_sublayer(
             mtm,
@@ -706,6 +725,9 @@ pub fn set_join_card(
         ) {
             card.addSublayer(&qr);
         }
+        // ロゴは左端（18..56）に敷く。**実際にレイヤーを足せたときだけ** 下の文字を右へ寄せる
+        // — PNG が壊れて描けなかったのに寄せると、ロゴ無しと同じズレになる。
+        let mut has_logo = false;
         if let Some(bytes) = logo_png {
             if let Some(logo) = image_sublayer(
                 mtm,
@@ -713,8 +735,10 @@ pub fn set_join_card(
                 NSRect::new(NSPoint::new(18.0, 20.0), NSSize::new(38.0, 38.0)),
             ) {
                 card.addSublayer(&logo);
+                has_logo = true;
             }
         }
+        let (text_x, text_w) = join_card_text_frame(has_logo);
         let label_layer = CATextLayer::layer();
         let label_text = plain_string(
             label,
@@ -728,8 +752,8 @@ pub fn set_join_card(
         label_layer.setAlignmentMode(unsafe { objc2_quartz_core::kCAAlignmentCenter });
         label_layer.setContentsScale(state.scale);
         label_layer.setFrame(NSRect::new(
-            NSPoint::new(58.0, 46.0),
-            NSSize::new(150.0, 18.0),
+            NSPoint::new(text_x, 46.0),
+            NSSize::new(text_w, 18.0),
         ));
         card.addSublayer(&label_layer);
         let code_layer = CATextLayer::layer();
@@ -745,8 +769,8 @@ pub fn set_join_card(
         code_layer.setAlignmentMode(unsafe { objc2_quartz_core::kCAAlignmentCenter });
         code_layer.setContentsScale(state.scale);
         code_layer.setFrame(NSRect::new(
-            NSPoint::new(58.0, 18.0),
-            NSSize::new(150.0, 30.0),
+            NSPoint::new(text_x, 18.0),
+            NSSize::new(text_w, 30.0),
         ));
         card.addSublayer(&code_layer);
         if !hide_layertalk {
@@ -762,8 +786,8 @@ pub fn set_join_card(
             brand_layer.setAlignmentMode(unsafe { objc2_quartz_core::kCAAlignmentCenter });
             brand_layer.setContentsScale(state.scale);
             brand_layer.setFrame(NSRect::new(
-                NSPoint::new(58.0, 5.0),
-                NSSize::new(150.0, 14.0),
+                NSPoint::new(text_x, 5.0),
+                NSSize::new(text_w, 14.0),
             ));
             card.addSublayer(&brand_layer);
         }
@@ -813,6 +837,17 @@ mod tests {
         // 移植元（FlowLayer.tsx の estimateTextWidth）と同じ係数であること。
         assert!((estimate_text_width("abcd", 10.0) - 22.0).abs() < 0.001);
         assert!((estimate_text_width("あいうえ", 10.0) - 42.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn join_card_text_is_centred_when_there_is_no_logo() {
+        // ロゴなし（＝無料ルームは常にこちら）は、カードの中心に揃っていること。
+        let (x, w) = join_card_text_frame(false);
+        assert!(((x + w / 2.0) - JOIN_CARD_WIDTH / 2.0).abs() < 0.001);
+        // ロゴありは左端にロゴ（18..56）を置くぶん右へ寄る。ここは意図した非対称。
+        let (logo_x, logo_w) = join_card_text_frame(true);
+        assert!(logo_x > x);
+        assert!(logo_x + logo_w <= JOIN_CARD_WIDTH);
     }
 
     #[test]

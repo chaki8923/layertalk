@@ -1,6 +1,6 @@
 # 残りのやるべきこと（App Store 審査まで）
 
-最終更新: 2026-09-13
+最終更新: 2026-09-21
 
 **審査までの残作業の正はこのファイルだけ。** 以前の `docs/app-store-gates.html`・`docs/mas-migration-handover.md`・
 `docs/handoff.md` は消した（中身はここと `CLAUDE.md` に移してある。戻したければ git の履歴から）。
@@ -46,30 +46,63 @@ Slack / Teams 送信も入っている）。動いているテスト版はメニ
   できた URL は提出時に ASC の Review Notes の `<REVIEW_TEAMS_WEBHOOK_URL>` へ貼る（リポジトリには書かない）。
   審査が通ったらワークフローを止める。手順は `docs/channel-notifications.md`。
 
-## 1. Apple Developer Program に登録する
+## 1. Apple Developer Program に登録する — 済
 
-- [ ] **Individual か Organization かを決める**
-  Individual は本名が App Store の販売者名として出る。法人名で出すなら Organization で、D-U-N-S 番号の取得が先（日数がかかる）。
-  特商法ページの販売事業者名（Vercel の `LEGAL_SELLER_NAME`）と食い違わないようにする。
-- [ ] **登録する** — developer.apple.com/programs から。年 $99。Apple ID に 2 ファクタ認証が要る。登録の審査に数日かかることがある
+- [x] **Individual で登録済み**（2026-09-20）。チーム ID `GU7UV62R2R`、販売者名は本名 `RYOU CHAKI`。
+  **特商法ページの `LEGAL_SELLER_NAME` / `LEGAL_ADDRESS` をこれと揃えること。**
+  DSA のトレーダー情報も同じ自宅住所で申告した（2026-09-21 に本人確認書類を提出、審査中）ので、
+  `.env.example:103` が保留にしていた「自宅を公開するかバーチャルオフィスにするか」は**自宅で確定**。
 
-## 2. Apple 側の設定（登録後）
+## 2. Apple 側の設定（登録後）— ほぼ済（2026-09-21）
 
-- [ ] **証明書 2 枚と Mac App Store 用のプロビジョニングプロファイル**
-  アプリ署名用とインストーラ署名用。App ID は `app.layertalk.presenter`。
-  identity の名前は発行時期で違う（`3rd Party Mac Developer Application:` ではなく `Apple Distribution:` のことがある）ので、
-  `security find-identity -v -p codesigning` で実物を見てから `build-mas.sh` に渡す。
-- [ ] **App Store Connect にアプリを作り、メタデータを入れる** — `docs/app-store-listing.md` のとおり
-- [ ] **IAP を Non-Renewing Subscription で作る**（3.1.1）
-  **消耗型で作らないこと。** タイプは後から変えられず、同じ商品 ID も使い直せない。
-  商品 ID は `app.layertalk.presenter.event_pass`（サーバの既定値と presenter の `.env.local` がこの値）。
-  変えるなら、Vercel の `APPLE_EVENT_PASS_PRODUCT_ID` と MAS ビルドの `VITE_APPLE_EVENT_PASS_PRODUCT_ID` の**両方**を合わせる。
-  ずれると `/attempt` は通るのに `fulfill` が product mismatch で落ちる。IAP 審査用のスクリーンショットもここで撮る。
-- [ ] **Vercel に `APPLE_APP_ID` を入れて再デプロイし、通知 URL を登録する**
-  値は数値の Apple ID。無いと、審査の Sandbox は通るのに公開後の実購入が検証できない（`lib/server/app-store.ts` の `verifiers`）。
-  App Store Server Notifications V2 の宛先（本番・Sandbox とも）: `https://www.layer-talk.com/api/billing/app-store/notifications`
-- [ ] **Sandbox tester を作る** — Users and Access から
-- [ ] **App Privacy と年齢レーティングを入れる** — 回答案は `docs/app-store-listing.md`。トラッキングは「なし」
+残っているのは **IAP の審査用スクリーンショット**（ビルドが要る）と **DSA の審査結果待ち**だけ。
+
+- [x] **Paid Apps 契約・銀行口座・納税フォーム**（この項目は 9/13 版に無かった。**IAP を作るより先に要る**）
+  2026-09-21 に「有料アプリ契約 有効」「銀行口座 有効」「W-8BEN と Certificate of Foreign Status 有効」を確認。
+  W-8BEN は **Part II で日米租税条約 第12条第1項・0%** を申請してある（申請しないと 30% 源泉徴収される）。
+  Foreign TIN はマイナンバー。
+  *ロイヤルティ通貨が `USD` のまま。日本の JPY 口座なので JPY に変えられるか未確認（提出はこのままでも進む）。*
+- [x] **証明書 2 枚と Mac App Store 用のプロビジョニングプロファイル**（2026-09-20）
+  ```
+  MAS_APP_IDENTITY       = 3rd Party Mac Developer Application: RYOU CHAKI (GU7UV62R2R)
+  MAS_INSTALLER_IDENTITY = 3rd Party Mac Developer Installer: RYOU CHAKI (GU7UV62R2R)
+  MAS_PROVISION_PROFILE  = ~/Downloads/LayerTalk_MAS_macOS.provisionprofile
+  ```
+  `security find-identity -v` で 3 枚とも valid を確認（`Apple Distribution` も作ったが未使用）。
+  プロファイルは `security cms -D` で `Platform = OSX` と `com.apple.application-identifier` を確認済み。
+- [x] **App Store Connect にアプリを作った**（2026-09-21）— Apple ID `6814319511`、SKU `layertalk-presenter`、
+  名前 `LayerTalk`（取られていなかった）、サブタイトル・カテゴリ済み。**説明文・キーワード・スクリーンショットは未入力。**
+- [x] **IAP を Non-Renewing Subscription で作った**（2026-09-21）— 値は `docs/app-store-listing.md` の 6.
+  審査用スクリーンショットだけ残り（下の 3. で撮る）。
+- [x] **Vercel の `APPLE_APP_ID`（`6814319511`）投入・再デプロイと、通知 URL の登録**（2026-09-21）
+  本番・Sandbox の両方に `https://www.layer-talk.com/api/billing/app-store/notifications`。
+  **バージョンの選択欄は無い**（新規アプリは V2 固定）。
+- [x] **Sandbox tester を作った**（2026-09-21）。地域は日本。
+  **メールアドレスは「受信できる本物」でなければならない。** 作成自体は通るが、
+  サインインのときに **2ファクタ認証の確認コードがそのアドレスに送られる**ので、読めないと詰む。
+  `@example.com` は作成の時点で弾かれ、**App Store Connect は `+` を含むアドレスも受け付けない**。
+  **Gmail のドット無視**（`name@gmail.com` → `na.me@gmail.com`。文字列は別物だが同じ受信箱に届く）が使える。
+- [x] **App Privacy と年齢レーティング**（2026-09-21）
+  プライバシーは5種別すべて「Appの機能」「ユーザの個人情報に関連付けられる」「トラッキングなし」で公開済み。
+  年齢制限指定は **13+**（上書きなし）。
+- [ ] **DSA トレーダー情報の審査結果**（2026-09-21 提出、EU 27 か国、ステータス「審査中」）
+  結果待ちなだけで、**アプリの提出は止めない**。通らないと EU ストアから外れる。
+
+### ここで踏んだ、次に必ず忘れるもの
+
+- **非更新サブスクリプションは「アプリ内購入」ページに無い。** サイドバーの
+  **「サブスクリプション」ページの下部**の専用セクションから作る。「アプリ内購入」の＋を押すと
+  種類は**消耗型と非消耗型しか出ない**ので、「Apple が NRS を廃止した」と読み違える。
+- **プロファイルは「Mac App Store Connect」を選ぶ。** 「App Store Connect」は iOS 用で、
+  できあがるのは `Platform = iOS` かつ `application-identifier`（`com.apple.` が付かない）のプロファイル。
+  `build-mas.sh` が `com.apple.application-identifier` を要求するのでそこで落ちる。
+  見分けは Generate 直前の **Type が `Mac App Store` か `App Store` か**。
+- **証明書を作った直後は、プロファイル作成画面の候補に出ないことがある**
+  （`No Certificates are available` と出た。別の証明書を作って戻ったら、先に作った分も含めて両方出た）。
+  慌てて証明書を作り直す前に、時間をおいて開き直すこと。
+- **Apple Developer のサイトはブラウザの自動翻訳で壊れる。** 証明書のダウンロードが
+  `ID が「undefined」の「certificates」タイプのリソースは存在しません` になり、ファイルも落ちてこなかった。
+  翻訳を切り、一覧ページの URL を直接開いて取り直す。
 
 ## 3. 署名済みビルドで確かめる
 
@@ -87,10 +120,61 @@ Slack / Teams 送信も入っている）。動いているテスト版はメニ
 - [ ] **オーバーレイと画面収録が動く** — 0. のテスト版での確認が済んでいれば、ここは通しで一度見るだけ
   *アドホック署名版で確認済み（2026-09-13）: コメント・フキダシ・スタンプ・参加 QR・全画面での質問パネル・
   コントロール窓を閉じたままの発表・モニター切り替え・Wi-Fi 再接続・承認制のスライド保存とレポート・入室パスコード。*
-- [ ] **StoreKit を一通り通す**（3.1.1）
-  通常購入 / Ask to Buy の承認待ち→承認 / 購入直後に通信を切って再起動しての回収 / 返金通知で権利が revoked になる /
-  **別の Mac で「購入を復元」**（Non-Renewing Subscription は全デバイスへ届けるのが開発者の責任なので必須）。
-  Distribution 署名の `.app` は手元で起動できないので、開発署名のビルドか TestFlight で行う。
+- [ ] **StoreKit を一通り通す**（3.1.1）— 下の「開発署名でローカル起動する」の `.app` で行う
+  - [x] **通常購入**（2026-09-21）。Sandbox で完走し、**サーバ側の行まで確認済み**:
+    `app_store_transactions.transaction_id = 2000001239356406` / `product_id = app.layertalk.presenter.event_pass` /
+    `environment = Sandbox` / `status = purchased`、紐づく `entitlements` が `status = active` /
+    `source = app_store` / `kind = event_pass` / `expires_at` が購入の7日後 / `history_expires_at` が30日後。
+    `attempt` → StoreKit → `fulfill` → 権利付与が全部通った（行が作られている＝
+    `validateEventPassTransaction` の NRS 判定も通っている）
+  - [ ] 購入直後に通信を切って再起動しての回収（`billing.mas.ts` の `initializeBillingRecovery`）
+  - [ ] 同一 Mac で「購入を復元」— finish 済みでも `Transaction.all` が返すこと
+  - [ ] Ask to Buy の承認待ち→承認（Sandbox のファミリー共有が要る。best-effort）
+  - [ ] 返金通知で権利が revoked になる（Sandbox で返金を起こせたら。best-effort）
+  - [ ] ~~**別の Mac で「購入を復元」**~~ — **2 台目の Mac が無いので検証できない**（2026-09-21 時点）。
+    Non-Renewing Subscription は「同じ Apple ID の全デバイスへ届ける責任は開発者にある」型なので、
+    本来はここが必須。同一 Mac で `storeKitAll`（`StoreKitBridge.swift` の `allTransactions`）が
+    **finish 済みの取引を返すこと**までは確かめ、クロスデバイスは未検証として出す。
+    **確かめられなかった経路を黙って `[x]` にしないこと。**
+
+### 開発署名でローカル起動する（StoreKit を通す唯一の手段）
+
+> **macOS 26 に「システム設定 → デベロッパ → Sandbox Apple Account」は無い。** 一度サインインした
+> Sandbox アカウントを切り替える UI が見つからず、ここで半日溶かした。Xcode を入れても
+> `DevToolsSecurity -enable` をしても、そのペインは現れない。**Xcode は不要**（`build.rs` が使うのは
+> Command Line Tools の `xcrun swiftc` だけ）。しかも Xcode を入れると `xcode-select` が
+> そちらを向き、**ライセンス未同意で `xcrun swiftc` が落ちてビルドが壊れる**
+> （`sudo xcodebuild -license accept` で復旧）。
+> Sandbox アカウントを確実に切り替えたいなら **macOS のユーザを新しく作る**（アカウントはユーザ単位）。
+
+
+**アドホック署名版では StoreKit が動かない。** `embedded.provisionprofile` も
+`com.apple.application-identifier` も無いので `Product.products(for:)` が空を返し、
+`EventPassPanel.tsx` の `listPrice` が `null` のままになる（価格が **「—」** と表示される）。
+Event Pass のスクリーンショットと IAP 審査用のスクリーンショットも、これでは撮れない。
+
+Apple Developer ポータルで 3 つ（証明書とプロファイルは提出用とは**別物**）:
+
+1. **この Mac をデバイス登録** — Devices → ＋ → macOS。Device ID は
+   `system_profiler SPHardwareDataType | grep 'Provisioning UDID'` で出る
+2. **`Apple Development` 証明書**（CSR は提出用と同じものを使い回せる）
+3. **`macOS App Development` プロビジョニングプロファイル** — App ID `app.layertalk.presenter`、
+   上の証明書、登録した Mac。**生成前の確認画面で Type が `Mac Development` であること**
+
+```bash
+DEV_APP_IDENTITY="Apple Development: RYOU CHAKI (GU7UV62R2R)" \
+DEV_PROVISION_PROFILE=~/Downloads/LayerTalk_Dev_macOS.provisionprofile \
+./scripts/build-dev.sh
+open apps/presenter-app/src-tauri/target/dev-signed/LayerTalk.app
+```
+
+- Sandbox のサインインは **システム設定 → デベロッパ → Sandbox Apple Account**（App Store アプリではない）。
+  コード側に環境の分岐は無く、OS が決める
+- **発表者としてサインインしてから**でないと購入に入れない（`billing-http.ts` が Supabase の
+  `access_token` を Bearer に載せる。無いと `Presenter authentication required`）
+- サーバ側の設定は要らない。`app-store.ts` の `verifiers()` が**常に SANDBOX verifier を積む**ので、
+  Sandbox の取引は本番 Vercel でそのまま検証される
+- 署名し直すと画面収録の TCC 許可が外れることがある（下の注記と同じ）
 - [ ] **審査用アカウントでサインインし、ルーム作成 → 発表開始まで通る**
 
 ## 4. 提出
@@ -114,9 +198,24 @@ Slack / Teams 送信も入っている）。動いているテスト版はメニ
 - **Individual で登録すると、App Store の販売者名が本名になる。** 法人名なら Organization（D-U-N-S が先）
 - **Vercel の環境変数はビルド時に注入される。** `LEGAL_*` や `APPLE_APP_ID` は、入れたら必ず再デプロイする
 - **法務リンクが死んでも画面には何も出ない。** 押しても無反応になるだけ。署名済み sandbox の `.app` で目で確かめるまで証拠はない
+- **プロビジョニングプロファイルは種類を取り違えても最後まで気付けない。** ポータルで
+  「Mac App Store Connect」ではなく「App Store Connect」を選ぶと iOS 用ができ、entitlements のキーが
+  `com.apple.application-identifier` ではなく `application-identifier` になる。
+  `build-mas.sh` / `build-dev.sh` が `Platform` に `OSX` が無ければビルド前に落とすようにしてある。
+  手で確かめるなら `security cms -D -i <profile> | plutil -p - | grep -A3 Platform`
 - **署名 identity の名前は発行時期で変わる。** `security find-identity -v -p codesigning` で実物を確認する
+  （**インストーラ証明書は `-p codesigning` では出ない**。`security find-identity -v` で見ること）
+- **IAP の説明は 45 文字・表示名は 30 文字。** 下書きの説明文はどちらの言語も上限を超えていた。
+  縮めるときも**表示名の「1ルーム」は落とさない**（Event Pass は購入した1ルームでしか使えない）
+- **DSA のトレーダー情報は、氏名と住所それぞれに確認書類の提出が要る。** どちらも PDF/JPEG/PNG で 10MB まで。
+  iPhone で撮った書類を「ファイルに保存」した PDF は**画像が無圧縮で埋め込まれる**ことがあり、
+  1 枚で 37MB になった（JPEG に再エンコードして 1.9MB。`sips` で足りる）
 
 ## もう済んでいること（再確認は不要）
+
+- Apple Developer Program の登録、証明書・プロファイル、App Store Connect のアプリと IAP、
+  Paid Apps 契約・銀行・納税、Server Notifications、Sandbox tester、App Privacy、年齢レーティング 13+
+  — いずれも 2026-09-20〜21。詳細は上の 1. と 2.
 
 - 入室パスコードの修正マイグレーション（`20260913050326`）— 2026-09-13 に本番へ適用。`join_room` が
   `active_room_passcode_hash` を通ること、`' Ａｂｃ１ '` が `Abc1` に正規化されることを確認
@@ -151,6 +250,9 @@ codesign --verify --strict --verbose=2 target/adhoc-sandbox/LayerTalk.app
 codesign -d --entitlements - --xml target/adhoc-sandbox/LayerTalk.app | plutil -p -   # app-sandbox が true
 ```
 
+- **この `.app` では StoreKit が動かない。** 課金まわり（Event Pass の価格表示・購入シート・購入を復元）を
+  触るなら `scripts/build-dev.sh` の開発署名版を使う。アドホックには `embedded.provisionprofile` も
+  `com.apple.application-identifier` も無いので、商品の取得が空で返り、価格が「—」のままになる
 - sandbox が効いている証拠は `~/Library/Containers/app.layertalk.presenter/` ができること
 - 署名し直すと、画面収録の許可が外れることがある。効かなければシステム設定で LayerTalk を一度 `−` で外して `+` で入れ直す
 - 動いているテスト版は、メニューバーから終了してから開き直す

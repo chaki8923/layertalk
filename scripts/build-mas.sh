@@ -75,6 +75,19 @@ profile_plist="$work_dir/profile.plist"
 signing_entitlements="$work_dir/entitlements.plist"
 security cms -D -i "$MAS_PROVISION_PROFILE" > "$profile_plist"
 
+# プロファイルの種類を先に弾く。ポータルで「Mac App Store Connect」ではなく「App Store Connect」を
+# 選ぶと iOS 用（`Platform = iOS`）ができ、entitlements のキーが `com.apple.application-identifier`
+# ではなく `application-identifier` になる。下の profile_entitlement が落ちるだけでは理由が分からない。
+platforms="$(/usr/libexec/PlistBuddy -c "Print :Platform" "$profile_plist" 2>/dev/null || true)"
+case "$platforms" in
+  *OSX*) ;;
+  *)
+    echo "error: the provisioning profile is not for macOS (Platform: ${platforms//$'\n'/ })" >&2
+    echo "       pick 'Mac App Store Connect' in the developer portal, not the iOS one." >&2
+    exit 1
+    ;;
+esac
+
 profile_entitlement() {
   /usr/libexec/PlistBuddy -c "Print :Entitlements:$1" "$profile_plist" 2>/dev/null || {
     echo "error: the provisioning profile has no $1 entitlement" >&2
