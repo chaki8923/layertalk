@@ -6,6 +6,8 @@ dist/
 .next/
 out/
 target/
+# build-mas.sh がリポジトリ直下に毎回作る提出用パッケージ
+/LayerTalk.pkg
 
 # env
 .env
