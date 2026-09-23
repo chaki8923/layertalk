@@ -1,6 +1,6 @@
 # 残りのやるべきこと（App Store 審査まで）
 
-最終更新: 2026-09-21
+最終更新: 2026-09-23
 
 **審査までの残作業の正はこのファイルだけ。** 以前の `docs/app-store-gates.html`・`docs/mas-migration-handover.md`・
 `docs/handoff.md` は消した（中身はここと `CLAUDE.md` に移してある。戻したければ git の履歴から）。
@@ -9,6 +9,7 @@
 関連:
 - App Store Connect に貼る審査メモの本文と、審査用アカウントの作り方 → `docs/app-store-review-notes.md`
 - App Store Connect に入れる値（名前・説明文・App Privacy の回答案・スクリーンショット）→ `docs/app-store-listing.md`
+- 2.1 Information Needed（2026-09-23 の差し戻し）への返信本文と、画面収録の撮影台本 → `docs/app-store-review-reply.md`
 
 ---
 
@@ -162,7 +163,7 @@ Apple Developer ポータルで 3 つ（証明書とプロファイルは提出�
    上の証明書、登録した Mac。**生成前の確認画面で Type が `Mac Development` であること**
 
 ```bash
-DEV_APP_IDENTITY="Apple Development: RYOU CHAKI (GU7UV62R2R)" \
+DEV_APP_IDENTITY="Apple Development: RYOU CHAKI (8CCZ345T4F)" \
 DEV_PROVISION_PROFILE=~/Downloads/LayerTalk_Dev_macOS.provisionprofile \
 ./scripts/build-dev.sh
 open apps/presenter-app/src-tauri/target/dev-signed/LayerTalk.app
@@ -188,6 +189,32 @@ open apps/presenter-app/src-tauri/target/dev-signed/LayerTalk.app
 - [ ] **Transporter でアップロードして提出する** — IAP は初回だけ、アプリ本体と一緒に審査へ出す
 - [ ] **2 回目以降は `bundleVersion` を上げてからビルドする**
   `apps/presenter-app/src-tauri/tauri.mas.conf.json`（いまは `"1"`、version は `1.0.0`）。App Store Connect は同じビルド番号を二度受け付けない
+
+## 4b. 2.1 Information Needed への返信（2026-09-23 に差し戻し）
+
+新規デベロッパ向けの定型の情報提供要求。**バグの指摘ではないので再提出は不要**で、App Review ページからの
+返信で足りる（**`bundleVersion` は `2` のまま上げない**）。本文と撮影台本は `docs/app-store-review-reply.md`。
+
+- [x] **返信を送った**（2026-09-23 13:13 JST）— 本文 3,956 字＋`movie1.mov` / `movie2.mov` /
+  `LayerTalk-2.1-full-answers.pdf`。購入確認は Touch ID が画面収録中に無効化されるため動画を2本に分け、
+  本文にその理由を1行入れてある
+- [x] **画面収録を撮る** — 開発署名版（`build-dev.sh`）を EN 表示で。起動 → 新規登録 → パスワードでログイン →
+  ルーム作成 → 観客の投稿 → 全画面スライドへの重なり → NG ワード・通報・ブロック → Event Pass の購入と復元 →
+  画面収録の許可と ● REC → **退会（使い捨てアカウントで）**
+- [ ] **撮影後、審査用アカウントのパスワードがまだ通ることを確かめる**（消したら `create:review-account` で作り直し、
+  ASC の Password 欄も更新する）
+- [ ] **App Review ページから返信**（7 項目の本文＋動画）。添付に収まらなければ**ログイン不要**の限定公開リンク
+- [ ] **Notes 欄に 1 行足す**（4,000 字上限なので全文は入らない）
+- [x] **退会が失敗する不具合を直した**（2026-09-23）— `room_participant_blocks.blocked_by` が
+  `on delete restrict` で、**一度でもブロックを押した発表者だけ退会できなかった**（5.1.1(v)）。
+  `20260923030200_allow_account_deletion_after_block.sql` を本番に適用済み（`set null` に張り替え）。
+  アプリの再ビルドは不要。確かめ方: ブロック → 退会が通ること
+- [ ] **Stripe 表記の出し分けを入れたビルドを出す** — 退会ダイアログの `deleteKeeps` が
+  MAS 版でも「Stripe 側に残ります」と出ていた（3.1.1）。`isMasBuild` で Apple 表記に出し分け済みで、
+  画面収録用の `build-dev.sh` には入っている（2026-09-23）。**提出ビルドにはまだ入っていない。**
+  9/23 13:13 に返信を送って審査が動いているので、**いまは新しいビルドを上げない**
+  （上げると提出が差し替わって並び直しになる）。通ったら 1.0.1 で出す。
+  3.1.1 を指摘されたら `bundleVersion` を `3` にして `build-mas.sh` → Transporter
 
 ## 5. 審査が通ったら
 

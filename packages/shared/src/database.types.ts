@@ -123,7 +123,7 @@ export type Database = {
         reason: ReportReason; reporter_id: string | null; created_at: string;
       }>;
       room_participant_blocks: Table<{
-        room_id: string; user_id: string; blocked_by: string; reason: string | null; created_at: string;
+        room_id: string; user_id: string; blocked_by: string | null; reason: string | null; created_at: string;
       }>;
       room_branding: Table<{
         room_id: string; hide_layertalk_branding: boolean; brand_color: string;

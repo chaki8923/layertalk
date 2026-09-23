@@ -144,7 +144,13 @@ export const ja = {
     delete: "アカウントを削除",
     deleteTitle: "アカウントを削除しますか？",
     deleteBody: "ルーム、コメント、質問、カスタムスタンプ、通報、Event Pass の権利がすべて消えます。元に戻せません。",
-    deleteKeeps: "支払いの記録は、会計と不正対策のため Stripe 側に残ります。",
+    /**
+     * 販売者が配布チャネルで変わるので、ここも出し分ける（`legalPagePath` の `channel` と同じ理由）。
+     * MAS 版で「Stripe」と出すと、App Store 決済のアプリ内で**別の決済手段に言及している**形になり
+     * 3.1.1 の指摘対象になる。退会フローは審査の画面収録で必ず映る場所。
+     */
+    deleteKeeps: "購入の記録は、会計と不正対策のため Stripe 側に残ります。",
+    deleteKeepsAppStore: "購入の記録は、会計と不正対策のため Apple 側に残ります。",
     deleteConfirmLabel: "確認のため DELETE と入力してください",
     deleteConfirmWord: "DELETE",
     deleteCancel: "やめる",

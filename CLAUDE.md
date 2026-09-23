@@ -406,9 +406,15 @@ CSS の `paint-order: stroke fill` に当たる指定は無いので、**縁（�
   通報ボタンを足すと列が2倍になり押し間違いも増える。長押しが成立したら、指を離したときの
   click（＝スタンプ送信）を1回だけ捨てる
 - **退会はアプリ内に必ず置く**（App Store 5.1.1(v)）。`AccountFooter` の削除ダイアログ →
-  `/api/account/delete`。**`moderation_actions.actor_id` を `on delete restrict` に戻さないこと** —
-  戻すと、一度でも承認／非表示を押した発表者だけが FK 違反で退会できなくなる
-  （＝有料で使い込んだ人ほど詰まる。素で試すと気付けない）。Storage のファイルは
+  `/api/account/delete`。**`auth.users` を指す外部キーを `on delete restrict` にしないこと** —
+  `moderation_actions.actor_id` と `room_participant_blocks.blocked_by` がこれで、
+  一度でも承認／非表示／ブロックを押した発表者だけが FK 違反で退会できなくなる
+  （＝有料で使い込んだ人ほど詰まる。素で試すと気付けない）。**`restrict` は、同じ文の別の cascade で
+  その行が消える場合でも即座に弾く**（`no action` と違う）ので、`room_id` が `rooms` へ cascade
+  していても救われない。押した人の id は `set null` にする（行そのものは安全機能の記録なので残す）。
+  画面には「アカウントを削除できませんでした」としか出ず、原因は Vercel の `[account/delete]` 行にしか無い。
+  新しい表を足したら `select … from pg_constraint where confdeltype in ('r','a')` で漏れを見ること。
+  Storage のファイルは
   `on delete cascade` では消えないので、`deleteUser` の**前に**消す
 - **プライバシー・規約・サポートへの導線を購入シートの中だけに置かない**（App Store 5.1.1(i)）。
   購入画面を開かない利用者が方針にたどり着けなくなる。`AccountFooter` が常設の入口

@@ -129,7 +129,7 @@ export function AccountFooter({ locale, onDeleted }: Props) {
         <div className="p-5 pb-[max(20px,env(safe-area-inset-bottom))]">
           <h2 id="account-delete-title" className="text-[18px] font-bold tracking-[-.025em]">{t.account.deleteTitle}</h2>
           <p className="text-text-muted mt-3 text-[12px] leading-6">{t.account.deleteBody}</p>
-          <p className="text-text-faint mt-2 text-[11px] leading-5">{t.account.deleteKeeps}</p>
+          <p className="text-text-faint mt-2 text-[11px] leading-5">{isMasBuild ? t.account.deleteKeepsAppStore : t.account.deleteKeeps}</p>
 
           <label htmlFor="account-delete-confirm" className="text-text-faint mt-5 block text-[11px] font-semibold">
             {t.account.deleteConfirmLabel}

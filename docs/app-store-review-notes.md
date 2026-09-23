@@ -1,5 +1,8 @@
 # App Store Review Notes（App Store Connect に貼る用）
 
+2026-09-23 に Guideline 2.1（Information Needed）で差し戻された。返信本文と画面収録の撮影台本は
+`docs/app-store-review-reply.md`。このファイルは Notes 欄に貼る常設の本文を持つ。
+
 残っている空欄は `<REVIEW_PASSWORD>` と `<REVIEW_TEAMS_WEBHOOK_URL>` の2つ。どちらも
 App Store Connect に直接貼る（**リポジトリには書かない**）。空欄のまま貼ると
 「デモアカウントが動かない」「送信先が無くて試せない」で差し戻される。
