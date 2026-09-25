@@ -29,6 +29,11 @@ export const en: Messages = {
       label: "Site information, legal, and support",
       copyright: "© 2026 LayerTalk",
     },
+    appStore: {
+      cta: "Download on the Mac App Store",
+      compact: "Get the app",
+      note: "macOS 13 or later · Free download",
+    },
     legal: {
       eyebrow: "LayerTalk legal",
       effective: "Effective",
@@ -48,7 +53,6 @@ export const en: Messages = {
     titleLead: "Bring the room ",
     titleHighlight: "onto your slides.",
     description: "LayerTalk is a participatory presentation tool for macOS that puts audience comments, questions, and reactions directly over your slides in real time.",
-    primaryCta: "Explore Event Pass",
     secondaryCta: "Enter a join code",
     signals: ["No audience app", "Join by QR or 6-character code", "No audience limit"],
     stage: {
@@ -108,7 +112,6 @@ export const en: Messages = {
     },
     finalCta: {
       title: "Turn your next presentation into a conversation.",
-      presenter: "Explore Event Pass",
       audience: "Join as audience",
     },
   },

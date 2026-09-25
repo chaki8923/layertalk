@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import type { Locale } from "@layertalk/shared/i18n";
 
+import { AppStoreButton } from "@/components/public/app-store-button";
 import { messages } from "@/i18n";
 
 export function PublicHeader({ locale = "ja" }: { locale?: Locale }) {
@@ -21,6 +22,7 @@ export function PublicHeader({ locale = "ja" }: { locale?: Locale }) {
           <Link href="/#features" className="lt-nowrap text-text-muted hover:text-text hidden rounded-control px-2.5 py-2 text-[12px] font-semibold transition-colors md:inline-flex">{nav.features}</Link>
           <Link href="/#how-it-works" className="lt-nowrap text-text-muted hover:text-text hidden rounded-control px-2.5 py-2 text-[12px] font-semibold transition-colors md:inline-flex">{nav.howItWorks}</Link>
           <Link href="/event-pass" className="lt-nowrap text-text-muted hover:text-text rounded-control px-2.5 py-2 text-[12px] font-semibold transition-colors">{nav.eventPass}</Link>
+          <AppStoreButton locale={locale} variant="compact" className="hidden sm:inline-flex" />
           <Link href="/#join" className="lt-tap lt-nowrap border-border bg-surface hover:bg-surface-strong inline-flex min-h-9 items-center rounded-control border px-3 text-[12px] font-bold transition-colors">{nav.join}</Link>
         </nav>
       </div>

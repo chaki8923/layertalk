@@ -4,6 +4,7 @@ import type { Locale } from "@layertalk/shared/i18n";
 
 export const SITE_NAME = "LayerTalk";
 export const DEFAULT_SITE_URL = "https://www.layer-talk.com";
+export const APP_STORE_URL = "https://apps.apple.com/app/layertalk/id6814319511";
 export const SOCIAL_IMAGE_ALT = "LayerTalk — Bring the room onto your slides";
 
 const openGraphLocale: Record<Locale, string> = {
@@ -30,36 +31,18 @@ export function getSiteUrl(): string {
   }
 }
 
-export function isSearchIndexingEnabled(): boolean {
-  return process.env.SEARCH_INDEXING_ENABLED === "true";
-}
-
-export function createRobotsMetadata(indexingEnabled = isSearchIndexingEnabled()): Metadata["robots"] {
-  if (indexingEnabled) {
-    return {
-      index: true,
-      follow: true,
-      googleBot: {
-        index: true,
-        follow: true,
-        "max-video-preview": -1,
-        "max-image-preview": "large",
-        "max-snippet": -1,
-      },
-    };
-  }
-
-  return {
-    index: false,
-    follow: false,
-    nocache: true,
-    googleBot: {
-      index: false,
-      follow: false,
-      noimageindex: true,
-    },
-  };
-}
+/** 公開ページ（LP・Event Pass・法務・サポート）。ルーム画面と購入結果は `privatePageRobots`。 */
+export const publicPageRobots: Metadata["robots"] = {
+  index: true,
+  follow: true,
+  googleBot: {
+    index: true,
+    follow: true,
+    "max-video-preview": -1,
+    "max-image-preview": "large",
+    "max-snippet": -1,
+  },
+};
 
 export const privatePageRobots: Metadata["robots"] = {
   index: false,
@@ -157,6 +140,7 @@ export function createHomeStructuredData({
         applicationCategory: "BusinessApplication",
         applicationSubCategory: "Presentation software",
         operatingSystem: "macOS 13 or later",
+        downloadUrl: APP_STORE_URL,
         softwareRequirements:
           locale === "ja"
             ? "発表者はmacOS 13以降、観客は最新の主要ブラウザとインターネット接続が必要です。"

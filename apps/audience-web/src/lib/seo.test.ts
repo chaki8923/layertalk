@@ -4,9 +4,10 @@ import {
   createEventPassStructuredData,
   createHomeStructuredData,
   createPageMetadata,
-  createRobotsMetadata,
   DEFAULT_SITE_URL,
   getSiteUrl,
+  privatePageRobots,
+  publicPageRobots,
   serializeJsonLd,
 } from "./seo";
 
@@ -18,16 +19,16 @@ afterEach(() => {
 });
 
 describe("SEO metadata", () => {
-  it("keeps indexing disabled unless explicitly enabled", () => {
-    expect(createRobotsMetadata(false)).toMatchObject({
-      index: false,
-      follow: false,
-      googleBot: { index: false, follow: false, noimageindex: true },
-    });
-    expect(createRobotsMetadata(true)).toMatchObject({
+  it("indexes public pages and keeps room / billing pages out of search", () => {
+    expect(publicPageRobots).toMatchObject({
       index: true,
       follow: true,
       googleBot: { index: true, follow: true, "max-image-preview": "large" },
+    });
+    expect(privatePageRobots).toMatchObject({
+      index: false,
+      follow: false,
+      googleBot: { index: false, follow: false, noimageindex: true },
     });
   });
 

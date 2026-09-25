@@ -25,8 +25,7 @@ LP と App Store で言っていることがずれると、審査員が「説明
 | マーケティング URL | `https://www.layer-talk.com` |
 
 > ⚠️ `https://www.layer-talk.com` は `VITE_AUDIENCE_BASE_URL` と同じホスト。`www` を付けること（`layer-talk.com` は 308 で転送される）。
-> **`SEARCH_INDEXING_ENABLED` が未設定だと全ページ `noindex`** になる（`next.config.ts`）。
-> 審査には影響しないが、公開サイトとして意図どおりか確認しておくこと。
+> 公開ページは検索に出す。`noindex` は `/r/*`・`/billing/*`・`/api/*` だけ（`next.config.ts` と `privatePageRobots`）。
 >
 > サポート URL には `?channel=app-store` を付ける。付けないと Stripe 版の案内（「Stripeの領収書番号を送る」）が
 > 出て、審査員に「同じ Pass を別の決済で売っている」と読ませる余地を作る（3.1.1）。

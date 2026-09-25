@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 
 import { Toaster } from "@/components/ui/sonner";
 import { localeFromAcceptLanguage, messages } from "@/i18n";
-import { createRobotsMetadata, getSiteUrl, SITE_NAME } from "@/lib/seo";
+import { getSiteUrl, publicPageRobots, SITE_NAME } from "@/lib/seo";
 
 import "./globals.css";
 
@@ -26,7 +26,7 @@ export async function generateMetadata(): Promise<Metadata> {
       address: false,
       email: false,
     },
-    robots: createRobotsMetadata(),
+    robots: publicPageRobots,
   };
 }
 

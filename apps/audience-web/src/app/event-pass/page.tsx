@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowDown, Check, FileDown, KeyRound, ShieldCheck, Sparkles } from "lucide-react";
 
+import { AppStoreButton } from "@/components/public/app-store-button";
 import { PhraseText, ProtectedText } from "@/components/public/phrase-text";
 import { PublicShell } from "@/components/public/public-shell";
 import { createEventPassStructuredData, createPageMetadata, serializeJsonLd } from "@/lib/seo";
@@ -106,6 +107,8 @@ export default function EventPassPage() {
           </div>
           <div id="how-to-buy" className="scroll-mt-24">
             <h2 className="text-[24px] font-bold tracking-[-.035em]">購入方法</h2>
+            {/* 手順の1つ目より前に、まずアプリが要る。 */}
+            <AppStoreButton variant="secondary" className="mt-5 inline-flex" />
             <ol className="mt-6 space-y-3">
               {steps.map((step, index) => <li key={step} className="border-border flex items-center gap-4 border-b pb-3"><span className="lt-num text-brand text-[11px] font-bold">{String(index + 1).padStart(2, "0")}</span><span className="text-[13px] font-semibold"><ProtectedText text={step} terms={[step]} /></span></li>)}
             </ol>

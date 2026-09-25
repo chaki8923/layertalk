@@ -30,6 +30,12 @@ export const ja = {
       label: "サイト情報・法務・サポート",
       copyright: "© 2026 LayerTalk",
     },
+    /** 発表者アプリ（Mac App Store）への入口。LP・ヘッダ・Event Pass ページで使う。 */
+    appStore: {
+      cta: "Mac App Storeで入手",
+      compact: "アプリを入手",
+      note: "macOS 13以降・無料でダウンロード",
+    },
     /** 法務ページの見出し。英語版は `?lang=en`（`content/legal/locale.ts`）。 */
     legal: {
       eyebrow: "LayerTalk legal",
@@ -50,7 +56,6 @@ export const ja = {
     titleLead: "会場の声を、",
     titleHighlight: "スライドの上へ。",
     description: "LayerTalkは、観客のコメント・質問・スタンプをプレゼン画面へリアルタイムに重ねる、macOS向けの参加型プレゼンツールです。",
-    primaryCta: "Event Passを見る",
     secondaryCta: "参加コードを入力",
     signals: ["観客アプリ不要", "QR・6文字コードで参加", "観客数の制限なし"],
     stage: {
@@ -113,7 +118,6 @@ export const ja = {
     },
     finalCta: {
       title: "次の発表を、会場との対話に変える。",
-      presenter: "Event Passを見る",
       audience: "観客として参加",
     },
   },

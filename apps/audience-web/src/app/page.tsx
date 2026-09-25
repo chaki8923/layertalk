@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { JoinForm } from "@/components/join-form";
+import { AppStoreButton } from "@/components/public/app-store-button";
 import { LiveSlideDemo } from "@/components/public/live-slide-demo";
 import { PhraseText, ProtectedText } from "@/components/public/phrase-text";
 import { PublicShell } from "@/components/public/public-shell";
@@ -71,13 +72,12 @@ export default async function HomePage() {
               <p className="text-text-muted mt-7 max-w-xl text-[15px] leading-7 sm:text-[16px]"><ProtectedText text={t.description} /></p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link href="/event-pass" className="lt-tap lt-nowrap bg-gradient-brand shadow-glow inline-flex min-h-12 items-center justify-center gap-2 rounded-control px-5 text-[14px] font-bold text-white">
-                  {t.primaryCta}<ArrowRight size={16} aria-hidden="true" />
-                </Link>
+                <AppStoreButton locale={locale} />
                 <Link href="/#join" className="lt-tap lt-nowrap border-border bg-surface hover:bg-surface-strong inline-flex min-h-12 items-center justify-center rounded-control border px-5 text-[14px] font-bold transition-colors">
                   {t.secondaryCta}
                 </Link>
               </div>
+              <p className="text-text-faint mt-3 text-[11px]">{messages[locale].public.appStore.note}</p>
 
               <ul className="mt-7 flex flex-wrap gap-x-5 gap-y-2" aria-label="LayerTalk highlights">
                 {t.signals.map((signal) => (
@@ -214,7 +214,7 @@ export default async function HomePage() {
               {locale === "ja" ? <PhraseText phrases={["次の発表を、", "会場との対話に", "変える。"]} /> : t.finalCta.title}
             </h2>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-              <Link href="/event-pass" className="lt-tap lt-nowrap bg-gradient-brand shadow-glow inline-flex min-h-12 items-center justify-center rounded-control px-5 text-[14px] font-bold text-white">{t.finalCta.presenter}</Link>
+              <AppStoreButton locale={locale} />
               <Link href="/#join" className="lt-tap lt-nowrap border-border hover:bg-surface inline-flex min-h-12 items-center justify-center rounded-control border px-5 text-[14px] font-bold transition-colors">{t.finalCta.audience}</Link>
             </div>
           </div>
