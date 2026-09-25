@@ -1,9 +1,12 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import type { Locale } from "@layertalk/shared/i18n";
 
 import { AppStoreButton } from "@/components/public/app-store-button";
 import { messages } from "@/i18n";
+
+import layerTalkMark from "./layertalk-mark.png";
 
 export function PublicHeader({ locale = "ja" }: { locale?: Locale }) {
   const nav = messages[locale].public.nav;
@@ -12,10 +15,7 @@ export function PublicHeader({ locale = "ja" }: { locale?: Locale }) {
     <header className="border-border bg-bg/90 sticky top-0 z-40 border-b backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <Link href="/" className="lt-tap lt-nowrap flex items-center gap-2.5 font-bold tracking-tight" aria-label="LayerTalk home">
-          <span aria-hidden="true" className="relative h-6 w-6">
-            <span className="border-brand absolute inset-x-0 top-0 h-4 rounded-chip border" />
-            <span className="bg-brand/35 absolute inset-x-1 bottom-0 h-4 rounded-chip" />
-          </span>
+          <Image src={layerTalkMark} alt="" width={28} height={28} preload className="h-7 w-7" />
           LayerTalk
         </Link>
         <nav aria-label={nav.label} className="flex items-center gap-1 sm:gap-3">
