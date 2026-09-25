@@ -89,6 +89,8 @@ LayerTalkはスライドを読み込みません。画面の一番上に透明�
 2. スライド上のQR、または6文字コードを観客へ案内する
 3. 「プレゼンを開始」を押すと、コメント・質問・スタンプがスライドの上へ届きます
 
+発表中は ⇧⌘L で、スライドの上にコントロール画面を呼び出せます。
+
 開始する前の投稿は表示しません。リハーサルや前の発表の反応が本番の画面に出ることは
 ありません。オーバーレイはクリックスルーなので、重ねたままスライドを操作できます。
 
@@ -143,6 +145,8 @@ HOW IT WORKS
 1. Create a presentation room in the Presenter app.
 2. Share the QR on your slides, or the 6-character code.
 3. Press "Start presentation" and comments, questions, and stamps arrive on screen.
+
+While presenting, press ⇧⌘L to bring up the controls over your slides.
 
 Nothing posted before you start is shown, so rehearsal traffic never reaches a live
 slide. The overlay is click-through, so you keep driving your slides underneath it.

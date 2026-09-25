@@ -171,18 +171,26 @@ export default async function HomePage() {
                   {locale === "ja" ? <PhraseText phrases={["共有するのは、", "ひとつのコードだけ"]} /> : t.howItWorks.title}
                 </h2>
               </div>
-              <ol className="divide-border border-border divide-y border-y">
-                {t.howItWorks.steps.map((step, index) => {
-                  const Icon = stepIcons[index]!;
-                  return (
-                    <li key={step.title} className="grid grid-cols-[2.5rem_1fr_auto] items-center gap-4 py-5 sm:gap-6 sm:py-6">
-                      <span className="lt-num text-brand text-[11px] font-bold">{String(index + 1).padStart(2, "0")}</span>
-                      <div><h3 className="text-[15px] font-bold"><ProtectedText text={step.title} terms={[step.title]} /></h3><p className="text-text-muted mt-1 text-[12px] leading-5"><ProtectedText text={step.description} /></p></div>
-                      <Icon className="text-text-faint" size={19} aria-hidden="true" />
-                    </li>
-                  );
-                })}
-              </ol>
+              <div>
+                <ol className="divide-border border-border divide-y border-y">
+                  {t.howItWorks.steps.map((step, index) => {
+                    const Icon = stepIcons[index]!;
+                    return (
+                      <li key={step.title} className="grid grid-cols-[2.5rem_1fr_auto] items-center gap-4 py-5 sm:gap-6 sm:py-6">
+                        <span className="lt-num text-brand text-[11px] font-bold">{String(index + 1).padStart(2, "0")}</span>
+                        <div><h3 className="text-[15px] font-bold"><ProtectedText text={step.title} terms={[step.title]} /></h3><p className="text-text-muted mt-1 text-[12px] leading-5"><ProtectedText text={step.description} /></p></div>
+                        <Icon className="text-text-faint" size={19} aria-hidden="true" />
+                      </li>
+                    );
+                  })}
+                </ol>
+                {/* ⇧⌘L は lib.rs のグローバルショートカット。アプリ内ではトレイとコントロール窓にしか書いていない。 */}
+                <p className="text-text-muted mt-4 text-[12px] leading-6">
+                  {t.howItWorks.shortcutLead}{" "}
+                  <kbd className="border-border bg-surface rounded-chip border px-1.5 font-sans font-semibold">⇧⌘L</kbd>{" "}
+                  {t.howItWorks.shortcutTail}
+                </p>
+              </div>
             </div>
           </div>
         </section>

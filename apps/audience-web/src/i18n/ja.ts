@@ -103,6 +103,9 @@ export const ja = {
         { title: "QRかコードを共有", description: "スライド上のQR、または6文字コードを観客へ案内します。" },
         { title: "会場の反応を映す", description: "コメント、質問、スタンプがスライドの上へ届きます。" },
       ],
+      /** ⇧⌘L の案内。キー表記はチップで挟むので、前後の文を分けて持つ。 */
+      shortcutLead: "発表中は",
+      shortcutTail: "で、スライドの上にコントロール画面を呼び出せます。",
     },
     eventPass: {
       eyebrow: "For the main event",

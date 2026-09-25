@@ -1428,6 +1428,15 @@ export function ControlWindow() {
                 ? t.live.showingOn(settings.monitorName ?? t.monitor.primary)
                 : t.live.hidden}
           </p>
+          {/* 全画面のスライドの上へこの窓を戻す手段は ⇧⌘L（lib.rs のグローバルショートカット）だけ。
+              トレイの項目にしか書いていなかったので、使う直前に目に入るここにも出す。 */}
+          {settings.roomId && (
+            <p className="text-text-faint text-center text-[11px] leading-relaxed">
+              {t.live.shortcut}{" "}
+              <kbd className="border-border bg-surface rounded-chip border px-1.5 font-sans font-semibold">⇧⌘L</kbd>{" "}
+              {t.live.shortcutSuffix}
+            </p>
+          )}
           {live && recording && (
             <p role="status" className="text-like flex items-center justify-center gap-1.5 text-center text-[11px] font-semibold leading-relaxed">
               <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-[var(--lt-like)] animate-pulse motion-reduce:animate-none" />

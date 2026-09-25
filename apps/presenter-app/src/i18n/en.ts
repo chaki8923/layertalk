@@ -18,6 +18,8 @@ export const en: Messages = {
     showingOn: (monitor: string) =>
       `Showing on ${monitor}. Only comments posted after you start will appear.`,
     hidden: "Nothing is shown anywhere until you start.",
+    shortcut: "Press",
+    shortcutSuffix: "to bring this window back while presenting.",
     recording: "Recording the screen to save slides (LayerTalk and the cursor are excluded)",
   },
 

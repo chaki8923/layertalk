@@ -24,6 +24,9 @@ export const ja = {
     showingOn: (monitor: string) =>
       `${monitor} に表示中。開始後に届いたコメントだけが流れます。`,
     hidden: "開始するまでオーバーレイはどこにも表示されません。",
+    /** ⇧⌘L の案内。キー表記はチップで挟むので、前後の文を分けて持つ。 */
+    shortcut: "発表中にこの画面を呼び出すときは",
+    shortcutSuffix: "を押します。",
     /** 画面収録中の表示（App Store 2.5.14）。メニューバーのトレイにも「● REC」が出る。 */
     recording: "スライド保存のため画面を収録中（LayerTalk の表示とカーソルは写りません）",
   },

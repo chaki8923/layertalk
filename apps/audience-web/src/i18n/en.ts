@@ -99,6 +99,8 @@ export const en: Messages = {
         { title: "Share a QR or code", description: "Show the QR on your slides or share the 6-character code." },
         { title: "Bring reactions on screen", description: "Comments, questions, and stamps appear over your slides." },
       ],
+      shortcutLead: "While presenting, press",
+      shortcutTail: "to bring up the controls over your slides.",
     },
     eventPass: {
       eyebrow: "For the main event",
