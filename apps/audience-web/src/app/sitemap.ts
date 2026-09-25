@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 
+import { guidePath, guides } from "@/content/guides";
 import { getSiteUrl } from "@/lib/seo";
 
 /** `?lang=en` / `?channel=app-store` は canonical が同じページなので載せない。 */
@@ -10,7 +11,8 @@ const PUBLIC_PATHS = [
   "/legal/terms",
   "/legal/tokusho",
   "/support",
-] as const;
+  ...guides.map(({ slug }) => guidePath(slug)),
+];
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const siteUrl = getSiteUrl();

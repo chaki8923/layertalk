@@ -214,3 +214,49 @@ export function createEventPassStructuredData() {
     ],
   };
 }
+
+type GuideStructuredDataOptions = {
+  slug: string;
+  title: string;
+  description: string;
+  publishedDate: string;
+  updatedDate: string;
+};
+
+export function createGuideStructuredData({
+  slug,
+  title,
+  description,
+  publishedDate,
+  updatedDate,
+}: GuideStructuredDataOptions) {
+  const siteUrl = getSiteUrl();
+  const url = `${siteUrl}/guides/${slug}`;
+  const organization = { "@type": "Organization", name: SITE_NAME, url: `${siteUrl}/` };
+
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Article",
+        "@id": `${url}#article`,
+        headline: title,
+        description,
+        datePublished: publishedDate,
+        dateModified: updatedDate,
+        inLanguage: "ja-JP",
+        mainEntityOfPage: url,
+        image: `${siteUrl}/opengraph-image`,
+        author: organization,
+        publisher: organization,
+      },
+      {
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: SITE_NAME, item: `${siteUrl}/` },
+          { "@type": "ListItem", position: 2, name: title, item: url },
+        ],
+      },
+    ],
+  };
+}

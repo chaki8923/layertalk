@@ -12,6 +12,8 @@ export function PublicFooter({ locale = "ja" }: { locale?: Locale }) {
   const links = [
     [footer.home, "/"],
     [footer.eventPass, "/event-pass"],
+    // 解説記事は日本語だけ。
+    ...(locale === "ja" ? ([["プレゼンを盛り上げる方法", "/guides/presentation"], ["LTを盛り上げるコツ", "/guides/lightning-talk"]] as const) : []),
     [footer.terms, `/legal/terms${legalQuery}`],
     [footer.privacy, `/legal/privacy${legalQuery}`],
     [footer.commerce, "/legal/tokusho"],
