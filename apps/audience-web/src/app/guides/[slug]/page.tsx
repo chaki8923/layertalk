@@ -16,6 +16,8 @@ export function generateStaticParams() {
 export async function generateMetadata(props: PageProps<"/guides/[slug]">): Promise<Metadata> {
   const guide = findGuide((await props.params).slug);
   if (!guide) return {};
+  // 同じ階層の opengraph-image.tsx が作る、記事タイトル入りのカード。X のカードも同じ画像にそろえる。
+  const image = { url: `${guidePath(guide.slug)}/opengraph-image`, width: 1200, height: 630, alt: guide.title };
   const metadata = createPageMetadata({
     title: `${guide.title} | LayerTalk`,
     description: guide.description,
@@ -23,7 +25,8 @@ export async function generateMetadata(props: PageProps<"/guides/[slug]">): Prom
   });
   return {
     ...metadata,
-    openGraph: { ...metadata.openGraph, type: "article", publishedTime: guide.publishedDate, modifiedTime: guide.updatedDate },
+    openGraph: { ...metadata.openGraph, type: "article", publishedTime: guide.publishedDate, modifiedTime: guide.updatedDate, images: [image] },
+    twitter: { ...metadata.twitter, images: [image] },
   };
 }
 

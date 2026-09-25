@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 
 import type { Locale } from "@layertalk/shared/i18n";
 
+import { GUIDES_PATH, GUIDES_TITLE } from "@/content/guides";
+
 export const SITE_NAME = "LayerTalk";
 export const DEFAULT_SITE_URL = "https://www.layer-talk.com";
 export const APP_STORE_URL = "https://apps.apple.com/app/layertalk/id6814319511";
@@ -221,7 +223,19 @@ type GuideStructuredDataOptions = {
   description: string;
   publishedDate: string;
   updatedDate: string;
+  topics: string[];
 };
+
+function guidesBreadcrumb(siteUrl: string, article?: { title: string; url: string }) {
+  return {
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: SITE_NAME, item: `${siteUrl}/` },
+      { "@type": "ListItem", position: 2, name: GUIDES_TITLE, item: `${siteUrl}${GUIDES_PATH}` },
+      ...(article ? [{ "@type": "ListItem", position: 3, name: article.title, item: article.url }] : []),
+    ],
+  };
+}
 
 export function createGuideStructuredData({
   slug,
@@ -229,6 +243,7 @@ export function createGuideStructuredData({
   description,
   publishedDate,
   updatedDate,
+  topics,
 }: GuideStructuredDataOptions) {
   const siteUrl = getSiteUrl();
   const url = `${siteUrl}/guides/${slug}`;
@@ -246,17 +261,43 @@ export function createGuideStructuredData({
         dateModified: updatedDate,
         inLanguage: "ja-JP",
         mainEntityOfPage: url,
-        image: `${siteUrl}/opengraph-image`,
+        image: `${url}/opengraph-image`,
+        articleSection: GUIDES_TITLE,
+        about: topics.map((name) => ({ "@type": "Thing", name })),
+        // LP の JSON-LD の WebSite と同じ @id。
+        isPartOf: { "@id": `${siteUrl}/#website` },
         author: organization,
         publisher: organization,
       },
+      guidesBreadcrumb(siteUrl, { title, url }),
+    ],
+  };
+}
+
+export function createGuidesIndexStructuredData(items: { slug: string; title: string }[]) {
+  const siteUrl = getSiteUrl();
+
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
       {
-        "@type": "BreadcrumbList",
-        itemListElement: [
-          { "@type": "ListItem", position: 1, name: SITE_NAME, item: `${siteUrl}/` },
-          { "@type": "ListItem", position: 2, name: title, item: url },
-        ],
+        "@type": "CollectionPage",
+        "@id": `${siteUrl}/guides#collection`,
+        name: GUIDES_TITLE,
+        url: `${siteUrl}${GUIDES_PATH}`,
+        inLanguage: "ja-JP",
+        isPartOf: { "@id": `${siteUrl}/#website` },
+        mainEntity: {
+          "@type": "ItemList",
+          itemListElement: items.map((item, index) => ({
+            "@type": "ListItem",
+            position: index + 1,
+            name: item.title,
+            url: `${siteUrl}/guides/${item.slug}`,
+          })),
+        },
       },
+      guidesBreadcrumb(siteUrl),
     ],
   };
 }

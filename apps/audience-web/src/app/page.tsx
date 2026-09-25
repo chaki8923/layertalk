@@ -18,10 +18,10 @@ import {
 
 import { JoinForm } from "@/components/join-form";
 import { AppStoreButton } from "@/components/public/app-store-button";
+import { GuideCards } from "@/components/public/guide-cards";
 import { LiveSlideDemo } from "@/components/public/live-slide-demo";
 import { PhraseText, ProtectedText } from "@/components/public/phrase-text";
 import { PublicShell } from "@/components/public/public-shell";
-import { guidePath, guides } from "@/content/guides";
 import { localeFromAcceptLanguage, messages } from "@/i18n";
 import { createHomeStructuredData, createPageMetadata, serializeJsonLd } from "@/lib/seo";
 
@@ -223,19 +223,9 @@ export default async function HomePage() {
             <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
               <p className="text-brand text-[11px] font-bold tracking-[.18em] uppercase">Guides</p>
               <h2 className="mt-4 text-[clamp(1.75rem,4vw,2.75rem)] leading-[1.1] font-bold tracking-[-.05em]">
-                <PhraseText phrases={["プレゼンやLTを", "盛り上げるヒント"]} />
+                <PhraseText phrases={["プレゼン・LT・会議を", "盛り上げるヒント"]} />
               </h2>
-              <ul className="mt-9 grid gap-2.5 md:grid-cols-2">
-                {guides.map((guide) => (
-                  <li key={guide.slug}>
-                    <Link href={guidePath(guide.slug)} className="border-border bg-surface hover:border-brand/50 flex h-full flex-col rounded-card border p-6 transition-colors">
-                      <span className="text-[16px] leading-[1.45] font-bold"><ProtectedText text={guide.title} /></span>
-                      <span className="text-text-muted mt-3 text-[13px] leading-6"><ProtectedText text={guide.lead} /></span>
-                      <span className="text-brand mt-5 inline-flex items-center gap-1.5 text-[12px] font-bold">記事を読む<ArrowRight size={14} aria-hidden="true" /></span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              <GuideCards className="mt-9" />
             </div>
           </section>
         )}

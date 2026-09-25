@@ -8,6 +8,7 @@ export const presentationGuide: GuideArticle = {
     "プレゼンや発表が盛り上がらない原因と、聞き手が参加したくなる9つのコツを解説。冒頭のつかみ、答えやすい問いかけ、スライドの作り方、反応の見える化、質問の受け方まで、すぐ使える方法を紹介します。",
   publishedDate: "2026-09-25",
   updatedDate: "2026-09-25",
+  topics: ["プレゼンテーション", "発表", "聴衆参加"],
   sections: [
     {
       id: "why",

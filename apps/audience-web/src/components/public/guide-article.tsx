@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { guidePath, guides, type GuideArticle as GuideArticleContent } from "@/content/guides";
+import { GUIDES_PATH, GUIDES_TITLE, guidePath, guides, type GuideArticle as GuideArticleContent } from "@/content/guides";
 import { messages } from "@/i18n";
 
 import { AppStoreButton } from "./app-store-button";
@@ -18,7 +18,7 @@ export function GuideArticle({ guide }: { guide: GuideArticleContent }) {
           <nav aria-label="パンくずリスト" className="text-text-faint text-[11px]">
             <Link href="/" className="hover:text-brand transition-colors">LayerTalk</Link>
             <span aria-hidden="true" className="mx-2">/</span>
-            <span>盛り上げ方ガイド</span>
+            <Link href={GUIDES_PATH} className="hover:text-brand transition-colors">{GUIDES_TITLE}</Link>
           </nav>
           <h1 className="mt-4 text-[clamp(1.6rem,5vw,2.5rem)] leading-[1.25] font-bold tracking-[-0.04em]">{text(guide.title)}</h1>
           <p className="text-text-muted mt-5 text-[15px] leading-8">{text(guide.lead)}</p>

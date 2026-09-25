@@ -20,5 +20,7 @@ export type GuideArticle = {
   description: string;
   publishedDate: string;
   updatedDate: string;
+  /** 構造化データの `about`。記事の主題を Google が取り違えないようにするためで、順位を上げるものではない。 */
+  topics: string[];
   sections: GuideSection[];
 };

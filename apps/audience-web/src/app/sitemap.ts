@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-import { guidePath, guides } from "@/content/guides";
+import { GUIDES_PATH, guidePath, guides } from "@/content/guides";
 import { getSiteUrl } from "@/lib/seo";
 
 /** `?lang=en` / `?channel=app-store` は canonical が同じページなので載せない。 */
@@ -11,6 +11,7 @@ const PUBLIC_PATHS = [
   "/legal/terms",
   "/legal/tokusho",
   "/support",
+  GUIDES_PATH,
   ...guides.map(({ slug }) => guidePath(slug)),
 ];
 

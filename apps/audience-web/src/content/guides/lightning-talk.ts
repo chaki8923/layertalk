@@ -8,6 +8,7 @@ export const lightningTalkGuide: GuideArticle = {
     "LT（ライトニングトーク）を盛り上げるコツを、登壇者と運営の両方の視点で解説。5分で伝わる構成、テンポのよいスライド、時間の使い方、会場の反応をスライドに流す方法まで紹介します。",
   publishedDate: "2026-09-25",
   updatedDate: "2026-09-25",
+  topics: ["ライトニングトーク", "勉強会", "イベント運営"],
   sections: [
     {
       id: "what-is-lt",
