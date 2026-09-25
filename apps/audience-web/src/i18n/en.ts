@@ -6,8 +6,8 @@ import type { Messages } from "./index";
  */
 export const en: Messages = {
   meta: {
-    title: "LayerTalk | Bring the room onto your slides.",
-    description: "Bring audience comments, questions, and reactions onto presentation slides in real time",
+    title: "LayerTalk | Live audience comments and Q&A on your slides, for Mac",
+    description: "A Mac app that shows audience comments, questions, and reactions over your presentation slides in real time. The audience joins with a QR or 6-character code, no app or sign-up needed. Works with PowerPoint, Keynote, Canva, and more.",
     keywords: ["presentation software", "live audience engagement", "Q&A", "real-time comments", "event presentation", "slide overlay"],
   },
 
