@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LayerTalk Overlay (spike)</title>
+    <style>
+      /*
+        透過は「窓・webview・CSS」の3段すべてで通す必要がある。
+        ここで地の色を塗ると、窓が透過していても白／黒の板に見える。
+      */
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+        /* 日本語 Web フォントは読み込まない（会場の Wi-Fi で初期表示が壊れる）。 */
+        font-family: -apple-system, "Segoe UI", "Yu Gothic UI", system-ui, sans-serif;
+      }
+      #root {
+        position: relative;
+        height: 100%;
+        width: 100%;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/spike-overlay.ts"></script>
+  </body>
+</html>

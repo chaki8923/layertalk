@@ -61,6 +61,19 @@ export default defineConfig(async ({ mode }) => {
       },
     },
 
+    // 窓ごとに別のエントリにする。オーバーレイ窓に `ControlWindow`（69KB）を
+    // 読ませたくないため。**エントリを足したらここに書かないと、`tauri build` の
+    // 本番バンドルにだけ入らず dev でしか動かない**（dev サーバは HTML を直接配るので気付けない）。
+    build: {
+      rollupOptions: {
+        input: {
+          main: fileURLToPath(new URL("./index.html", import.meta.url)),
+          // Windows スパイクのダミーオーバーレイ。本物に差し替えたら消す。
+          "spike-overlay": fileURLToPath(new URL("./spike-overlay.html", import.meta.url)),
+        },
+      },
+    },
+
     // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
     //
     // 1. prevent Vite from obscuring rust errors

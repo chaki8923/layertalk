@@ -85,3 +85,14 @@ core-graphics = "0.25"
 # **モジュールと Swift の `#if` を開けるフラグ**。デプロイメントターゲットは上がらず、
 # Swift 側に `#available(macOS 14.0, *)` があるので macOS 13 では Err が返るだけ。
 screencapturekit = { version = "8", features = ["macos_14_0"] }
+
+# Windows のオーバーレイ窓（最前面・フォーカスを奪わない拡張スタイル・WebView2 の透過）。
+# **バージョンは Cargo.lock が固定している tauri / wry のものに合わせること。**
+# ずれると `PlatformWebview::controller()` が返す型と webview2-com の型が別物になり、
+# `cast::<ICoreWebView2Controller2>()` がコンパイルを通らない。
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_UI_WindowsAndMessaging",
+] }
+webview2-com = "0.38"
