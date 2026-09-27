@@ -85,7 +85,11 @@ Windows で `SUPER` は Windows キーなので `CONTROL` に替えてある）�
 | 2 | スライドショーの上に出る | **○** |
 | 3 | クリックスルー | **○** |
 | 4 | フォーカスを奪わない（矢印キーでページ送り） | **○** |
-| 5 | Alt+Tab に出ない | **×→○** 下の「注意」の `WS_EX_APPWINDOW` を直して解決 |
+| 5 | Alt+Tab に出ない | **○**（初回は× → `WS_EX_APPWINDOW` を直して再実測で○） |
+
+> `skip_taskbar(true)` にしても**最前面は壊れなかった**（再実測で確認）。
+> Alt+Tab に「LayerTalk Control」が出るのは正しい状態 — 発表者が操作する窓なので、
+> 隠すのは `overlay` と `questions` だけ。
 | 6 | 5分放置して webview が凍らない | **○**（macOS の罠 #20 は Windows では再現せず） |
 
 セットアップで踏んだ環境側の穴（コードとは無関係）:
