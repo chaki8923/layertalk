@@ -152,12 +152,14 @@ fn recording(health: Option<&CaptureHealth>) -> bool {
     health.is_some_and(|health| health.stopped.is_none())
 }
 
+/// 撮影したスライド1枚。**行パディングを除いた BGRA8。**
+/// バックエンド（macOS は ScreenCaptureKit、Windows は `windows_capture`）が作る唯一の型。
 #[derive(Clone)]
-struct Frame {
-    width: u32,
-    height: u32,
+pub(crate) struct Frame {
+    pub(crate) width: u32,
+    pub(crate) height: u32,
     /// 行パディングを除いた BGRA。
-    bgra: Vec<u8>,
+    pub(crate) bgra: Vec<u8>,
 }
 
 /// 承認待ちの質問のために取り置いた、届いた時点のスライド（JPEG）。**ディスクには書かない。**
@@ -231,18 +233,73 @@ impl CaptureParts {
     }
 }
 
+/// Windows 版。**持続ストリームを持たない**（質問が届いた瞬間に1枚だけ撮る）ので、
+/// macOS 版にある `latest` / `filter` / `configuration` / `stream` に当たるものが無い。
+/// 理由は `windows_capture` のモジュールコメント参照。
+#[cfg(target_os = "windows")]
+struct ActiveCapture {
+    session_id: Uuid,
+    monitor: crate::windows_capture::MonitorTarget,
+    /// 発表ごとに持つ。`ActiveCapture` と一緒に消えるので、発表を終えれば取り置きも必ず消える。
+    held: Arc<Mutex<HeldCaptures>>,
+    health: Arc<Mutex<CaptureHealth>>,
+}
+
+#[cfg(target_os = "windows")]
+struct CaptureParts {
+    session_id: Uuid,
+    monitor: crate::windows_capture::MonitorTarget,
+    held: Arc<Mutex<HeldCaptures>>,
+    health: Arc<Mutex<CaptureHealth>>,
+}
+
+#[cfg(target_os = "windows")]
+impl CaptureParts {
+    /// いまのスライドを1枚撮る。**`active` のロックは `parts` が既に外してある**
+    /// （握ったまま数百 ms 待つと `stop_presentation` まで巻き添えで固まる。罠 #17 と同じ形）。
+    fn grab_frame(&self) -> Result<Option<Frame>, String> {
+        let outcome = crate::windows_capture::shoot_monitor(&self.monitor);
+        if let Ok(mut health) = self.health.lock() {
+            health.frames_seen += 1;
+            match &outcome {
+                Ok(_) => {
+                    health.frames_stored += 1;
+                    health.last_status = Some("wgc/ok");
+                    health.blocked = false;
+                }
+                Err(err) => {
+                    health.last_status = Some(err.status_name());
+                    // 回復しない失敗だけ `stopped` に入れる。入れると収録表示が落ちる。
+                    if err.is_fatal() {
+                        health.stopped = Some(err.to_string());
+                    } else {
+                        health.blocked = true;
+                    }
+                }
+            }
+        }
+        match outcome {
+            Ok(frame) => Ok(Some(frame)),
+            Err(err) => {
+                crate::debug_log(&format!("capture/failed: {err}"));
+                Ok(None)
+            }
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct QuestionCaptureState {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     active: Mutex<Option<ActiveCapture>>,
     /// 取り置き・保存・破棄を1件ずつ通す。承認が取り置きの途中に届くと、取り置きを見つけられずに
     /// **承認した瞬間のスライド**を保存してしまう。`start` / `stop` はこれを取らない（発表の停止を待たせない）。
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     order: Mutex<()>,
 }
 
 impl QuestionCaptureState {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub fn active_session_id(&self) -> Option<String> {
         self.active.lock().ok().and_then(|active| {
             active
@@ -251,13 +308,13 @@ impl QuestionCaptureState {
         })
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     pub fn active_session_id(&self) -> Option<String> {
         None
     }
 
     /// ストリームの健康状態。撮影していなければ `None`。
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub fn health(&self) -> Option<CaptureHealth> {
         let active = self.active.lock().ok()?;
         let capture = active.as_ref()?;
@@ -265,7 +322,7 @@ impl QuestionCaptureState {
         Some(health.clone())
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     pub fn health(&self) -> Option<CaptureHealth> {
         None
     }
@@ -410,7 +467,7 @@ impl QuestionCaptureState {
         Ok(())
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     pub fn start(&self, _session_id: &str, _display_id: u32) -> Result<(), CaptureStartError> {
         Err(CaptureStartError::start(
             "question screenshots are only supported on macOS",
@@ -424,11 +481,11 @@ impl QuestionCaptureState {
         }
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     pub fn stop(&self) {}
 
     /// 撮影に要るものを写し取る。撮影していなければ `None`。
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn parts(&self) -> Result<Option<CaptureParts>, String> {
         let state = self
             .active
@@ -448,7 +505,7 @@ impl QuestionCaptureState {
     /// 1. 保存済みなら何もしない（承認の更新でも hook が再度呼ばれる。質問到着時の画像を上書きしない）
     /// 2. 承認待ちのあいだ取り置いた、届いた時点のスライドがあればそれを書く
     /// 3. どちらでもなければ、いまのスライドを撮る（承認制でなければ、ここが届いた時点になる）
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub fn capture_question(
         &self,
         app_data: &Path,
@@ -486,7 +543,7 @@ impl QuestionCaptureState {
     /// 承認待ちの質問のために、いまのスライドを JPEG にしてメモリにだけ取り置く。
     /// **ディスクには書かない** — 承認されなかった質問のスライドを残さないため。
     /// 返り値の `Captured` は「取り置けた」の意味。
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub fn hold_question(&self, question_id: &str) -> Result<CaptureQuestionResult, String> {
         let question_id = parse_id(question_id, "question")?;
         let _order = self.order.lock().map_err(|_| "capture order lock failed")?;
@@ -517,7 +574,7 @@ impl QuestionCaptureState {
     ///
     /// **保存済みのファイルは消さない。** 承認済みの質問を非表示から戻したとき、届いた時点の
     /// 1枚が要る。レポートは承認済みの質問しか載せないので、非表示のあいだは出ない。
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub fn discard_question(&self, question_id: &str) -> Result<(), String> {
         let question_id = parse_id(question_id, "question")?;
         let _order = self.order.lock().map_err(|_| "capture order lock failed")?;
@@ -531,7 +588,82 @@ impl QuestionCaptureState {
         Ok(())
     }
 
-    #[cfg(not(target_os = "macos"))]
+    /// Windows 版。**GPU に触らない検査だけを同期でやる。**
+    /// `start_presentation` は同期コマンド＝メインスレッドで走るので、ここで試し撮りすると
+    /// オーバーレイごと固まる（罠 #17 と同じ形）。
+    #[cfg(target_os = "windows")]
+    pub fn start(&self, session_id: &str, display_id: u32) -> Result<(), CaptureStartError> {
+        let session_id = parse_id(session_id, "session").map_err(CaptureStartError::start)?;
+
+        if !crate::windows_capture::is_supported() {
+            return Err(CaptureStartError::start(
+                "windows graphics capture is not available on this system",
+            ));
+        }
+        // 添字はここで、以後ずっと使う識別子（GDI のデバイス名）へ格上げする。
+        let Some(monitor) = crate::windows_capture::target_at(display_id) else {
+            return Err(CaptureStartError {
+                kind: CaptureErrorKind::DisplayUnavailable,
+                detail: "capture display was not found".into(),
+            });
+        };
+
+        let mut active = self
+            .active
+            .lock()
+            .map_err(|_| CaptureStartError::start("capture state lock failed"))?;
+        if let Some(current) = active.as_ref() {
+            if current.session_id == session_id && current.monitor.device == monitor.device {
+                return Ok(());
+            }
+        }
+        crate::debug_log(&format!("capture/start: monitor={}", monitor.device));
+        // 持続ストリームが無いので止めるものは無い。前の取り置きだけがここで落ちる。
+        *active = Some(ActiveCapture {
+            session_id,
+            monitor,
+            held: Arc::new(Mutex::new(HeldCaptures::default())),
+            health: Arc::new(Mutex::new(CaptureHealth::default())),
+        });
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn stop(&self) {
+        if let Ok(mut active) = self.active.lock() {
+            let _ = active.take();
+        }
+        // 保険。撮影中にプロセスが荒く終わると、オーバーレイが他のキャプチャから
+        // 消えたままになる。冪等なのでここで必ず戻す。
+        crate::windows_capture::restore_all_excluded();
+    }
+
+    #[cfg(target_os = "windows")]
+    fn parts(&self) -> Result<Option<CaptureParts>, String> {
+        let state = self
+            .active
+            .lock()
+            .map_err(|_| "capture state lock failed")?;
+        Ok(state.as_ref().map(|active| CaptureParts {
+            session_id: active.session_id,
+            monitor: active.monitor.clone(),
+            held: Arc::clone(&active.held),
+            health: Arc::clone(&active.health),
+        }))
+    }
+
+    /// **Windows の失敗はすべて `AwaitingFirstFrame` に寄せる。** 4つの理由のうち、
+    /// 文言が macOS を名指ししていないのはこれだけ（`captureBlocked` は macOS の確認ダイアログ、
+    /// `snapshotFailed` は「macOS 14 以降」と言う）。本当の原因は `CaptureHealth.last_status`
+    /// に入り、`capture_question_slide` が `debug_log` へ落とす。
+    /// Windows 向けの文言を足すのは別の変更（`question-capture.test.ts` が両言語で
+    /// "macOS 14" を固定しているので、テストごと動かす作業になる）。
+    #[cfg(target_os = "windows")]
+    fn pending_reason(&self) -> CapturePendingReason {
+        CapturePendingReason::AwaitingFirstFrame
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     pub fn capture_question(
         &self,
         _app_data: &Path,
@@ -540,12 +672,12 @@ impl QuestionCaptureState {
         Ok(CaptureQuestionResult::inactive())
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     pub fn hold_question(&self, _question_id: &str) -> Result<CaptureQuestionResult, String> {
         Ok(CaptureQuestionResult::inactive())
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     pub fn discard_question(&self, _question_id: &str) -> Result<(), String> {
         Ok(())
     }
@@ -698,7 +830,7 @@ fn parse_id(value: &str, kind: &str) -> Result<Uuid, String> {
     Uuid::parse_str(value).map_err(|_| format!("invalid {kind} id"))
 }
 
-fn capture_dimensions(width: u32, height: u32) -> (u32, u32) {
+pub(crate) fn capture_dimensions(width: u32, height: u32) -> (u32, u32) {
     if width == 0 || height == 0 {
         return (MAX_LONG_EDGE, 1080);
     }
@@ -847,7 +979,20 @@ pub fn permission(request: bool) -> CapturePermission {
             permission_target: permission_target(),
         }
     }
-    #[cfg(not(target_os = "macos"))]
+    // Windows には TCC に当たる画面収録の許可が無い（パッケージ化していないデスクトップ
+    // アプリなら WGC をそのまま使える）。**`supported: false` のままにしないこと** —
+    // `EventPassPanel` が「この機能はmacOSでのみ利用できます」を出し続ける。
+    #[cfg(target_os = "windows")]
+    {
+        let _ = request;
+        CapturePermission {
+            supported: crate::windows_capture::is_supported(),
+            granted: true,
+            restart_required: false,
+            permission_target: permission_target(),
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = request;
         CapturePermission {

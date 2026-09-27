@@ -7,6 +7,7 @@ mod question_render;
 mod storekit;
 // 中で `#![cfg(target_os = "windows")]` しているので、他のプラットフォームでは空になる
 // （`overlay_render` と同じ作法）。
+mod windows_capture;
 mod windows_overlay;
 
 use std::sync::Mutex;
@@ -852,7 +853,14 @@ fn create_overlay_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     // 透過そのものは wry が `transparent: true` から当てている（`webview2/mod.rs:127-131`）。
     // ここは**切り分け用**で、`LAYERTALK_WIN_WEBVIEW_TRANSPARENT=1` のときだけ当て直す。
     #[cfg(target_os = "windows")]
-    windows_overlay::force_webview_transparent(&overlay);
+    {
+        windows_overlay::force_webview_transparent(&overlay);
+        // 質問スライドを撮る一瞬だけ、この窓をキャプチャから外すために覚えておく。
+        // どちらの窓も `CloseRequested` を止めていて破棄されないので、ここで一度でよい。
+        if let Ok(hwnd) = overlay.hwnd() {
+            windows_capture::register_excluded(hwnd.0 as isize);
+        }
+    }
 
     // 一度でも破棄されると `get_webview_window` は以後ずっと None を返し、
     // 非 mac の経路が全部「窓がありません」で止まる。コントロール窓と同じく閉じさせない。
@@ -903,7 +911,14 @@ fn create_question_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     debug_log(&format!("questions/create: page={QUESTIONS_PAGE}"));
 
     #[cfg(target_os = "windows")]
-    windows_overlay::force_webview_transparent(&questions);
+    {
+        windows_overlay::force_webview_transparent(&questions);
+        // 質問スライドを撮る一瞬だけ、この窓をキャプチャから外すために覚えておく。
+        // どちらの窓も `CloseRequested` を止めていて破棄されないので、ここで一度でよい。
+        if let Ok(hwnd) = questions.hwnd() {
+            windows_capture::register_excluded(hwnd.0 as isize);
+        }
+    }
 
     let closing = questions.clone();
     questions.on_window_event(move |event| {
@@ -991,11 +1006,17 @@ fn toggle_spike_overlay(app: &AppHandle) {
             let _ = overlay.hide();
         }
         set_live(app, false);
+        app.state::<question_capture::QuestionCaptureState>().stop();
         debug_log("spike: overlay off");
     } else {
         show_overlay(app);
         set_live(app, true);
-        debug_log("spike: overlay on");
+        // 撮影も始める。本番は `start_presentation` がここをやるが、あちらはルームと
+        // サインインが要る。**スパイクは撮影の可否を見るのが目的**なので直接起こす。
+        let session_id = uuid::Uuid::new_v4().to_string();
+        // **UUID でないと `parse_id` に弾かれる**（保存先のパスも UUID で組む）。
+        start_question_capture(app, &session_id, target_monitor(app));
+        debug_log(&format!("spike: overlay on (session {session_id})"));
     }
 }
 
@@ -1012,10 +1033,11 @@ fn push_spike_question(app: &AppHandle) {
     static COUNT: AtomicUsize = AtomicUsize::new(0);
 
     let n = COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+    let question_id = uuid::Uuid::new_v4().to_string();
     // `QuestionWindow` が読むのは id と content だけ。型は shared の Comment だが、
     // 足りないフィールドは使われないので JSON で足りる。
     let payload = serde_json::json!({
-        "id": format!("spike-{n}"),
+        "id": question_id,
         "content": format!("ダミーの質問 {n} 件目。パネルの高さが中身に追従するかを見る。"),
         "is_question": true,
         "status": "approved",
@@ -1024,7 +1046,33 @@ fn push_spike_question(app: &AppHandle) {
     set_panel_shown(app, true);
     show_question_panel(app);
     let _ = app.emit("question-received", payload);
-    debug_log(&format!("spike: question {n}"));
+    debug_log(&format!("spike: question {n} ({question_id})"));
+
+    // **撮影は必ず別スレッドへ。** 1枚撮るのに数百 ms かかるので、ショートカットの
+    // ハンドラで待つとその間オーバーレイが止まる（本番は
+    // `#[tauri::command(async)]` がこの役をしている）。
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let Ok(app_data) = app.path().app_data_dir() else {
+            debug_log("spike: app_data_dir が取れません");
+            return;
+        };
+        let state = app.state::<question_capture::QuestionCaptureState>();
+        match state.capture_question(&app_data, &question_id) {
+            Ok(result) => debug_log(&format!(
+                "spike: capture {:?} reason={:?} health={:?} path={}",
+                result.status,
+                result.reason,
+                state.health(),
+                app_data
+                    .join("question-captures")
+                    .join(state.active_session_id().unwrap_or_default())
+                    .join(format!("{question_id}.jpg"))
+                    .display()
+            )),
+            Err(err) => debug_log(&format!("spike: capture failed {err}")),
+        }
+    });
 }
 
 // ------------------------------------------------------------------ ヘルパ
@@ -1284,7 +1332,17 @@ fn capture_display_id(app: &AppHandle, monitor: Option<String>) -> Option<u32> {
     rx.recv_timeout(Duration::from_secs(2)).ok().flatten()
 }
 
-#[cfg(not(target_os = "macos"))]
+/// **Windows の u32 は CGDirectDisplayID ではない。** `HMONITOR` は 32bit に入らないし
+/// 画面構成が変わると無効になるので、ここでは `EnumDisplayMonitors` の添字だけを渡し、
+/// `QuestionCaptureState::start` がすぐ GDI のデバイス名（`\\.\DISPLAY1`）へ格上げする。
+///
+/// macOS と違って `run_on_main_thread` が要らない（GDI の列挙にスレッド親和性は無い）。
+#[cfg(target_os = "windows")]
+fn capture_display_id(_app: &AppHandle, monitor: Option<String>) -> Option<u32> {
+    windows_capture::monitor_index(monitor.as_deref())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn capture_display_id(_app: &AppHandle, _monitor: Option<String>) -> Option<u32> {
     None
 }

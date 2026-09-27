@@ -173,7 +173,82 @@ webview 側は wry の `SetDefaultBackgroundColor(alpha=0)`。どちらも生成
 **`background_color` を絶対に設定しないこと。** Tauri は透過窓の親 HWND を softbuffer で
 自分で塗るので、色を指定すると不透明な塗りになって透過が死ぬ。
 
-## 5. スパイクの範囲外（わざと入れていない）
+## 5. 質問スライドの撮影（スパイク②）
+
+**`Ctrl+Shift+O` で発表を開始 → `Ctrl+Shift+Q` で質問を1件流す**と、その瞬間のスライドが
+`%APPDATA%\app.layertalk.presenter\question-captures\{セッション}\{質問}.jpg` に保存される。
+ログに `capture/done: 1920x1080 frames=1 in 180ms` と保存先のパスが出る。
+
+macOS が ScreenCaptureKit の常時ストリーム（2fps）で撮っているのに対し、**Windows は
+質問が届いた瞬間に1枚だけ撮る**。`SCScreenshotManager` のようなブロックする API が無いのと、
+**WGC は撮影中ずっと画面に黄色い枠を描く**ため（常時ストリームだと発表中ずっと投影面に出る）。
+
+### 見るところ
+
+| # | 確認 | ○の条件 |
+|---|---|---|
+| 1 | 1枚でも撮れるか | JPEG ができる。**×ならここで止める** |
+| 2 | 中身が正しいか | スライドが写っている。**色が反転していない**（BGRA→RGB の取り違えは静かに間違う。空や肌の色で分かる） |
+| 3 | オーバーレイが写っていないか | コメントが流れている状態で撮り、画像に入らないこと |
+| 4 | 黄色い枠 | 撮影の瞬間に投影面に枠が出ないこと（Windows 11 なら `IsBorderRequired = false` が効く） |
+| 5 | カーソル | 写っていないこと |
+| 6 | 固まらないか | 撮影中もコメントが流れ続ける。ログの所要時間が数百 ms に収まる |
+| 7 | 大きさ | JPEG の長辺が 1920 になっていること |
+
+### 切り分け用の環境変数
+
+| 変数 | 効果 |
+|---|---|
+| `LAYERTALK_WIN_CAPTURE_SKIP=1` | 1枚目を捨てて2枚目を採る。**オーバーレイが写り込むときだけ**使う（既定 0） |
+
+### Windows 固有の注意
+
+- **WGC に縮小は無い。** `SCStreamConfiguration` と違って画面の実寸で返るので、
+  `capture_dimensions`（長辺 1920）を自分で通す。忘れると 4K がそのまま JPEG になり、
+  1枚 1.5MB 超・取り置き 30 枚で 45MB・レポートの base64 でさらに 1.3 倍になる
+- **`WDA_EXCLUDEFROMCAPTURE` は Zoom や OBS からも窓を消す。** macOS の
+  `with_excluding_applications` のように「自分の撮影からだけ」除く手段は無いので、
+  **撮る瞬間だけ立てて必ず戻す**（`ExcludeGuard` の Drop）。戻し損ねると
+  オーバーレイが以後ずっと他のキャプチャから消えたままになる — この設計で最悪の壊れ方
+- **`SetWindowDisplayAffinity` は次の合成で効く。** 立てた直後に撮るとオーバーレイが
+  1枚目に写るので、`DwmFlush()` で合成を1回通してから撮る
+- **`TryGetNextFrame` のポーリングにしない。** 空のときも `Err` を返し、しかも `code()` が
+  `HRESULT(0)` なので「まだ来ていない」と本物の失敗（`DXGI_ERROR_DEVICE_REMOVED` など）を
+  区別できない。`FrameArrived` で受ける
+- **`start()` で試し撮りしない。** `start_presentation` は同期コマンド＝メインスレッドで走るので、
+  GPU の往復を挟むとオーバーレイごと固まる（罠 #17 と同じ形）。`start` は
+  `IsSupported()` とモニター列挙だけ
+- **モニターは GDI のデバイス名（`\\.\DISPLAY1`）で覚える。** `HMONITOR` は 32bit に入らず、
+  画面構成が変わると無効になる。`display_id: u32` は列挙順の添字を運ぶだけの一時的な値で、
+  `start` がすぐ名前へ格上げし、撮影のたびに名前→位置→添字の順で引き直す
+
+### Mac から Windows のコードを型検査する
+
+`scratchpad/winprobe` が `#[path]` で**本物の `windows_capture.rs` を直接読む**ので、
+写し間違いもズレも起きない。
+
+```bash
+cd <scratchpad>/winprobe && cargo check --target aarch64-pc-windows-msvc
+```
+
+`windows = "0.61"` だけに依存するクレートなので `ring` を経由せず通る。589 行の
+WGC + D3D11 コードはこれで VM に行く前に型を通した。
+**`windows_overlay.rs` は `tauri::WebviewWindow` を取るのでこの方法では読めない。**
+
+## 5b. 本採用のときの宿題
+
+- **`capture_question` / `hold_question` / `discard_question` は cfg を広げて共有した。**
+  本体は `parts.grab_frame()` の1行以外プラットフォーム非依存だったので複製しなかった。
+  macOS のコンパイル結果は一字一句同じ
+- **失敗の文言が macOS 前提のまま。** Windows の撮影失敗はすべて `AwaitingFirstFrame`
+  （4つの理由のうち、文言が macOS を名指ししていない唯一のもの）に寄せてある。
+  本当の原因は `CaptureHealth.last_status`（`wgc/timeout` など）に入り `debug_log` へ出る。
+  Windows 向けの文言を足すのは Rust の enum → `tauri.ts` の union → `question-capture.ts` の
+  文言 → `question-capture.test.ts`（両言語で "macOS 14" を固定している）の4ファイル変更になる
+- **`control` 窓は撮影から外していない。** 発表者の手元画面にあるのが普通で、外すと
+  Zoom からもコントロール窓が消えるため。投影面にコントロール窓を置くと写り込む
+
+## 6. スパイクの範囲外（わざと入れていない）
 
 質問スライドの撮影（ScreenCaptureKit 相当）・StoreKit・Keychain・インストーラと署名。
 いずれも**黙って無反応にはならず、エラーを返す**ことは確認済み。
