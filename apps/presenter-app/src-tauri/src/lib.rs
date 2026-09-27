@@ -1124,6 +1124,10 @@ fn set_live(app: &AppHandle, value: bool) {
     let _ = app.emit("presentation-state-changed", value);
 }
 
+/// ウォッチドッグが最後に出したオーバーレイの拡張スタイル。変化したときだけログに出す。
+#[cfg(target_os = "windows")]
+static LAST_OVERLAY_STATE: Mutex<Option<String>> = Mutex::new(None);
+
 /// 前面化は「一度勝てば終わり」ではない。
 ///
 /// プレゼンを開始したあとに Canva を全画面にすると、その時点で新しい全画面 Space が
@@ -1244,7 +1248,22 @@ fn start_front_watchdog(app: &AppHandle) {
                         // 立っていれば何もしない（毎秒 FRAMECHANGED を撃たない）。
                         windows_overlay::apply_tool_window(&overlay);
                         windows_overlay::raise(&overlay);
-                        debug_log(&format!("win/overlay: {}", windows_overlay::state(&overlay)));
+                        // **変わったときだけ出す。** 毎秒出すとログが埋まり、
+                        // 撮影の行のような「1回しか出ない大事な行」が探せなくなる。
+                        let state = windows_overlay::state(&overlay);
+                        let changed = LAST_OVERLAY_STATE
+                            .lock()
+                            .map(|mut last| {
+                                let changed = last.as_deref() != Some(state.as_str());
+                                if changed {
+                                    *last = Some(state.clone());
+                                }
+                                changed
+                            })
+                            .unwrap_or(true);
+                        if changed {
+                            debug_log(&format!("win/overlay: {state}"));
+                        }
                     }
                 }
             });
