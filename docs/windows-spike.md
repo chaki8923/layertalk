@@ -138,6 +138,16 @@ Windows で `SUPER` は Windows キーなので `CONTROL` に替えてある）�
 tao の `skip_taskbar` は `ITaskbarList::DeleteTab` で所有者ウィンドウを作らないので、
 最前面は壊れない（当初警戒していた WPF の報告は tao には当てはまらない）。
 
+**新しく作る窓には capability が要る。** このアプリには `src-tauri/permissions/` が無いので
+**独自コマンドは ACL の対象外**（`set_question_panel_size` などは権限なしで通る）。だが
+`listen` / `emit` は Tauri のコアプラグインのコマンドなので**権限が要る**。
+`capabilities/default.json` は `"windows": ["control"]` だけなので、
+`overlay` と `questions` は `capabilities/overlay.json` で別に開けてある。
+これを忘れると「窓は出て、独自コマンドも通るのに、イベントだけ何も届かない」という
+分かりにくい壊れ方をする（実測: 質問パネルの枠は出るのに質問が1件も出なかった）。
+`default.json` を広げずに別ファイルにしたのは、オーバーレイに `dialog` と `fs` を
+渡さないため（レポートを書くのはコントロール窓だけ）。
+
 **質問パネルの窓は中身の大きさに縮めること。** Windows では**窓の矩形がそのまま
 当たり判定**になるので、画面の高さいっぱいの窓を出すと右端の帯が全部クリックを吸い、
 発表者がスライドを触れなくなる。CSS の `pointer-events: none` は OS の当たり判定には

@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlay",
+  "description": "macOS 以外のオーバーレイ窓と質問パネル窓。窓をまたぐイベントの送受信だけを許す。macOSではこの2つの窓を作らない（ネイティブ描画）ので、この権限は誰にも当たらない。",
+  "windows": [
+    "overlay",
+    "questions"
+  ],
+  "permissions": [
+    "core:default",
+    "core:event:default"
+  ]
+}
