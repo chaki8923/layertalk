@@ -809,12 +809,13 @@ fn create_overlay_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 
     #[cfg(target_os = "windows")]
     {
-        // `skipTaskbar` は、タスクバーから隠すために作られる所有者ウィンドウに
-        // `WS_EX_TOPMOST` が付かず**最前面が壊れる**報告がある。既定では使わず、
-        // `WS_EX_TOOLWINDOW`（`windows_overlay::elevate`）で隠す。
-        // 切り分け用に `LAYERTALK_WIN_SKIP_TASKBAR=1` で Tauri 側の実装も試せる。
-        let skip_taskbar = std::env::var("LAYERTALK_WIN_SKIP_TASKBAR").is_ok_and(|v| v != "0");
-        builder = builder.shadow(false).skip_taskbar(skip_taskbar);
+        // **`skip_taskbar(true)` は必須。** これを false にすると tao が
+        // `WS_EX_APPWINDOW` を立て（`window_state.rs:258-259`）、それが
+        // `WS_EX_TOOLWINDOW` を打ち消して **Alt+Tab とタスクバーに出てしまう**
+        // （実測: ex=0x080c01b8 は tool=1 なのに一覧に出た）。
+        // tao の skip_taskbar は `ITaskbarList::DeleteTab` で、所有者ウィンドウを
+        // 作らないので最前面は壊れない。
+        builder = builder.shadow(false).skip_taskbar(true);
     }
 
     let overlay = builder.build()?;

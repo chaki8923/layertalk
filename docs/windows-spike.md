@@ -66,13 +66,33 @@ Windows で `SUPER` は Windows キーなので `CONTROL` に替えてある）�
 |---|---|
 | `LAYERTALK_DEBUG_OVERLAY=1` | `%APPDATA%\app.layertalk.presenter\overlay-debug.log` に書く。**まずこれを付ける** |
 | `LAYERTALK_WIN_WEBVIEW_TRANSPARENT=1` | WebView2 の既定背景色 alpha=0 を当て直す。**既定では呼ばない** — wry が `transparent: true` から既に当てているため（`wry/src/webview2/mod.rs:127-131`, `:453`）。ここで直るなら適用順の問題、直らないなら窓側（DWM）か CSS の問題 |
-| `LAYERTALK_WIN_SKIP_TASKBAR=1` | Tauri の `skip_taskbar` も使う。既定は `WS_EX_TOOLWINDOW` だけで隠す |
 | `LAYERTALK_WIN_NO_TOOLWINDOW=1` | `WS_EX_TOOLWINDOW` を当てない（Alt+Tab に出る）。最前面が壊れる切り分け用 |
 
 ログには毎秒 `win/overlay: ex=0x… topmost=1 noactivate=1 tool=1 layered=1 transparent=1` が出る。
 **`topmost` や `noactivate` が 0 に落ちていたら、tao のスタイル書き戻しに消されている**（下の「注意」）。
 
 ## 3. 検証（この順で。1 で詰まったら 2 以降はやらない）
+
+### 実測結果（2026-09-27 / Windows 11 ARM64 on Parallels / Apple Silicon）
+
+**答えは Yes。** WebView2 の透過ウィンドウはスライドショーの上に、クリックスルーのまま出た。
+つまり **Windows に `overlay_render.rs` + `question_render.rs` 相当（AppKit / Core Animation の
+1,370 行）を書き直す必要はない。**
+
+| # | 項目 | 結果 |
+|---|---|---|
+| 1 | 透過 | **○** |
+| 2 | スライドショーの上に出る | **○** |
+| 3 | クリックスルー | **○** |
+| 4 | フォーカスを奪わない（矢印キーでページ送り） | **○** |
+| 5 | Alt+Tab に出ない | **×→○** 下の「注意」の `WS_EX_APPWINDOW` を直して解決 |
+| 6 | 5分放置して webview が凍らない | **○**（macOS の罠 #20 は Windows では再現せず） |
+
+セットアップで踏んだ環境側の穴（コードとは無関係）:
+`link.exe not found`（VS Build Tools の C++ ワークロードと **ARM64 コンポーネント**が要る）、
+`clang not found`（`ring` が Windows on ARM でアセンブリを組むのに要る → `winget install LLVM.LLVM`）、
+`npm ci` が実行ポリシーで弾かれる（`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`）。
+
 
 | # | 見るもの | 合格の条件 |
 |---|---|---|
@@ -103,6 +123,12 @@ Windows で `SUPER` は Windows キーなので `CONTROL` に替えてある）�
 - tao が知らない `WS_EX_TOOLWINDOW` だけを自前で当て、**窓を見せたあとに**当て直す
   （`apply_overlay_behaviour` の最後・`show()` の直後・ウォッチドッグの毎周）
 - 当て直しは**既に立っていれば何もしない**。毎秒 `SWP_FRAMECHANGED` を撃つと、それ自体がちらつく
+
+**`skip_taskbar(true)` を外さないこと。** false だと tao が `WS_EX_APPWINDOW` を立て
+（`tao-0.35.3/.../window_state.rs:258-259`）、それが `WS_EX_TOOLWINDOW` を打ち消して
+**Alt+Tab とタスクバーに出る**。実測で `ex=0x080c01b8`（`tool=1` なのに一覧に出た）。
+tao の `skip_taskbar` は `ITaskbarList::DeleteTab` で所有者ウィンドウを作らないので、
+最前面は壊れない（当初警戒していた WPF の報告は tao には当てはまらない）。
 
 **透過は窓の生成時にしか決められない。** 窓側は tao の `DwmEnableBlurBehindWindow`、
 webview 側は wry の `SetDefaultBackgroundColor(alpha=0)`。どちらも生成時だけで、
