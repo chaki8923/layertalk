@@ -70,6 +70,8 @@ export default defineConfig(async ({ mode }) => {
           main: fileURLToPath(new URL("./index.html", import.meta.url)),
           // Windows スパイクのダミーオーバーレイ。本物に差し替えたら消す。
           "spike-overlay": fileURLToPath(new URL("./spike-overlay.html", import.meta.url)),
+          // Windows スパイクの質問パネル窓。中身は本物の QuestionWindow。
+          "spike-questions": fileURLToPath(new URL("./spike-questions.html", import.meta.url)),
         },
       },
     },

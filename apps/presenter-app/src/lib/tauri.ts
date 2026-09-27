@@ -206,6 +206,17 @@ export const refitOverlay = () => invoke<void>("refit_overlay");
 export const setQuestionPanelExpanded = (expanded: boolean) =>
   invoke<void>("set_question_panel_expanded", { expanded });
 
+/**
+ * 質問パネルの中身の実寸（論理 px）を Rust に伝え、窓そのものをその大きさに縮めさせる。
+ *
+ * **Windows では窓の矩形がそのまま当たり判定になる。** 画面の高さいっぱいの窓を出すと
+ * 右端の帯が全部クリックを吸い、発表者がスライドを触れなくなる。CSS の
+ * `pointer-events: none` は OS の当たり判定には効かないので、窓を縮めるしかない。
+ * macOS では `question_render` がネイティブ側で同じことをしているため、この呼び出しは何もしない。
+ */
+export const setQuestionPanelSize = (width: number, height: number) =>
+  invoke<void>("set_question_panel_size", { width, height });
+
 export const showControlWindow = () => invoke<void>("show_control");
 
 /**

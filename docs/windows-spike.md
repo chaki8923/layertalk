@@ -57,6 +57,9 @@ Rust のグローバルショートカットから直接出せるようにして
 出るのはダミーのページ（`spike-overlay.html`）で、縁取り文字・不透明な板・横に流れる要素・
 右下の HUD だけ。**HUD のカウントが止まったら webview が凍っている。**
 
+**`Ctrl+Shift+Q` でダミーの質問を1件流す。** 押すたびに増え、右端に質問パネルが出る。
+これも Rust 側の裏口で、Supabase もサインインも要らない。
+
 `Ctrl+Shift+L` でコントロール窓を呼び出せる（macOS の `⇧⌘L` に相当。
 Windows で `SUPER` は Windows キーなので `CONTROL` に替えてある）。
 
@@ -107,6 +110,7 @@ Windows で `SUPER` は Windows キーなので `CONTROL` に替えてある）�
 | 5 | **Alt+Tab / タスクバー** | どちらにもオーバーレイが出ない。`Ctrl+Shift+O` を何度か往復しても出ない（毎回スタイルが書き戻されるため） |
 | 6 | **ブラウザの全画面** | Chrome で Google スライド / Canva をプレゼンモードにして 2〜4 を再確認。**macOS で唯一勝てなかった相手**なので、ここが Windows の価値を決める |
 | 7 | **マルチモニター / DPI** | 2画面で指定した側に出る。125%/150% の画面でサイズが合う |
+| 7.5 | **質問パネルの当たり判定** | `Ctrl+Shift+Q` で質問を出し、**パネルのすぐ下・すぐ上のスライドがクリックできる**か。パネル自体のクリック（展開／折りたたみ）が効き、その直後に矢印キーでスライドが送れるか |
 | 8 | **凍結** | 発表中に放置して HUD のカウントが進み続けるか。止まるなら macOS の罠 #20 が Windows でも起きる |
 
 記録は各項目のスクリーンショットと `overlay-debug.log`。
@@ -133,6 +137,17 @@ Windows で `SUPER` は Windows キーなので `CONTROL` に替えてある）�
 **Alt+Tab とタスクバーに出る**。実測で `ex=0x080c01b8`（`tool=1` なのに一覧に出た）。
 tao の `skip_taskbar` は `ITaskbarList::DeleteTab` で所有者ウィンドウを作らないので、
 最前面は壊れない（当初警戒していた WPF の報告は tao には当てはまらない）。
+
+**質問パネルの窓は中身の大きさに縮めること。** Windows では**窓の矩形がそのまま
+当たり判定**になるので、画面の高さいっぱいの窓を出すと右端の帯が全部クリックを吸い、
+発表者がスライドを触れなくなる。CSS の `pointer-events: none` は OS の当たり判定には
+効かないので、窓そのものを縮めるしかない。
+`QuestionWindow` が `ResizeObserver` で中身を測り、`set_question_panel_size` で Rust へ渡し、
+Rust が `PANEL_SIZE` に置いて右端へ貼り直す。macOS が `question_render` でやっているのと同じ調整。
+報告は 1px 以上変わったときだけ・rAF で 1 フレーム 1 回に束ねる
+（`motion` のレイアウトアニメーション中は `ResizeObserver` が毎フレーム鳴るため）。
+一覧の高さの上限に **`vh` を使わないこと** — 窓の高さが中身に追従するので
+「窓が縮む → `vh` が縮む → さらに縮む」と収束しない。`screen.height` を基準にする。
 
 **透過は窓の生成時にしか決められない。** 窓側は tao の `DwmEnableBlurBehindWindow`、
 webview 側は wry の `SetDefaultBackgroundColor(alpha=0)`。どちらも生成時だけで、

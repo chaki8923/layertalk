@@ -1,7 +1,7 @@
 import type { Comment } from "@layertalk/shared";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useDocumentLang, useMessages } from "../i18n";
 import {
@@ -14,9 +14,23 @@ import {
   getPresentationState,
   onPresentationStateChanged,
   setQuestionPanelExpanded,
+  setQuestionPanelSize,
 } from "../lib/tauri";
 
 const MAX_QUESTIONS = 5;
+
+/**
+ * カードの一覧に許す最大の高さ。これを超えた分は一覧の中でスクロールする。
+ *
+ * **`vh` は使えない。** この窓の高さは中身の高さに追従して変わるので、`vh` で
+ * 上限を決めると「窓が縮む → vh が縮む → さらに縮む」と収束しない。
+ * 画面の実寸（`screen.height`）を基準にする。Rust 側は画面の 90% で頭を打つので、
+ * それより小さい 78% にしておかないと、あふれた分がスクロールできずに切れる。
+ */
+function listCap(): number {
+  const screenHeight = typeof window === "undefined" ? 900 : window.screen.height;
+  return Math.round(screenHeight * 0.78);
+}
 
 /** 右端だけ操作可能な質問専用ウィンドウ。 */
 export function QuestionWindow() {
@@ -28,6 +42,60 @@ export function QuestionWindow() {
 
   const t = useMessages(settings.language);
   useDocumentLang(settings.language);
+
+  const panelRef = useRef<HTMLElement | null>(null);
+  // コールバック ref にしてあるのは、展開時は `<aside>`・折りたたみ時は `<div>` と
+  // 要素の型が変わるため。`RefObject<HTMLElement>` は `div` の ref に渡せない。
+  const setPanelRef = useCallback((node: HTMLElement | null) => {
+    panelRef.current = node;
+  }, []);
+  const listMaxHeight = useRef(listCap()).current;
+
+  /**
+   * 中身の実寸を Rust に伝え、窓をその大きさへ縮めさせる。
+   *
+   * **Windows では窓の矩形がそのまま当たり判定になる。** 画面の高さいっぱいの窓のままだと
+   * 右端の帯が全部クリックを吸い、発表者がスライドを触れなくなる
+   * （macOS は `question_render` がネイティブ側で同じ調整をしている）。
+   *
+   * 報告は 1px 以上変わったときだけ。`motion` のレイアウトアニメーション中は
+   * `ResizeObserver` が毎フレーム鳴るので、そのまま流すと IPC が溢れる。
+   * さらに rAF で束ねて、1 フレームにつき最大 1 回にする。
+   */
+  useEffect(() => {
+    const element = panelRef.current;
+    if (!element) return;
+
+    let frame = 0;
+    let lastWidth = -1;
+    let lastHeight = -1;
+
+    const report = () => {
+      frame = 0;
+      const rect = element.getBoundingClientRect();
+      const width = Math.ceil(rect.width);
+      const height = Math.ceil(rect.height);
+      if (width < 1 || height < 1) return;
+      if (Math.abs(width - lastWidth) < 1 && Math.abs(height - lastHeight) < 1) return;
+      lastWidth = width;
+      lastHeight = height;
+      void setQuestionPanelSize(width, height).catch(() => undefined);
+    };
+
+    const schedule = () => {
+      if (frame !== 0) return;
+      frame = window.requestAnimationFrame(report);
+    };
+
+    schedule();
+    const observer = new ResizeObserver(schedule);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      if (frame !== 0) window.cancelAnimationFrame(frame);
+    };
+    // 展開／折りたたみで描画するツリーごと入れ替わる = ref の指す要素が変わる。
+  }, [expanded]);
 
   // この窓だけ設定を購読していなかった。言語トグルを反映するために要る。
   useEffect(() => {
@@ -92,12 +160,12 @@ export function QuestionWindow() {
 
   if (!expanded) {
     return (
-      <div className="relative h-screen w-screen bg-transparent">
+      <div ref={setPanelRef} className="flex w-full justify-end bg-transparent">
         <button
           type="button"
           aria-label={t.questions.show(unreadCount)}
           onClick={() => applyExpanded(true)}
-          className="lt-tap absolute top-[5vh] right-0 flex min-h-28 w-12 flex-col items-center justify-center gap-2 rounded-l-[18px] border border-r-0 border-white/18 bg-black/80 text-white shadow-[0_12px_34px_rgb(0_0_0/0.38)]"
+          className="lt-tap flex min-h-28 w-12 flex-col items-center justify-center gap-2 rounded-l-[18px] border border-r-0 border-white/18 bg-black/80 text-white shadow-[0_12px_34px_rgb(0_0_0/0.38)]"
         >
           <ChevronLeft size={17} aria-hidden />
           <span className="text-[15px] font-black">Q</span>
@@ -113,8 +181,9 @@ export function QuestionWindow() {
 
   return (
     <motion.aside
+      ref={setPanelRef}
       aria-label={t.questions.title}
-      className="absolute top-[5vh] right-3 bottom-[5vh] left-3 flex flex-col gap-3 overflow-hidden"
+      className="flex w-full flex-col gap-3 overflow-hidden px-3 py-1"
       initial={{ opacity: 0, x: reduceMotion ? 0 : 20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: reduceMotion ? 0.1 : 0.22, ease: [0.22, 1, 0.36, 1] }}
@@ -132,7 +201,12 @@ export function QuestionWindow() {
         </button>
       </div>
 
-      <motion.ol layout className="flex min-h-0 flex-col gap-2.5" aria-live="polite">
+      <motion.ol
+        layout
+        className="flex min-h-0 flex-col gap-2.5 overflow-y-auto"
+        style={{ maxHeight: listMaxHeight }}
+        aria-live="polite"
+      >
         <AnimatePresence initial={false}>
           {questions.map((question) => (
             <motion.li

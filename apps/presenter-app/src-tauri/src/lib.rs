@@ -41,11 +41,29 @@ const QUESTIONS: &str = "questions";
 /// 透過が確認できたら本物の `OverlayWindow` に差し替える。
 #[cfg(not(target_os = "macos"))]
 const OVERLAY_PAGE: &str = "spike-overlay.html";
+/// 質問パネル窓が読むページ。スパイクの間は `QuestionWindow` だけをマウントする専用
+/// エントリにしてある（`ControlWindow` も Supabase も引き込まないため）。
+#[cfg(not(target_os = "macos"))]
+const QUESTIONS_PAGE: &str = "spike-questions.html";
 // macOS の質問パネルの大きさは `question_render` が持つ。これは macOS 以外の webview 窓用。
 #[cfg(not(target_os = "macos"))]
 const QUESTION_PANEL_WIDTH: f64 = 430.0;
 #[cfg(not(target_os = "macos"))]
 const QUESTION_TAB_WIDTH: f64 = 56.0;
+
+/// 質問パネル窓の実寸（論理 px）。
+///
+/// **Windows では窓の矩形がそのまま当たり判定になる。** 画面の高さいっぱいに取ると
+/// 右端の帯が丸ごとクリックを吸い、発表者がスライドを触れなくなる
+/// （macOS は `question_render` が中身の高さに合わせた NSPanel を作るので起きない）。
+/// そこで webview に中身の実寸を測らせ、`set_question_panel_size` で受けてここに置く。
+/// 初期値は折りたたみタブの想定サイズ — 最初の報告が来るまでのあいだだけ使う。
+#[cfg(not(target_os = "macos"))]
+static PANEL_SIZE: Mutex<(f64, f64)> = Mutex::new((QUESTION_TAB_WIDTH, 132.0));
+
+/// 画面の上端から何割の位置にパネルを置くか。`QuestionWindow` の `top-[5vh]` と揃える。
+#[cfg(not(target_os = "macos"))]
+const PANEL_TOP_RATIO: f64 = 0.05;
 
 /// 発表中かどうか。ウィンドウの表示・非表示は Rust の責務なので、
 /// ここを唯一の真実にする。永続化しない = 再起動したら必ず停止状態から始まる。
@@ -701,7 +719,7 @@ fn fit_overlay_to_monitor(window: &WebviewWindow, target: Option<&str>) {
 /// 質問窓を指定モニターの右端へ合わせる。
 /// 幅はCSSピクセルで指定し、Retinaでも同じ見た目になるよう物理ピクセルへ変換する。
 #[cfg(not(target_os = "macos"))]
-fn fit_question_panel_to_monitor(window: &WebviewWindow, target: Option<&str>, logical_width: f64) {
+fn fit_question_panel_to_monitor(window: &WebviewWindow, target: Option<&str>) {
     let monitors = window.available_monitors().unwrap_or_default();
 
     let chosen = target
@@ -718,13 +736,32 @@ fn fit_question_panel_to_monitor(window: &WebviewWindow, target: Option<&str>, l
         Some(monitor) => {
             let position = *monitor.position();
             let size = *monitor.size();
-            let physical_width = (logical_width * monitor.scale_factor()).round() as u32;
+            let scale = monitor.scale_factor();
+            let (logical_width, logical_height) = panel_size();
+
+            let physical_width = (logical_width * scale).round().max(1.0) as u32;
+            // 質問が積み上がっても画面からはみ出させない。あふれる分は中身が自分で
+            // スクロールする（webview 側の max-height）。
+            let physical_height = (logical_height * scale)
+                .round()
+                .clamp(1.0, size.height as f64 * 0.9) as u32;
+
             let x = position.x + size.width as i32 - physical_width as i32;
-            let _ = window.set_size(PhysicalSize::new(physical_width, size.height));
-            let _ = window.set_position(PhysicalPosition::new(x, position.y));
+            let y = position.y + (size.height as f64 * PANEL_TOP_RATIO).round() as i32;
+
+            let _ = window.set_size(PhysicalSize::new(physical_width, physical_height));
+            let _ = window.set_position(PhysicalPosition::new(x, y));
+            debug_log(&format!(
+                "panel/fit: {logical_width}x{logical_height} logical -> {physical_width}x{physical_height} @ {x},{y}"
+            ));
         }
         None => eprintln!("[layertalk] 質問パネルを表示できるモニターが見つかりません"),
     }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn panel_size() -> (f64, f64) {
+    PANEL_SIZE.lock().map(|guard| *guard).unwrap_or((QUESTION_TAB_WIDTH, 132.0))
 }
 
 /// 現在の質問パネル幅（展開中／折りたたみ中）を保ったまま、モニター右端へ貼り直す。
@@ -745,17 +782,8 @@ fn refit_question_panel(app: &AppHandle) {
     #[cfg(not(target_os = "macos"))]
     {
         if let Some(window) = app.get_webview_window(QUESTIONS) {
-            let logical_width = window
-                .outer_size()
-                .ok()
-                .and_then(|size| {
-                    window
-                        .scale_factor()
-                        .ok()
-                        .map(|scale| size.width as f64 / scale)
-                })
-                .unwrap_or(QUESTION_PANEL_WIDTH);
-            fit_question_panel_to_monitor(&window, monitor.as_deref(), logical_width);
+            // 窓の実寸から論理幅を逆算していたが、実寸は `PANEL_SIZE` が正になったので不要。
+            fit_question_panel_to_monitor(&window, monitor.as_deref());
         }
     }
 }
@@ -763,7 +791,7 @@ fn refit_question_panel(app: &AppHandle) {
 /// 質問パネルを指定幅で出す（macOS 以外）。macOS は `native_overlay::show_panel` が
 /// 自前の NSPanel に出し、大きさは `question_render` の状態で決まる。
 #[cfg(not(target_os = "macos"))]
-fn show_question_panel(app: &AppHandle, logical_width: f64) {
+fn show_question_panel(app: &AppHandle) {
     let monitor = target_monitor(app);
     let Some(questions) = app.get_webview_window(QUESTIONS) else {
         // 窓が無いのに黙って戻ると「開いたのに何も出ない」になる。必ず理由を残す。
@@ -771,7 +799,7 @@ fn show_question_panel(app: &AppHandle, logical_width: f64) {
         debug_log("windows/panel/show: missing window");
         return;
     };
-    fit_question_panel_to_monitor(&questions, monitor.as_deref(), logical_width);
+    fit_question_panel_to_monitor(&questions, monitor.as_deref());
     let _ = questions.show();
     // `show()` のあと。スタイルの書き戻しに消されないため。
     elevate_overlay_window(&questions);
@@ -837,6 +865,55 @@ fn create_overlay_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     });
 
     Ok(overlay)
+}
+
+/// 質問パネル窓を作る（macOS 以外）。
+///
+/// オーバーレイと違い **クリックスルーにしない**。この窓だけが操作を受け付ける
+/// （展開／折りたたみ）。`focusable(false)` でフォーカスは奪わないので、
+/// 触ってもスライドショーの矢印キーは生きたまま — macOS の
+/// `NonactivatingPanel` + `setBecomesKeyOnlyIfNeeded(true)` と同じ狙い。
+///
+/// **大きさは中身に合わせる。** 画面の高さいっぱいに取ると、Windows では
+/// その矩形が全部当たり判定になってスライドの右端が触れなくなる。
+#[cfg(not(target_os = "macos"))]
+fn create_question_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    if let Some(existing) = app.get_webview_window(QUESTIONS) {
+        return Ok(existing);
+    }
+
+    #[allow(unused_mut)]
+    let mut builder =
+        WebviewWindowBuilder::new(app, QUESTIONS, WebviewUrl::App(QUESTIONS_PAGE.into()))
+            .title("LayerTalk Questions")
+            .transparent(true)
+            .decorations(false)
+            .visible(false)
+            .always_on_top(true)
+            .focusable(false)
+            .resizable(false)
+            .inner_size(QUESTION_TAB_WIDTH, 132.0);
+
+    #[cfg(target_os = "windows")]
+    {
+        builder = builder.shadow(false).skip_taskbar(true);
+    }
+
+    let questions = builder.build()?;
+    debug_log(&format!("questions/create: page={QUESTIONS_PAGE}"));
+
+    #[cfg(target_os = "windows")]
+    windows_overlay::force_webview_transparent(&questions);
+
+    let closing = questions.clone();
+    questions.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = closing.hide();
+        }
+    });
+
+    Ok(questions)
 }
 
 /// オーバーレイはクリックスルー固定。切り替える手段は用意しない。
@@ -920,6 +997,34 @@ fn toggle_spike_overlay(app: &AppHandle) {
         set_live(app, true);
         debug_log("spike: overlay on");
     }
+}
+
+/// **スパイク用の裏口（Windows のみ）。** `Ctrl+Shift+Q` でダミーの質問を1件流す。
+///
+/// 本来は Supabase の購読 → `sendQuestionToPanel` で届くが、質問パネルの
+/// 当たり判定を確かめるだけなら認証もルームも要らない。`QuestionWindow` が
+/// 待っているのと同じ `question-received` イベントをそのまま投げる。
+///
+/// 当たり判定の可否が確定したらこの関数ごと消す。
+#[cfg(target_os = "windows")]
+fn push_spike_question(app: &AppHandle) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    let n = COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+    // `QuestionWindow` が読むのは id と content だけ。型は shared の Comment だが、
+    // 足りないフィールドは使われないので JSON で足りる。
+    let payload = serde_json::json!({
+        "id": format!("spike-{n}"),
+        "content": format!("ダミーの質問 {n} 件目。パネルの高さが中身に追従するかを見る。"),
+        "is_question": true,
+        "status": "approved",
+    });
+
+    set_panel_shown(app, true);
+    show_question_panel(app);
+    let _ = app.emit("question-received", payload);
+    debug_log(&format!("spike: question {n}"));
 }
 
 // ------------------------------------------------------------------ ヘルパ
@@ -1675,14 +1780,46 @@ fn set_question_panel_expanded(app: AppHandle, expanded: bool) {
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let width = if expanded {
-            QUESTION_PANEL_WIDTH
-        } else {
-            QUESTION_TAB_WIDTH
-        };
-        show_question_panel(&app, width);
+        // 幅だけ先に当てる。高さは webview が測り直して `set_question_panel_size` で送ってくる。
+        if let Ok(mut guard) = PANEL_SIZE.lock() {
+            guard.0 = if expanded {
+                QUESTION_PANEL_WIDTH
+            } else {
+                QUESTION_TAB_WIDTH
+            };
+        }
+        show_question_panel(&app);
     }
     set_panel_shown(&app, true);
+}
+
+/// 質問パネルの中身の実寸（論理 px）を webview から受け取る。
+///
+/// **Windows では窓の矩形がそのまま当たり判定になる**ので、中身より大きい窓を出すと
+/// スライドの右端が触れなくなる。CSS では解決できない（`pointer-events: none` は
+/// OS の当たり判定には効かない）ので、測った値で窓そのものを縮める。
+/// macOS は `question_render` が同じことをネイティブ側でやっているため何もしない。
+#[tauri::command]
+fn set_question_panel_size(app: AppHandle, width: f64, height: f64) {
+    let _ = (&app, width, height);
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        // 0 や異常値で窓を潰さない。報告が来る前の既定値より小さくはしない。
+        if !width.is_finite() || !height.is_finite() || width < 1.0 || height < 1.0 {
+            debug_log(&format!("panel/size: ignored {width}x{height}"));
+            return;
+        }
+        if let Ok(mut guard) = PANEL_SIZE.lock() {
+            *guard = (width, height);
+        }
+        // まだ出していないパネルをここで出さない（最初の質問まで出さない仕様）。
+        if is_panel_shown(&app) {
+            if let Some(window) = app.get_webview_window(QUESTIONS) {
+                fit_question_panel_to_monitor(&window, target_monitor(&app).as_deref());
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -1906,6 +2043,13 @@ pub fn run() {
                     {
                         toggle_spike_overlay(app);
                     }
+
+                    #[cfg(target_os = "windows")]
+                    if event.state == ShortcutState::Pressed
+                        && shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyQ)
+                    {
+                        push_spike_question(app);
+                    }
                 })
                 .build(),
         )
@@ -1936,6 +2080,7 @@ pub fn run() {
             peek_overlay,
             refit_overlay,
             set_question_panel_expanded,
+            set_question_panel_size,
             show_control,
             set_app_language,
             screen_capture_permission,
@@ -1978,6 +2123,11 @@ pub fn run() {
                 if let Err(err) = app.global_shortcut().register(spike_shortcut) {
                     eprintln!("[layertalk] Ctrl+Shift+O の登録に失敗しました: {err}");
                 }
+                let question_shortcut =
+                    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyQ);
+                if let Err(err) = app.global_shortcut().register(question_shortcut) {
+                    eprintln!("[layertalk] Ctrl+Shift+Q の登録に失敗しました: {err}");
+                }
             }
 
             let handle = app.handle().clone();
@@ -1997,9 +2147,15 @@ pub fn run() {
                         debug_log(&format!("windows/overlay/create: failed {err}"));
                     }
                 }
-                if let Some(questions) = app.get_webview_window(QUESTIONS) {
-                    elevate_overlay_window(&questions);
-                    fit_question_panel_to_monitor(&questions, None, QUESTION_PANEL_WIDTH);
+                match create_question_window(app.handle()) {
+                    Ok(questions) => {
+                        elevate_overlay_window(&questions);
+                        fit_question_panel_to_monitor(&questions, None);
+                    }
+                    Err(err) => {
+                        eprintln!("[layertalk] 質問パネル窓を作れませんでした: {err}");
+                        debug_log(&format!("questions/create: failed {err}"));
+                    }
                 }
             }
 
