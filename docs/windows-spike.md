@@ -183,6 +183,30 @@ macOS が ScreenCaptureKit の常時ストリーム（2fps）で撮っている�
 質問が届いた瞬間に1枚だけ撮る**。`SCScreenshotManager` のようなブロックする API が無いのと、
 **WGC は撮影中ずっと画面に黄色い枠を描く**ため（常時ストリームだと発表中ずっと投影面に出る）。
 
+### 実測結果（2026-10-03 / Windows 11 ARM64 on Parallels / Apple Silicon）
+
+**答えは Yes。全項目○。**
+
+```
+capture/start: monitor=\\.\DISPLAY1
+capture/done: 1920x1080 frames=1 in 36ms
+spike: capture Captured health=CaptureHealth { frames_seen: 1, frames_stored: 1,
+       last_status: Some("wgc/ok"), blocked: false, stopped: None }
+```
+
+| 項目 | 結果 |
+|---|---|
+| JPEG ができる | **○** |
+| スライドが正しく写っている（色の反転なし） | **○** |
+| LayerTalk のオーバーレイが写っていない | **○**（`DwmFlush` 1回で 1枚目から効いた。`SKIP=0` のままでよい） |
+| 黄色い録画枠が出ない | **○**（`IsBorderRequired = false` が効いている） |
+| カーソルが写っていない | **○** |
+| 所要時間 | **26〜36ms**。800ms のタイムアウトに対して十分速く、D3D デバイスを毎回作り直す設計で問題ない |
+| 大きさ | **1920×1080**。WGC は実寸で返すので、縮小を入れ忘れると 4K のまま JPEG になる |
+
+**これで Windows 固有の未知数は3つとも潰れた**（透過オーバーレイ、中身サイズの操作可能パネル、
+オンデマンド撮影）。残るのは移植の手数だけで、新しい技術的リスクは無い。
+
 ### 見るところ
 
 | # | 確認 | ○の条件 |
