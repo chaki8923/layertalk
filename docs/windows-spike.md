@@ -259,6 +259,22 @@ cd <scratchpad>/winprobe && cargo check --target aarch64-pc-windows-msvc
 WGC + D3D11 コードはこれで VM に行く前に型を通した。
 **`windows_overlay.rs` は `tauri::WebviewWindow` を取るのでこの方法では読めない。**
 
+## 5c. 通しで動いた（2026-10-03）
+
+スパイクではなく**本物の経路**で確認済み（Windows 11 ARM64 / Parallels）:
+
+1. コントロール窓でサインイン → ルーム作成
+2. 「プレゼンを開始」
+3. スマホから投稿 → **コメントとスタンプがスライドの上を流れる**
+4. 質問を投稿 → **右端のパネルに積まれる**
+5. **質問1件につきスライド画像が1枚保存される**（オーバーレイの写り込みなし）
+6. 発表を終了 → **HTML レポートが書き出せる**
+
+`.env.local` は gitignore なので VM へ手で持ち込む必要がある。Parallels なら
+`Copy-Item "\\Mac\Home\Desktop\LayerTalk\apps\presenter-app\.env.local" ...` が早い。
+**Notepad で作らないこと** — 拡張子に `.txt` が付くか、空のまま保存される
+（実際に 0 バイトのファイルができて、Vite が env を読めずに窓が真っ白になった）。
+
 ## 5b. 本採用のときの宿題
 
 - **`capture_question` / `hold_question` / `discard_question` は cfg を広げて共有した。**
