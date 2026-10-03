@@ -485,7 +485,10 @@ impl QuestionCaptureState {
     pub fn stop(&self) {}
 
     /// 撮影に要るものを写し取る。撮影していなければ `None`。
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    /// **ここだけは共有できない。** 写し取るフィールドがプラットフォームで違う
+    /// （macOS はストリームの `latest` と単発撮影用の `filter` / `configuration`、
+    /// Windows は撮り直すためのモニター識別子）。Windows 版は下にある。
+    #[cfg(target_os = "macos")]
     fn parts(&self) -> Result<Option<CaptureParts>, String> {
         let state = self
             .active
