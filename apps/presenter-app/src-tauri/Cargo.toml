@@ -109,3 +109,7 @@ windows = { version = "0.61", features = [
   "Win32_System_WinRT_Graphics_Capture",
 ] }
 webview2-com = "0.38"
+# スパイクの裏口が発表セッションと質問の ID を自分で作るため。
+# **macOS 側には足さない** — あちらは UUID を受け取って parse するだけで生成しないので、
+# getrandom を引き込む理由が無い（target 指定の依存はそのターゲットでしか効かない）。
+uuid = { version = "1", features = ["v4"] }
