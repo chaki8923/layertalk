@@ -1,0 +1,39 @@
+# macOS から Windows 専用コードを型検査するための器。アプリの一部ではない。
+#
+#   cd scripts/winprobe && cargo check --target aarch64-pc-windows-msvc
+#
+# 本体（src-tauri）を直接 --target aarch64-pc-windows-msvc で検査することはできない。
+# reqwest → rustls → ring が Windows 向けのアセンブリを組むのに clang と Windows の
+# ヘッダを要求し、さらに tauri-build が llvm-rc を要求するため。
+# **`windows` クレートだけに依存するこの器なら、どちらも経由せずに通る。**
+#
+# `windows` のバージョンは本体の Cargo.toml と必ず揃えること。ずれると、ここで通っても
+# 本体で通らない。
+[package]
+name = "winprobe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+windows = { version = "0.61", features = [
+  "Foundation",
+  "Graphics_Capture",
+  "Graphics_DirectX_Direct3D11",
+  "Win32_Foundation",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_Dwm",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_Graphics_Gdi",
+  "Win32_System_WinRT",
+  "Win32_System_WinRT_Direct3D11",
+  "Win32_System_WinRT_Graphics_Capture",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+
+# 親にワークスペースが無いが、将来できたときに巻き込まれないよう明示しておく。
+[workspace]

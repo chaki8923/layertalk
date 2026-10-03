@@ -248,16 +248,21 @@ spike: capture Captured health=CaptureHealth { frames_seen: 1, frames_stored: 1,
 
 ### Mac から Windows のコードを型検査する
 
-`scratchpad/winprobe` が `#[path]` で**本物の `windows_capture.rs` を直接読む**ので、
-写し間違いもズレも起きない。
+**`scripts/winprobe`** が `#[path]` で**本物のファイルを直接読む**ので、写し間違いもズレも起きない。
 
 ```bash
-cd <scratchpad>/winprobe && cargo check --target aarch64-pc-windows-msvc
+cd scripts/winprobe && cargo check --target aarch64-pc-windows-msvc
 ```
 
-`windows = "0.61"` だけに依存するクレートなので `ring` を経由せず通る。589 行の
-WGC + D3D11 コードはこれで VM に行く前に型を通した。
-**`windows_overlay.rs` は `tauri::WebviewWindow` を取るのでこの方法では読めない。**
+読めるのは **`windows` クレートだけに依存するファイル**（`windows_capture.rs`、
+`windows_shell.rs`）。**`tauri` に触った瞬間に読めなくなる**ので、Windows 専用の処理は
+できるだけこの2つに寄せること。`windows_overlay.rs`（`&WebviewWindow` を取る）と
+`lib.rs` / `question_capture.rs` の Windows 腕は、**VM でのビルドが唯一の検査**になる
+（実際にそこで `uuid::new_v4` の feature 漏れと `parts()` の重複定義を取りこぼした）。
+
+本体を直接 `--target aarch64-pc-windows-msvc` で検査することはできない。
+`reqwest` → `rustls` → `ring` が Windows 向けのアセンブリを組むのに clang を要求し、
+さらに `tauri-build` が `llvm-rc` を要求するため（どちらも macOS には無い）。
 
 ## 5c. 通しで動いた（2026-10-03）
 

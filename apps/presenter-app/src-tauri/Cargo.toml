@@ -94,6 +94,8 @@ screencapturekit = { version = "8", features = ["macos_14_0"] }
 windows = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_UI_WindowsAndMessaging",
+  # 法務ページ・サポート・領収書を既定のブラウザで開く（ShellExecuteW）。
+  "Win32_UI_Shell",
   # 質問スライドの撮影（Windows.Graphics.Capture + D3D11 の相互運用）。
   # macOS の ScreenCaptureKit にあたる部分で、常時ストリームではなく単発撮影に使う。
   "Foundation",
