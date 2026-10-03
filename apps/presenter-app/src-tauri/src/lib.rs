@@ -37,15 +37,11 @@ const CONTROL_SHORTCUT_MODIFIERS: Modifiers = Modifiers::CONTROL;
 const OVERLAY: &str = "overlay";
 const CONTROL: &str = "control";
 const QUESTIONS: &str = "questions";
-/// オーバーレイ窓が読むページ。**スパイクの間はダミー描画専用のエントリ**にしてある
-/// （`ControlWindow` は 69KB あり、オーバーレイに読ませたくない）。
-/// 透過が確認できたら本物の `OverlayWindow` に差し替える。
+/// どの窓も同じ `index.html` を読む。中身は `main.tsx` が窓ラベルで分岐して差し替える
+/// （`currentWindowLabel()`）。HTML を窓ごとに分けると Tailwind の CSS が窓の数だけ出るし、
+/// `index.html` と同期を取る対象が増える。
 #[cfg(not(target_os = "macos"))]
-const OVERLAY_PAGE: &str = "spike-overlay.html";
-/// 質問パネル窓が読むページ。スパイクの間は `QuestionWindow` だけをマウントする専用
-/// エントリにしてある（`ControlWindow` も Supabase も引き込まないため）。
-#[cfg(not(target_os = "macos"))]
-const QUESTIONS_PAGE: &str = "spike-questions.html";
+const WINDOW_PAGE: &str = "index.html";
 // macOS の質問パネルの大きさは `question_render` が持つ。これは macOS 以外の webview 窓用。
 #[cfg(not(target_os = "macos"))]
 const QUESTION_PANEL_WIDTH: f64 = 430.0;
@@ -822,7 +818,7 @@ fn create_overlay_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     }
 
     #[allow(unused_mut)]
-    let mut builder = WebviewWindowBuilder::new(app, OVERLAY, WebviewUrl::App(OVERLAY_PAGE.into()))
+    let mut builder = WebviewWindowBuilder::new(app, OVERLAY, WebviewUrl::App(WINDOW_PAGE.into()))
         .title("LayerTalk Overlay")
         .transparent(true)
         .decorations(false)
@@ -848,7 +844,7 @@ fn create_overlay_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     }
 
     let overlay = builder.build()?;
-    debug_log(&format!("overlay/create: page={OVERLAY_PAGE}"));
+    debug_log(&format!("overlay/create: page={WINDOW_PAGE}"));
 
     // 透過そのものは wry が `transparent: true` から当てている（`webview2/mod.rs:127-131`）。
     // ここは**切り分け用**で、`LAYERTALK_WIN_WEBVIEW_TRANSPARENT=1` のときだけ当て直す。
@@ -892,7 +888,7 @@ fn create_question_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 
     #[allow(unused_mut)]
     let mut builder =
-        WebviewWindowBuilder::new(app, QUESTIONS, WebviewUrl::App(QUESTIONS_PAGE.into()))
+        WebviewWindowBuilder::new(app, QUESTIONS, WebviewUrl::App(WINDOW_PAGE.into()))
             .title("LayerTalk Questions")
             .transparent(true)
             .decorations(false)
@@ -908,7 +904,7 @@ fn create_question_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     }
 
     let questions = builder.build()?;
-    debug_log(&format!("questions/create: page={QUESTIONS_PAGE}"));
+    debug_log(&format!("questions/create: page={WINDOW_PAGE}"));
 
     #[cfg(target_os = "windows")]
     {
