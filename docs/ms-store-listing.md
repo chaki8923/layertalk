@@ -16,10 +16,16 @@ OV/IV を買っても SmartScreen の警告は消えないので、買う意味�
 
 ## 0. 手順（この順でないと進めない）
 
-1. **Partner Center に個人アカウントを登録**（約 $19、買い切り。本人確認に1〜3営業日）
-   https://partner.microsoft.com/dashboard/registration
+1. **開発者アカウントを登録**（**無料**。本人確認に1〜3営業日）
+   **https://storedeveloper.microsoft.com/**
+   - **ここが唯一の入口。** `partner.microsoft.com/dashboard/registration` は旧経路で、
+     未登録のアカウントで開くと「Access restricted」になる（実際に踏んだ）
    - **個人（Individual）を選ぶ。** 法人登記は不要
+   - **個人の Microsoft アカウントで入ること。** 職場・学校アカウント（組織の Entra ID）だと
+     権限で弾かれることがある。迷ったらシークレットウィンドウで開く
    - 氏名・住所は本人確認書類どおりに。Apple Developer と揃えておくと後が楽
+   - **登録料は無料。** 2025年9月に個人の登録料が、2026年5月に法人の $99 が撤廃された
+     （古い情報では「$19 の買い切り」とある）
 2. **「発行者の表示名」を控える**（アカウント設定 > アカウントの詳細）
    → `MSIX_PUBLISHER_DISPLAY_NAME`
    > **個人アカウントだとここは通常あなたの本名になる。** `tauri.conf.json` の
