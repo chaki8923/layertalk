@@ -147,15 +147,55 @@ fn delete(key: &str) -> Result<(), String> {
         Err(_) => Err("storage_error".into()),
     }
 }
-#[cfg(not(target_os = "macos"))]
+/// Windows の保管先は資格情報マネージャー（macOS の Keychain に対応）。
+///
+/// 実際の Win32 呼び出しは `windows_shell` にある。あのモジュールは **`tauri` に
+/// 依存していない**ので、`scripts/winprobe` から macOS 上で型検査できる。
+///
+/// **エラーは必ず `"storage_error"` に畳む。** OS のメッセージを素通しすると、
+/// 秘密である webhook URL が画面やログに混ざりうる（`post()` の
+/// 「reqwest のエラーを文字列化しないこと」と同じ理由）。本当の原因は
+/// `windows_shell` 側が `debug_log` に、コードだけ残している。
+#[cfg(target_os = "windows")]
+fn credential_target(key: &str) -> String {
+    format!("{SERVICE}:{key}")
+}
+
+#[cfg(target_os = "windows")]
+fn read(key: &str) -> Result<Option<Config>, String> {
+    // **「無い」と「読めない」を分けること。** 拒否されたのに `None` を返すと、
+    // 設定済みの送信先が未設定に見えて黙って上書きされる。
+    match crate::windows_shell::credential_read(&credential_target(key)) {
+        Ok(Some(bytes)) => serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|_| "storage_error".into()),
+        Ok(None) => Ok(None),
+        Err(()) => Err("storage_error".into()),
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn write(key: &str, config: &Config) -> Result<(), String> {
+    let bytes = serde_json::to_vec(config).map_err(|_| "storage_error")?;
+    crate::windows_shell::credential_write(&credential_target(key), &bytes)
+        .map_err(|()| "storage_error".into())
+}
+
+#[cfg(target_os = "windows")]
+fn delete(key: &str) -> Result<(), String> {
+    crate::windows_shell::credential_delete(&credential_target(key))
+        .map_err(|()| "storage_error".into())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn read(_: &str) -> Result<Option<Config>, String> {
     Err("unsupported".into())
 }
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn write(_: &str, _: &Config) -> Result<(), String> {
     Err("unsupported".into())
 }
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn delete(_: &str) -> Result<(), String> {
     Err("unsupported".into())
 }

@@ -9,7 +9,7 @@ const host = process.env.TAURI_DEV_HOST;
 const distributionChannel = process.env.LAYERTALK_DISTRIBUTION_CHANNEL === "mas" ? "mas" : "direct";
 
 /**
- * MAS ビルドだけ、ビルド時に埋め込む値が欠けていたら**ビルドを落とす**。どちらも欠けたまま
+ * ビルド時に埋め込む値が欠けていたら**ビルドを落とす**。どちらも欠けたまま
  * 出荷すると画面には何も出ず、審査で初めて分かる。
  *
  * - **観客用 Web の URL**（`VITE_BILLING_API_BASE_URL` → `VITE_AUDIENCE_BASE_URL`）。
@@ -23,34 +23,40 @@ const distributionChannel = process.env.LAYERTALK_DISTRIBUTION_CHANNEL === "mas"
  * `.env.local` の値も数える。設定ファイルの `process.env` には .env が入らないので `loadEnv` で読み、
  * シェルの値を優先する（Vite 本体と同じ優先順位）。
  *
- * 直接配布版は落とさない。localhost へのフォールバックは dev の前提で、
+ * dev（`npm run dev`）は落とさない。localhost へのフォールバックは dev の前提で、
  * 「LAN IP の自動検出はしない」という既存の決めごとと対になっている。
+ * **商品 ID は MAS だけ必須**（Windows と直接配布は StoreKit を使わない）。
  */
-function assertMasBuildEnv(env: Record<string, string | undefined>) {
+function assertBuildEnv(env: Record<string, string | undefined>, channel: "mas" | "direct") {
   const missing: string[] = [];
   if (!env.VITE_BILLING_API_BASE_URL && !env.VITE_AUDIENCE_BASE_URL) {
     missing.push(
       "VITE_BILLING_API_BASE_URL (or VITE_AUDIENCE_BASE_URL): the deployed audience web host. Without it the "
-      + "privacy policy, terms and support links in the app are dead, which App Store guideline 5.1.1(i) does not allow.",
+      + "privacy policy, terms and support links in the app are dead, which App Store guideline 5.1.1(i) does not allow "
+      + "(the Microsoft Store requires a reachable privacy policy too).",
     );
   }
-  if (!env.VITE_APPLE_EVENT_PASS_PRODUCT_ID) {
+  if (channel === "mas" && !env.VITE_APPLE_EVENT_PASS_PRODUCT_ID) {
     missing.push(
       "VITE_APPLE_EVENT_PASS_PRODUCT_ID: the Event Pass product ID in App Store Connect, identical to the server's "
       + "APPLE_EVENT_PASS_PRODUCT_ID. Without it the price never loads and the Buy button stays disabled.",
     );
   }
   if (missing.length > 0) {
-    throw new Error(`MAS build: set the following before building.\n- ${missing.join("\n- ")}`);
+    throw new Error(`${channel} build: set the following before building.\n- ${missing.join("\n- ")}`);
   }
 }
 
 // https://vite.dev/config/
 export default defineConfig(async ({ mode }) => {
-  if (distributionChannel === "mas") {
+  // **dev 以外はチャネルを問わず検査する。** 以前は `mas` だけだったので、Windows
+  // （= `direct`）は観客 Web の URL が欠けたままビルドが通り、プライバシー・利用規約・
+  // サポート・領収書のボタンが**全部無反応**のパッケージができた。
+  // どちらのストアも「アプリ内から方針へ辿れること」を要求する。
+  if (mode !== "development") {
     const fileEnv = loadEnv(mode, fileURLToPath(new URL(".", import.meta.url)), "VITE_");
     // @ts-expect-error process is a nodejs global
-    assertMasBuildEnv({ ...fileEnv, ...process.env });
+    assertBuildEnv({ ...fileEnv, ...process.env }, distributionChannel);
   }
 
   return {

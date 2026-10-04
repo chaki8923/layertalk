@@ -1285,18 +1285,32 @@ fn start_front_watchdog(app: &AppHandle) {
     });
 }
 
-/// 収録中をコントロール窓とメニューバーに出す（App Store 2.5.14「収録中は明確に示す」）。
+/// 収録中をコントロール窓とトレイに出す（App Store 2.5.14「収録中は明確に示す」）。
 ///
-/// コントロール窓は発表中に閉じられていることがあるので、常に見えるトレイのタイトルにも出す。
+/// コントロール窓は発表中に閉じられていることがあるので、常に見えるトレイにも出す。
 /// フロントは `question-capture-state` を受け、開き直したときは `question_capture_recording` で取り直す。
+///
+/// **トレイの出し方がプラットフォームで違う。** `set_title` はメニューバーに文字を置く
+/// macOS の仕組みで、**Windows では黙って無視される**（`tray-icon` のドキュメントが
+/// "Windows: Unsupported" と明記している）。Windows には通知領域のアイコンの横に
+/// 文字を置く場所が無いので、ツールチップに出す。これを `set_title` のままにすると、
+/// **発表中にコントロール窓を閉じた瞬間、収録中の表示がどこにも無くなる。**
 fn show_recording(app: &AppHandle, recording: bool) {
     let _ = app.emit("question-capture-state", recording);
     let handle = app.clone();
     // NSStatusItem の変更はメインスレッドから行う。
     let _ = app.run_on_main_thread(move || {
-        if let Some(tray) = handle.tray_by_id(TRAY_ID) {
-            let _ = tray.set_title(if recording { Some("● REC") } else { None });
-        }
+        let Some(tray) = handle.tray_by_id(TRAY_ID) else {
+            return;
+        };
+        #[cfg(target_os = "macos")]
+        let _ = tray.set_title(if recording { Some("● REC") } else { None });
+        #[cfg(not(target_os = "macos"))]
+        let _ = tray.set_tooltip(Some(if recording {
+            "LayerTalk  ● REC"
+        } else {
+            "LayerTalk"
+        }));
     });
 }
 
