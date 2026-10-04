@@ -65,7 +65,7 @@ export default async function TokushoPage(props: PageProps<"/legal/tokusho">) {
               <dt className="lt-nowrap text-[12px] font-bold">{term}</dt><dd className="text-text-muted text-[13px] leading-6"><ProtectedText text={description} terms={["1ルーム", "7日間", "Checkout Session"]} /></dd>
             </div>
           ))}
-          <div className="grid gap-2 p-4 sm:grid-cols-[12rem_1fr] sm:p-5"><dt className="lt-nowrap text-[12px] font-bold">動作環境</dt><dd className="text-text-muted text-[13px] leading-6">{legalConfig.systemRequirementsUrl ? <a href={legalConfig.systemRequirementsUrl} className="lt-nowrap text-brand">対応環境を確認する</a> : <ProtectedText text="macOS版Presenterアプリと、最新の主要ブラウザおよび安定したインターネット接続が必要です。" terms={["macOS版Presenterアプリ", "主要ブラウザ", "インターネット接続"]} />}</dd></div>
+          <div className="grid gap-2 p-4 sm:grid-cols-[12rem_1fr] sm:p-5"><dt className="lt-nowrap text-[12px] font-bold">動作環境</dt><dd className="text-text-muted text-[13px] leading-6">{legalConfig.systemRequirementsUrl ? <a href={legalConfig.systemRequirementsUrl} className="lt-nowrap text-brand">対応環境を確認する</a> : <ProtectedText text="Presenterアプリ（macOS 13以降／Windows 10 バージョン2004以降）と、最新の主要ブラウザおよび安定したインターネット接続が必要です。" terms={["Presenterアプリ", "主要ブラウザ", "インターネット接続"]} />}</dd></div>
         </dl>
         <p className="text-text-muted mt-8 text-[13px]">詳しい条件は<Link href={`/legal/terms${query}`} className="lt-nowrap text-brand mx-1">利用規約</Link>と<Link href={`/support${query}#refunds`} className="lt-nowrap text-brand ml-1">返金案内</Link>をご確認ください。</p>
       </main>

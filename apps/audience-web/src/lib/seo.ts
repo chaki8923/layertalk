@@ -141,12 +141,12 @@ export function createHomeStructuredData({
         description,
         applicationCategory: "BusinessApplication",
         applicationSubCategory: "Presentation software",
-        operatingSystem: "macOS 13 or later",
+        operatingSystem: "macOS 13 or later, Windows 10 version 2004 or later",
         downloadUrl: APP_STORE_URL,
         softwareRequirements:
           locale === "ja"
-            ? "発表者はmacOS 13以降、観客は最新の主要ブラウザとインターネット接続が必要です。"
-            : "Presenters need macOS 13 or later; audience members need a current web browser and internet connection.",
+            ? "発表者はmacOS 13以降またはWindows 10 バージョン2004以降、観客は最新の主要ブラウザとインターネット接続が必要です。"
+            : "Presenters need macOS 13 or later, or Windows 10 version 2004 or later; audience members need a current web browser and internet connection.",
         inLanguage: ["ja-JP", "en-US"],
         featureList: featureNames,
         offers: [

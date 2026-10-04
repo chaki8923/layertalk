@@ -51,7 +51,7 @@ export function GuideArticle({ guide }: { guide: GuideArticleContent }) {
         <p className="text-brand text-[11px] font-bold tracking-[.18em] uppercase">LayerTalk</p>
         <p className="mt-3 text-[20px] leading-[1.4] font-bold tracking-[-0.02em]">{text("会場のコメントを、スライドの上に流そう")}</p>
         <p className="text-text-muted mt-3 text-[14px] leading-7">
-          {text("LayerTalkは、観客のコメント・質問・スタンプを発表中のスライドへリアルタイムに重ねるMac用アプリです。観客はQRコードか6文字コードで参加でき、アプリも登録も要りません。")}
+          {text("LayerTalkは、観客のコメント・質問・スタンプを発表中のスライドへリアルタイムに重ねるmacOS・Windows用アプリです。観客はQRコードか6文字コードで参加でき、アプリも登録も要りません。")}
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <AppStoreButton />

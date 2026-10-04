@@ -74,7 +74,7 @@ describe("structured data", () => {
       "SoftwareApplication",
     ]);
     expect(data["@graph"][1]).toMatchObject({
-      operatingSystem: "macOS 13 or later",
+      operatingSystem: "macOS 13 or later, Windows 10 version 2004 or later",
       offers: [
         { name: "LayerTalk Free", price: "0", priceCurrency: "JPY" },
         { name: "LayerTalk Event Pass", price: "2980", priceCurrency: "JPY" },
