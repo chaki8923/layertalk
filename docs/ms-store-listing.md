@@ -110,6 +110,18 @@ reports, and branding for one room for seven days. It does not renew automatical
 - 重要な要素は**上から 2/3 の範囲**に置く（下 1/3 にキャプションが重なる）
 - **ロゴ・アイコン・宣伝文句を画像に足さないこと**
 
+**App Store 版（`assets/*-appstore.png`、1440×900）のうち3枚はそのまま使える。**
+寸法は 1366×768 以上を満たしている。
+
+| 枚 | 流用 | 理由 |
+|---|---|---|
+| コメント表示 / 質問パネル / 参加QR | **可** | スライドとオーバーレイだけで、OS の要素が写っていない |
+| コントロール窓 / 安全管理 / Event Pass | **不可** | macOS の信号機ボタン、「内蔵Retinaディスプレイ」、「このMacのKeychainに保存されます」が写っている。文言は Windows 版で直したので、画像のほうが古い |
+
+> 流用する3枚の唯一の難点は、**絵文字が Apple のデザイン**であること
+> （Windows では Segoe UI Emoji になる）。審査で問題になる水準ではないが、
+> 気になるなら撮り直す。
+
 撮るもの（App Store 版と同じ構図でよい。`docs/app-store-listing.md` の 7. 参照）:
 
 1. スライドにコメントが流れている状態

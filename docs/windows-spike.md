@@ -296,6 +296,22 @@ Windows 11 の VM（dev ビルド）で、全部○:
 `● REC` が出るのは**撮影が実際に動いているとき**だけで、Event Pass ＋ 撮影トグル ON ＋
 **その状態で**発表開始、の3つが揃っている必要がある。
 
+## 5e. x64 ビルドも通った（2026-10-04）
+
+**出荷するのは x64。** これまでの検証は全部 ARM64 の VM だったので、x64 は初コンパイルだった。
+
+```powershell
+rustup target add x86_64-pc-windows-msvc
+npx tauri build --target x86_64-pc-windows-msvc --no-bundle
+```
+
+ビルドが通り、できた `.exe` を ARM64 Windows の x64 エミュレーションで動かして
+通しの動作確認も○。**これで技術的な未知数は無くなった。**
+
+> `npm run tauri:build -- --no-bundle` は使えない（npm がフラグを食う。罠 #19）。
+> x64 のリンクには **x64 の MSVC** が要る。ARM64 用だけでは足りない
+> （Visual Studio Installer の「MSVC v143 - VS 2022 C++ x64/x86 ビルドツール」）。
+
 ## 5b. 本採用のときの宿題
 
 - **`capture_question` / `hold_question` / `discard_question` は cfg を広げて共有した。**
