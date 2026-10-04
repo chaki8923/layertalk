@@ -257,6 +257,28 @@ if (-not $maxVersionTested) {
 }
 Write-Host "    version:  $Version  (MaxVersionTested $maxVersionTested)" -ForegroundColor DarkGray
 
+# **LayerTalk はトレイに残るアプリ。** コントロール窓を閉じてもプロセスは生きていて、
+# release の .exe を掴んだままになる。cargo はリンクの直前にそれを消そうとするので、
+# **フロントも Rust も全部コンパイルし終えた最後**に
+# `failed to remove file ... presenter-app.exe / アクセスが拒否されました (os error 5)`
+# で落ちる。数分待たされてから落ちるのが一番もったいないので、先に見る。
+foreach ($name in @('presenter-app', 'LayerTalk')) {
+  $running = @(Get-Process -Name $name -ErrorAction SilentlyContinue)
+  if ($running.Count -gt 0) {
+    Fail @"
+$name が実行中です（PID $(($running | ForEach-Object { $_.Id }) -join ', ')）。
+
+       release の .exe を掴んでいるので、このままだと**全部コンパイルし終えた最後**に
+       「アクセスが拒否されました (os error 5)」で落ちます。
+
+       LayerTalk は**トレイに残るアプリ**で、コントロール窓を閉じても終了していません。
+       トレイアイコンから終了するか、こうしてください:
+
+         Get-Process -Name $name | Stop-Process -Force
+"@
+  }
+}
+
 # ---------------------------------------------------------------- ビルド
 
 Step 'building the frontend and the x64 binary'
