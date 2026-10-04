@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  LayerTalk — Microsoft Store (MSIX) のパッケージマニフェスト。
+  Desktop Bridge（Win32 をフルトラストで包む形）、x64。
+
+  **これはテンプレートで、そのままでは使えない。** `scripts/build-msix.ps1` が
+  @@TOKEN@@ を置き換えて、staging ディレクトリに本物を書き出す。
+  生成されたほうを手で直さないこと（次のビルドで消える）。
+
+  **要素の順番に意味がある。** スキーマは Package の子を
+  (Identity, Properties, Resources, Dependencies, Capabilities, Applications) の
+  並びで定義していて、入れ替えると MakeAppx が行番号だけのエラーで落ちる。
+  Properties の中も (DisplayName, PublisherDisplayName, Description, Logo) の順。
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:uap11="http://schemas.microsoft.com/appx/manifest/uap/windows10/11"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap11 rescap">
+
+  <!--
+    Version 以外はすべて Partner Center が発行する値。**推測して書かないこと。**
+
+      Name      Partner Center > (アプリ) > 製品の管理 > 製品 ID の
+                "パッケージ/ID/名前"。`12345Yourname.LayerTalk` のような形。
+                大文字小文字を区別する。予約したアプリ名から決まるので、自分では選べない。
+      Publisher 同じ画面の "パッケージ/ID/発行者"。`CN=...` の識別名。
+                **`identifier: "app.layertalk.presenter"` とは無関係。**
+      Version   4つ組。**4番目はストアの予約領域で 0 固定。**
+                再提出のたびに**3番目**を上げる（1.0.0.0 -> 1.0.1.0）。
+                1番目を 0 にはできない。各部は 0..65535。
+  -->
+  <Identity
+    Name="@@IDENTITY_NAME@@"
+    Publisher="@@PUBLISHER@@"
+    Version="@@VERSION@@"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>LayerTalk</DisplayName>
+    <!--
+      Partner Center > アカウント設定 > アカウントの詳細 > "発行者の表示名"。
+      **完全一致していないと認証に落ちる。** 個人アカウントだとここは通常あなたの
+      本名で、`tauri.conf.json` の `bundle.publisher: "LayerTalk"` は引き継がれない。
+    -->
+    <PublisherDisplayName>@@PUBLISHER_DISPLAY_NAME@@</PublisherDisplayName>
+    <!-- 「|」を入れないこと。DisplayName / Description にファイアウォールが
+         許さない文字があると、パッケージのプロファイル作成に失敗する。 -->
+    <Description>スライドに観客のコメントとスタンプを重ねる</Description>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <!-- 先頭がパッケージの既定言語。マニフェスト内の文字列自体は翻訳されない
+       （翻訳するには ms-resource: と .resw が要る。2言語のために入れる価値は無い）。 -->
+  <Resources>
+    <Resource Language="ja-JP" />
+    <Resource Language="en-US" />
+  </Resources>
+
+  <!--
+    MinVersion = 10.0.19041.0（Windows 10 バージョン 2004）。到達範囲を優先した判断。
+
+    この版を下回れない理由:
+      - `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` が 2004 以降。
+        **これが無いと、質問スライドの画像に自分のオーバーレイが写り込む。**
+        見た目の問題ではなく中身が間違う
+      - `uap10:RuntimeBehavior` / `uap10:TrustLevel` も 19041 以降
+
+    Windows 10 で諦めている点（承知のうえ）:
+      - `GraphicsCaptureSession.IsBorderRequired` は Windows 11 以降。Windows 10 では
+        撮影の一瞬だけ**投影面に黄色い録画枠が出る**（約 30ms）。
+        `windows_capture.rs` はこの失敗を握り潰して撮影を続ける
+      - WebView2 は Windows 11 には同梱だが Windows 10 には無いことがある。
+        `windows_shell::webview2_runtime_version` が起動時に確かめて、
+        無ければ原因を出す（無言の真っ白を避ける）
+
+    MaxVersionTested は**実際に動かした OS のビルド**を入れる。上に盛ると、
+    検証していない OS 向けの挙動を自分から有効にすることになる。
+  -->
+  <Dependencies>
+    <TargetDeviceFamily
+      Name="Windows.Desktop"
+      MinVersion="10.0.19041.0"
+      MaxVersionTested="@@MAX_VERSION_TESTED@@" />
+  </Dependencies>
+
+  <!--
+    フルトラストの Win32 アプリが要るのはこれ1つだけ。
+
+    `runFullTrust` は restricted capability なので、**提出時に理由の記入を求められる**
+    （文面は docs/ms-store-listing.md に用意してある）。ごく普通の Desktop Bridge の
+    capability で、めったに通らない類のものではない。
+
+    足さなくてよいもの:
+      - `internetClient` — AppContainer 用。mediumIL は既にユーザー権限で動いている
+      - グローバルホットキー用のもの — `RegisterHotKey` に capability は無い
+      - `graphicsCapture` — あれは GraphicsCapturePicker を出すためのもので、
+        このアプリは `CreateForMonitor` を直接呼ぶ
+      - `unvirtualizedResources` — AppData のリダイレクトは壊れていない（下記）
+
+    下の2行は、万一 AppContainer 相当の検査が効いていた場合の逃げ道。
+    どちらも general-use（`uap11:`）なので、有効にしても提出時の追加説明は要らない。
+    判断材料はログに出る: `SetIsBorderRequired` が失敗したら borderless を、
+    `CreateForMonitor` が失敗したら programmatic を外す。
+  -->
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <!-- <uap11:Capability Name="graphicsCaptureProgrammatic" /> -->
+    <!-- <uap11:Capability Name="graphicsCaptureWithoutBorder" /> -->
+  </Capabilities>
+
+  <!--
+    Id はパッケージ内のアプリ ID。**公開後に変えないこと**（スタート画面のタイルの
+    位置が失われる）。
+
+    Executable は staging で改名したあとの名前。**Tauri は cargo のバイナリ名を
+    productName に改名しない**（証拠: macOS の LayerTalk.app の中身も presenter-app）。
+    改名して問題ないのは、`app_data_dir()` が識別子から決まり、ファイル名を見ないため。
+
+    `uap10:RuntimeBehavior="packagedClassicApp"` + `uap10:TrustLevel="mediumIL"` は
+    `EntryPoint="Windows.FullTrustApplication"` と等価な現行の書き方。両方書くと
+    矛盾したときにエラーになるので、片方だけにする。
+
+    **`uap10` を IgnorableNamespaces に入れないこと。** 入れると、理解できない OS で
+    属性が黙って落ち、「Executable はあるが起動方法が無い」マニフェストになって
+    インストールが理由不明で失敗する。
+  -->
+  <Applications>
+    <Application
+      Id="LayerTalk"
+      Executable="LayerTalk.exe"
+      uap10:RuntimeBehavior="packagedClassicApp"
+      uap10:TrustLevel="mediumIL">
+
+      <!--
+        BackgroundColor は飾りではない。ロゴの四隅が透明なので、`transparent` に
+        すると下のタイル地が透けて配色が崩れる。デザイントークンの背景色（docs/design-system.md の lt-bg）を置く。
+
+        SplashScreen は入れない。packagedClassicApp は exe を直接起動するので、
+        利用者が見るのは Win32 の窓そのもの。
+      -->
+      <uap:VisualElements
+        DisplayName="LayerTalk"
+        Description="スライドに観客のコメントとスタンプを重ねる"
+        BackgroundColor="#0A0C11"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile
+          ShortName="LayerTalk"
+          Square71x71Logo="Assets\Square71x71Logo.png"
+          Square310x310Logo="Assets\Square310x310Logo.png" />
+      </uap:VisualElements>
+
+    </Application>
+  </Applications>
+</Package>

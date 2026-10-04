@@ -2124,6 +2124,23 @@ fn start_overlay_selftest(app: &AppHandle) {
 }
 
 pub fn run() {
+    // **WebView2 が無いと、窓が出ないか真っ白になるだけで理由がどこにも出ない。**
+    // Windows 11 には同梱だが、最低対応を Windows 10 2004 にしたので入っていない端末がある。
+    // webview が作れない状況では画面に何も出せないので、ここだけ Win32 のダイアログで伝える。
+    #[cfg(target_os = "windows")]
+    {
+        match windows_shell::webview2_runtime_version() {
+            Some(version) => debug_log(&format!("webview2: {version}")),
+            None => {
+                windows_shell::show_fatal_message(
+                    "LayerTalk",
+                    "LayerTalk を起動するには Microsoft Edge WebView2 ランタイムが必要です。\n\n                     https://developer.microsoft.com/microsoft-edge/webview2/ から\n                     「エバーグリーン ブートストラッパー」を入れてから、もう一度起動してください。",
+                );
+                return;
+            }
+        }
+    }
+
     tauri::Builder::default()
         // `tauri-plugin-opener` は入れていない。あれは `/usr/bin/open` を spawn するので
         // App Sandbox で黙って失敗する。URL は `open_external_url`（NSWorkspace）が開く。

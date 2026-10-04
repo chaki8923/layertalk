@@ -96,6 +96,8 @@ windows = { version = "0.61", features = [
   "Win32_UI_WindowsAndMessaging",
   # 法務ページ・サポート・領収書を既定のブラウザで開く（ShellExecuteW）。
   # Slack / Teams の webhook を資格情報マネージャーに預ける（macOS の Keychain に対応）。
+  # WebView2 ランタイムの有無をレジストリで確かめる（Windows 10 には同梱されていない）。
+  "Win32_System_Registry",
   "Win32_Security_Credentials",
   "Win32_UI_Shell",
   # 質問スライドの撮影（Windows.Graphics.Capture + D3D11 の相互運用）。
