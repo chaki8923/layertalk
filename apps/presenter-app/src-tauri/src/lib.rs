@@ -35,6 +35,14 @@ const CONTROL_SHORTCUT_MODIFIERS: Modifiers = Modifiers::SUPER;
 #[cfg(not(target_os = "macos"))]
 const CONTROL_SHORTCUT_MODIFIERS: Modifiers = Modifiers::CONTROL;
 
+/// 画面に出すキーの表記。**上の修飾キーと必ず揃えること** — ずれると
+/// 「書いてあるキーを押しても何も起きない」という、報告されるまで気付けない嘘になる。
+/// フロント側の対になる定数は `src/lib/tauri.ts` の `CONTROL_SHORTCUT_LABEL`。
+#[cfg(target_os = "macos")]
+const CONTROL_SHORTCUT_LABEL: &str = "⇧⌘L";
+#[cfg(not(target_os = "macos"))]
+const CONTROL_SHORTCUT_LABEL: &str = "Ctrl+Shift+L";
+
 const OVERLAY: &str = "overlay";
 const CONTROL: &str = "control";
 const QUESTIONS: &str = "questions";
@@ -97,12 +105,16 @@ struct TrayMenu {
 
 /// トレイの 3 項目のラベル。フロントの文言カタログはここへ届かないので、
 /// この 3 本だけ Rust 側にも持つ。
-fn tray_labels(language: &str) -> (&'static str, &'static str, &'static str) {
+fn tray_labels(language: &str) -> (String, &'static str, &'static str) {
     if language == "en" {
-        ("Show Controls  ⇧⌘L", "Stop presenting", "Quit LayerTalk")
+        (
+            format!("Show Controls  {CONTROL_SHORTCUT_LABEL}"),
+            "Stop presenting",
+            "Quit LayerTalk",
+        )
     } else {
         (
-            "コントロールを表示  ⇧⌘L",
+            format!("コントロールを表示  {CONTROL_SHORTCUT_LABEL}"),
             "プレゼンを終了",
             "LayerTalk を終了",
         )
@@ -996,7 +1008,7 @@ fn show_overlay(app: &AppHandle) {
 /// （これを省くと、いちばん見たい「スライドショーに勝ち続けられるか」が試せない）。
 ///
 /// 透過の可否が確定したらこの関数ごと消す。
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", debug_assertions))]
 fn toggle_spike_overlay(app: &AppHandle) {
     if is_live(app) {
         if let Some(overlay) = app.get_webview_window(OVERLAY) {
@@ -1024,7 +1036,7 @@ fn toggle_spike_overlay(app: &AppHandle) {
 /// 待っているのと同じ `question-received` イベントをそのまま投げる。
 ///
 /// 当たり判定の可否が確定したらこの関数ごと消す。
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", debug_assertions))]
 fn push_spike_question(app: &AppHandle) {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -2114,15 +2126,15 @@ pub fn run() {
                         focus_control_window(app);
                     }
 
-                    // スパイクの裏口。透過の可否が確定したら消す。
-                    #[cfg(target_os = "windows")]
+                    // スパイクの裏口。**release ビルドには入らない。**
+                    #[cfg(all(target_os = "windows", debug_assertions))]
                     if event.state == ShortcutState::Pressed
                         && shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyO)
                     {
                         toggle_spike_overlay(app);
                     }
 
-                    #[cfg(target_os = "windows")]
+                    #[cfg(all(target_os = "windows", debug_assertions))]
                     if event.state == ShortcutState::Pressed
                         && shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyQ)
                     {
@@ -2193,8 +2205,14 @@ pub fn run() {
                 eprintln!("[layertalk] コントロール窓のショートカットの登録に失敗しました: {err}");
             }
 
-            // スパイクの裏口（Ctrl+Shift+O）。透過の可否が確定したら消す。
-            #[cfg(target_os = "windows")]
+            // スパイクの裏口（Ctrl+Shift+O / Ctrl+Shift+Q）。
+            //
+            // **`debug_assertions` で縛ってあるので release ビルドには入らない。**
+            // これを外さないこと — `Ctrl+Shift+O` はサインインもルームも Event Pass も
+            // 撮影の opt-in も素通りして画面収録を始める。同意なく録画を始める
+            // グローバルホットキーは、ストアの審査を通らないし通ってもいけない。
+            // `tauri dev` は debug ビルドなので、開発中はこれまでどおり使える。
+            #[cfg(all(target_os = "windows", debug_assertions))]
             {
                 let spike_shortcut =
                     Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyO);

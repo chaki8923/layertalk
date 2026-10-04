@@ -55,6 +55,7 @@ import { DisplayPresetPicker } from "./DisplayPresetPicker";
 import { RecentComments } from "./RecentComments";
 import { getEventPassProduct, isMasBuild, loadCachedEntitlementLease, openAudiencePage, openEntitlementReceipt, refreshEntitlementLease, restorePurchases } from "../lib/billing";
 import { legalPagePath } from "../lib/legal-links";
+import { IS_WINDOWS, thisDevice } from "../lib/platform";
 import { supabase } from "../lib/supabase";
 
 type Props = {
@@ -462,12 +463,12 @@ export function EventPassPanel({ roomId, roomCode, roomTitle, locale, live, comm
           </div>
           <p className="text-text-faint mt-2 text-[10px] leading-relaxed">
             {ja
-              ? "選択中の発表用ディスプレイだけを保存します。LayerTalkの表示とカーソルは写りません。画像はこのMacだけに30日間保存されます。"
-              : "Only the selected presentation display is saved. LayerTalk and the cursor are excluded. Images stay on this Mac for 30 days."}
+              ? `選択中の発表用ディスプレイだけを保存します。LayerTalkの表示とカーソルは写りません。画像は${thisDevice(true)}だけに30日間保存されます。`
+              : `Only the selected presentation display is saved. LayerTalk and the cursor are excluded. Images stay on ${thisDevice(false)} for 30 days.`}
           </p>
           {live && <p className="text-text-faint mt-1 text-[10px]">{ja ? "この設定は発表を終了してから変更できます。" : "Change this setting after the presentation ends."}</p>}
           {captureEnabled && capturePermission && !capturePermission.supported && (
-            <p className="text-like mt-1 text-[10px]">{ja ? "この機能はmacOSでのみ利用できます。" : "This feature is available on macOS only."}</p>
+            <p className="text-like mt-1 text-[10px]">{captureUnsupportedMessage(ja)}</p>
           )}
           {captureEnabled && capturePermission?.restartRequired && (
             <p className="text-like mt-1 text-[10px]">
@@ -673,6 +674,23 @@ function ToggleRow({ label, value, onChange, disabled = false }: { label: string
       <span>{label}</span><span className={`relative h-5 w-9 shrink-0 rounded-full ${value ? "bg-brand" : "bg-[var(--lt-border-strong)]"}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${value ? "translate-x-[18px]" : "translate-x-0.5"}`} /></span>
     </button>
   );
+}
+
+/**
+ * 画面キャプチャが使えないときの説明。
+ *
+ * **理由がプラットフォームで違う。** macOS は「そもそも未対応の OS」、Windows は
+ * 「この PC の Windows が古くて Windows.Graphics.Capture を持たない」。
+ * どちらも `permission().supported === false` で来るが、
+ * Windows で「macOSでのみ利用できます」と出すと直しようのない案内になる。
+ */
+function captureUnsupportedMessage(ja: boolean): string {
+  if (IS_WINDOWS) {
+    return ja
+      ? "このPCでは画面キャプチャを利用できません（Windows 10 バージョン1803以降が必要です）。"
+      : "Screen capture is not available on this PC (Windows 10 version 1803 or later is required).";
+  }
+  return ja ? "この機能はmacOSでのみ利用できます。" : "This feature is available on macOS only.";
 }
 
 type ExportReportResult = "saved" | "cancelled" | "no-captures";

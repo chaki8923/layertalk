@@ -72,6 +72,7 @@ import { clientId, supabase } from "../lib/supabase";
 import { startSelftestPump } from "../lib/selftest-pump";
 import { initializeBillingRecovery } from "../lib/billing";
 import { isPaidPresentationSession, loadQuestionCapturePreference, questionCaptureAction, questionCaptureErrorMessage, questionCapturePendingMessage } from "../lib/question-capture";
+import { CONTROL_SHORTCUT_LABEL } from "../lib/platform";
 import {
   captureQuestionSlide,
   discardQuestionSlide,
@@ -1433,7 +1434,7 @@ export function ControlWindow() {
           {settings.roomId && (
             <p className="text-text-faint text-center text-[11px] leading-relaxed">
               {t.live.shortcut}{" "}
-              <kbd className="border-border bg-surface rounded-chip border px-1.5 font-sans font-semibold">⇧⌘L</kbd>{" "}
+              <kbd className="border-border bg-surface rounded-chip border px-1.5 font-sans font-semibold">{CONTROL_SHORTCUT_LABEL}</kbd>{" "}
               {t.live.shortcutSuffix}
             </p>
           )}

@@ -1,3 +1,4 @@
+import { credentialStoreName, thisDevice } from "../lib/platform";
 import { useState } from "react";
 import type { Locale } from "@layertalk/shared";
 import { notificationMessage, notificationText, type Destination, type Notifications, type Provider } from "../lib/notifications";
@@ -59,8 +60,8 @@ export function RoomNotifications({ notifications: n, locale, audienceUrl, disab
   return <div className="border-border bg-bg-elev space-y-3 rounded-[20px] border p-4">
     <div className="text-[13px] font-semibold">{ja ? "開始時に参加URLを送信" : "Send the join URL on start"}</div>
     <p className="text-text-muted text-[12px] leading-relaxed">{ja
-      ? "このRoomで発表を開始するたび、有効にした送信先へ1回投稿します。URLを保存するだけでは自動送信されません。設定はこのMacのKeychainに保存されます。"
-      : "Each presentation start posts once to enabled destinations for this room. Saving a URL alone does not enable automatic sending. Settings stay in this Mac’s Keychain."}</p>
+      ? `このRoomで発表を開始するたび、有効にした送信先へ1回投稿します。URLを保存するだけでは自動送信されません。設定は${thisDevice(true)}の${credentialStoreName(true)}に保存されます。`
+      : `Each presentation start posts once to enabled destinations for this room. Saving a URL alone does not enable automatic sending. Settings stay in ${thisDevice(false)}’s ${credentialStoreName(false)}.`}</p>
     <details className="space-y-3">
     <summary className="cursor-pointer text-[12px] font-semibold text-brand">{ja ? "送信先と送信内容を設定" : "Configure destinations and message"}</summary>
     <div className="border-border space-y-1 rounded-xl border p-3 text-[12px]">
@@ -78,6 +79,6 @@ export function RoomNotifications({ notifications: n, locale, audienceUrl, disab
       <p>{result.name}: {notificationMessage(result.status, locale)}</p>
       <button type="button" className={button} disabled={n.working} onClick={() => void n.manual(result.provider, false)}>{ja ? "参加URLを再送" : "Resend join URL"}</button>
     </div>)}
-    <p className="text-text-muted text-[11px]">{ja ? "自動送信をオフにして保存すると停止します。削除するとKeychainから設定とURLを消去します。投稿済みメッセージは各サービス側で管理してください。" : "Turn automatic sending off and save to disable it. Delete removes the settings and URL from Keychain. Manage already-posted messages in each service."}</p>
+    <p className="text-text-muted text-[11px]">{ja ? `自動送信をオフにして保存すると停止します。削除すると${credentialStoreName(true)}から設定とURLを消去します。投稿済みメッセージは各サービス側で管理してください。` : `Turn automatic sending off and save to disable it. Delete removes the settings and URL from ${credentialStoreName(false)}. Manage already-posted messages in each service.`}</p>
   </div>;
 }
