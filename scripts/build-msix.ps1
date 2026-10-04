@@ -92,6 +92,16 @@ function Invoke-Native([string]$Exe, [string[]]$Arguments) {
   if ($LASTEXITCODE -ne 0) { Fail "$([IO.Path]::GetFileName($Exe)) exited with $LASTEXITCODE." }
 }
 
+# **`Get-Content -Raw` を直接使わないこと。** Windows PowerShell 5.1 は BOM の無い
+# ファイルを**システムの ANSI コードページ**（日本語環境では CP932）として読むので、
+# BOM 無し UTF-8（= tauri.conf.json も AppxManifest.template.xml もそれ）の日本語が
+# 壊れる。tauri.conf.json では閉じクォートまで食われて ConvertFrom-Json が落ち、
+# マニフェストの方は**エラーも出ないまま文字化けした <Description> を出荷する**。
+# .NET の ReadAllText は BOM を見て、無ければ UTF-8 として読む（5.1 でも 7 でも同じ）。
+function Read-Utf8Text([string]$Path) {
+  return [IO.File]::ReadAllText((Resolve-Path -LiteralPath $Path))
+}
+
 function Require-Env([string]$Name, [string]$Where) {
   $value = [Environment]::GetEnvironmentVariable($Name)
   if ([string]::IsNullOrWhiteSpace($value)) { Fail "$Name is required.`n       どこにあるか: $Where" }
@@ -229,7 +239,7 @@ if (-not $SkipAssetVariants) {
 
 if (-not $Version) { $Version = $env:MSIX_VERSION }
 if (-not $Version) {
-  $tauriConfig = Get-Content -LiteralPath (Join-Path $tauriDir 'tauri.conf.json') -Raw | ConvertFrom-Json
+  $tauriConfig = Read-Utf8Text (Join-Path $tauriDir 'tauri.conf.json') | ConvertFrom-Json
   $Version = "$($tauriConfig.version).0"
 }
 if ($Version -notmatch '^(\d+)\.(\d+)\.(\d+)\.(\d+)$') { Fail "MSIX_VERSION は4つ組です（例 1.0.0.0）。受け取った値: $Version" }
@@ -340,7 +350,7 @@ if ($SkipAssetVariants) {
 Step 'writing AppxManifest.xml'
 
 $manifestPath = Join-Path $stagingDir 'AppxManifest.xml'
-$manifestText = Get-Content -LiteralPath $template -Raw
+$manifestText = Read-Utf8Text $template
 @{
   '@@IDENTITY_NAME@@'          = $identityName
   '@@PUBLISHER@@'              = $publisher

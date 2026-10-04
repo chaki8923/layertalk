@@ -340,6 +340,20 @@ assert raw[:3]==b'\xef\xbb\xbf', 'BOM がない'"
 （`<?xml version="1.0" encoding="utf-8"?>` が自分で宣言するので要らない。
 `build-msix.ps1` も生成物を `UTF8Encoding $false` で書いている）。
 
+**そして同じ罠は「読む」側にもある。`Get-Content -Raw` を使わないこと。**
+5.1 は BOM の無いファイルをやはり ANSI として読むので、BOM を付けない方針の
+ファイル（`tauri.conf.json`、`AppxManifest.template.xml`）が壊れる。出方が違う:
+
+- `tauri.conf.json` → `ConvertFrom-Json` が落ちる。**日本語の最後の1バイトが
+  CP932 の第1バイトになって次の `"` を飲み込む**ため文字列が閉じない
+  （`"shortDescription": "...驥阪・繧・,` という形で見える）。
+  落ちるので気付ける
+- `AppxManifest.template.xml` → **何も起こらない。** XML としては整形式のまま
+  通ってしまい、文字化けした `<Description>` が MSIX に入って**ストアに出る**
+
+`.NET` の `[IO.File]::ReadAllText` は BOM を見て、無ければ UTF-8 として読む
+（5.1 でも 7 でも同じ）。スクリプトはこれを `Read-Utf8Text` で包んである。
+
 ## 5c. 通しで動いた（2026-10-03）
 
 スパイクではなく**本物の経路**で確認済み（Windows 11 ARM64 / Parallels）:
