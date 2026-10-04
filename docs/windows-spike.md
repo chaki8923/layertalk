@@ -245,6 +245,23 @@ spike: capture Captured health=CaptureHealth { frames_seen: 1, frames_stored: 1,
 - **モニターは GDI のデバイス名（`\\.\DISPLAY1`）で覚える。** `HMONITOR` は 32bit に入らず、
   画面構成が変わると無効になる。`display_id: u32` は列挙順の添字を運ぶだけの一時的な値で、
   `start` がすぐ名前へ格上げし、撮影のたびに名前→位置→添字の順で引き直す
+- **`SetIsBorderRequired(false)` は、黙って無視される形で失敗する。** しかもそれが
+  **MSIX にしたときだけ**起きる。Microsoft の文書が明示していて、枠を消すには
+  (a) マニフェストの `graphicsCaptureWithoutBorder` と
+  (b) `GraphicsCaptureAccess.RequestAccessAsync(Borderless)` による利用者の同意、の両方が要る。
+  **どちらが欠けても setter は `Ok` を返したまま値が無視される**ので、
+  `if let Err(...)` のログは「枠が出ていない」ことの根拠にならない。
+  素のビルド（＝ここまでの VM 検証は全部これ）ではパッケージ ID が無いので要求されず、
+  枠は出なかった。**つまり MSIX を入れて初めて撮ったスライド全部に黄枠が焼き付く、
+  という形で出る。** (a) は宣言済み。(b) は同意ダイアログが出るうえ、撮影セッションは
+  26〜36ms で閉じるので枠が出ても一瞬のはず、という判断で**まだ入れていない**
+  — MSIX の実測で枠が残ったら足す
+- **`graphicsCaptureProgrammatic` は要らない。** これが要るのは `GraphicsCaptureItem` を
+  **`WindowId` / `DisplayId`** から作るときで、こちらは
+  `IGraphicsCaptureItemInterop::CreateForMonitor(HMONITOR)` を通る別の API。
+  なお `graphicsCapture*` の3つはいずれも **general-use** の表にあり、**restricted ではない**
+  — Partner Center での正当性説明も審査の追加日数もいらない。restricted なのは
+  `runFullTrust` の方だが、これは mediumIL のパッケージに必須なので避けようがない
 
 ### Mac から Windows のコードを型検査する
 
@@ -263,6 +280,65 @@ cd scripts/winprobe && cargo check --target aarch64-pc-windows-msvc
 本体を直接 `--target aarch64-pc-windows-msvc` で検査することはできない。
 `reqwest` → `rustls` → `ring` が Windows 向けのアセンブリを組むのに clang を要求し、
 さらに `tauri-build` が `llvm-rc` を要求するため（どちらも macOS には無い）。
+
+### Mac から PowerShell と AppxManifest を検査する
+
+`scripts/build-msix.ps1` と `AppxManifest.template.xml` も **Mac で確かめられる**。
+VM に送って走らせるまで分からないと思い込んで、文字化けだけで1往復無駄にした。
+
+PowerShell は管理者権限なしで scratchpad に展開できる:
+
+```bash
+curl -fsSL -o ps.tar.gz \
+  https://github.com/PowerShell/PowerShell/releases/download/v7.6.6/powershell-7.6.6-osx-arm64.tar.gz
+mkdir -p pwsh && tar -xzf ps.tar.gz -C pwsh && chmod +x pwsh/pwsh
+```
+
+これで**構文検査**ができる（実行はしない。`npx tauri build` も `MakeAppx` も Mac には無い）:
+
+```bash
+pwsh/pwsh -NoProfile -Command '
+  $errs = $null
+  [System.Management.Automation.Language.Parser]::ParseFile(
+    (Resolve-Path "scripts/build-msix.ps1"), [ref]$null, [ref]$errs) | Out-Null
+  if ($errs) { $errs | ForEach-Object { "L{0}: {1}" -f $_.Extent.StartLineNumber, $_.Message } }
+  else { "PARSE OK" }'
+```
+
+**ただしローカルは PowerShell 7 で、VM で走るのは Windows PowerShell 5.1。**
+7 にしか無い構文（`??` `?.` 三項 `? :`、`&&` `||`、`-Parallel`、`utf8NoBOM`、
+`-AsByteStream`、`ConvertFrom-Json -AsHashtable`、3引数の `Join-Path`）は
+**パーサが通してしまう**ので、そこは目で見る。
+
+マニフェストの方は、**本番の3つの値を入れて XML として組み立てるところまで**できる。
+置換漏れ・要素の順番・属性の綴りはこれで全部出る（実際に `@@TOKEN@@`
+— テンプレート冒頭のコメントに書いた説明文 — が自分の置換漏れ検査に
+引っかかるのをここで見つけた）。
+
+### 文字化けの罠: `.ps1` は UTF-8 BOM 付きで保存する
+
+**Windows PowerShell 5.1 は `.ps1` をシステムの ANSI コードページとして読む**
+（日本語環境では CP932）。BOM が無いと UTF-8 の日本語コメントが全部文字化けし、
+壊れた文字列がクォートの対応まで壊して、**関係のない行に構文エラーが山ほど出る**:
+
+```
++ ... l -ErrorAction SilentlyContinue)) { Fail "$tool 縺・PATH 縺ｫ縺ゅｊ縺ｾ縺帙ｓ縲・ }
+```
+
+エラーの行番号は文字化けの連鎖で決まるので**本当の原因の場所を指さない**。
+実際、報告された 195 行目・322 行目の式はどちらも正しく、BOM を付けただけで全部消えた。
+BOM があれば 5.1 でも 7 でも UTF-8 として読まれる。bash の heredoc で書くと
+BOM が付かないので、**書いたあとに必ず BOM を足す**。
+
+```bash
+python3 -c "
+raw=open('scripts/build-msix.ps1','rb').read()
+assert raw[:3]==b'\xef\xbb\xbf', 'BOM がない'"
+```
+
+同じ理由で `AppxManifest.template.xml` の方は BOM を**付けない**
+（`<?xml version="1.0" encoding="utf-8"?>` が自分で宣言するので要らない。
+`build-msix.ps1` も生成物を `UTF8Encoding $false` で書いている）。
 
 ## 5c. 通しで動いた（2026-10-03）
 

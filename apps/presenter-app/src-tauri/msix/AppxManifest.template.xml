@@ -4,7 +4,8 @@
   Desktop Bridge（Win32 をフルトラストで包む形）、x64。
 
   **これはテンプレートで、そのままでは使えない。** `scripts/build-msix.ps1` が
-  @@TOKEN@@ を置き換えて、staging ディレクトリに本物を書き出す。
+  二重アットマークで囲んだ名前を置き換えて、staging ディレクトリに本物を書き出す。
+  （ここにその形の文字列を書かないこと。置換漏れの検査が自分のコメントに引っかかる）
   生成されたほうを手で直さないこと（次のビルドで消える）。
 
   **要素の順番に意味がある。** スキーマは Package の子を
@@ -105,10 +106,41 @@
     判断材料はログに出る: `SetIsBorderRequired` が失敗したら borderless を、
     `CreateForMonitor` が失敗したら programmatic を外す。
   -->
+  <!--
+    **ここは「何を宣言しないか」の方が効く。** 3つとも Microsoft の
+    App capability declarations では **general-use**（restricted の表には無い）なので、
+    Partner Center の正当性説明も審査の追加日数もいらない。判断は必要性だけ。
+
+      runFullTrust                 必須。mediumIL（＝フルトラスト）のパッケージ済み
+                                   デスクトップアプリは、これを宣言しないと動かない。
+                                   MakeAppx が足りない宣言を行番号付きで教えてくれる。
+
+      graphicsCaptureWithoutBorder `GraphicsCaptureSession.IsBorderRequired` を
+                                   使うために要る。**パッケージ ID が付くと効き始める**
+                                   のがこれで、素のビルド（＝VM での検証はこちら）では
+                                   要らない。宣言し忘れると `SetIsBorderRequired(false)`
+                                   は **Ok を返したまま無視され**、撮ったスライド全部に
+                                   黄色い枠が焼き付く。コード側は Err しか見ていないので
+                                   **ログにも何も出ない**。uap11 は IgnorableNamespaces に
+                                   入れてあるので、古い OS では黙って枠付きに落ちる。
+
+      graphicsCaptureProgrammatic  **入れない。** これが要るのは
+                                   `GraphicsCaptureItem` を **WindowId / DisplayId** から
+                                   作るときで、こちらは `IGraphicsCaptureItemInterop::
+                                   CreateForMonitor(HMONITOR)`（デスクトップアプリ用の
+                                   interop）を通る。別の API なので対象外。
+                                   利用者はインストール時に宣言を全部見るので、
+                                   要らないものを足さない。
+
+    なお IsBorderRequired を**実際に効かせる**には、この宣言に加えて
+    `GraphicsCaptureAccess.RequestAccessAsync(Borderless)` で利用者の同意を取る必要がある
+    （同意ダイアログが出る）。撮影セッションは 26〜36ms で閉じるため枠が出ても一瞬で、
+    同意を求める UI の方が邪魔になりうる。**まず宣言だけで MSIX を入れて実測し、
+    枠が残るときだけ RequestAccessAsync を足す**という順にしてある。
+  -->
   <Capabilities>
     <rescap:Capability Name="runFullTrust" />
-    <!-- <uap11:Capability Name="graphicsCaptureProgrammatic" /> -->
-    <!-- <uap11:Capability Name="graphicsCaptureWithoutBorder" /> -->
+    <uap11:Capability Name="graphicsCaptureWithoutBorder" />
   </Capabilities>
 
   <!--
@@ -128,6 +160,20 @@
     インストールが理由不明で失敗する。
   -->
   <Applications>
+    <!--
+      **EntryPoint を足さないこと。** スキーマが定める有効な組み合わせのうち、
+      (Executable, uap10:RuntimeBehavior="packagedClassicApp", uap10:TrustLevel="mediumIL")
+      はそれ自体で完結している。`EntryPoint="windows.fullTrustApplication"` は
+      **この2つと同じ意味の古い書き方**で、併記は冗長なうえ「矛盾したらエラー」になる
+      （しかも綴りは小文字始まりの `windows.` で、`Windows.` と書くと別物になる）。
+
+      Executable は **staging での名前**。cargo が作るのは presenter-app.exe で、
+      build-msix.ps1 が LayerTalk.exe へ改名して入れる。片方だけ変えないこと。
+
+      MinVersion 10.0.19041.0 は uap10 名前空間が入った版（Windows 10 2004）。
+      これ以上にしてあるので、uap10 を IgnorableNamespaces に**入れてはいけない**
+      — 無視されると UWP として起動されようとして失敗する。
+    -->
     <Application
       Id="LayerTalk"
       Executable="LayerTalk.exe"

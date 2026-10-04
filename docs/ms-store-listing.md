@@ -166,6 +166,17 @@ reports, and branding for one room for seven days. It does not renew automatical
 
 ### 3-2. restricted capability（`runFullTrust`）の理由
 
+**宣言しているのは2つだけで、記入を求められるのは `runFullTrust` の方だけ。**
+もう1つの `graphicsCaptureWithoutBorder` は Microsoft の表で **general-use** に
+分類されていて restricted ではないので、正当性の説明も審査の追加日数もいらない
+（`graphicsCapture` と `graphicsCaptureProgrammatic` も同じ扱いだが、どちらも使っていないので
+宣言していない）。パッケージをアップロードすると restricted だけが自動検出され、
+「申請オプション」のページに記入欄が出る。
+
+> **ここに書いたものが実際の宣言と食い違わないこと。** マニフェストの
+> `<Capabilities>` を足したり削ったりしたら、この節も直す。認証担当者は
+> 宣言を見てこの説明を読む。
+
 「申請オプション」で記入を求められる。そのまま貼れる文面:
 
 ```
@@ -255,7 +266,13 @@ Get-AppxPackage -Name '*LayerTalk*' | Remove-AppxPackage
 - `Ctrl+Shift+L` が効くこと
 - 法務リンク4つがブラウザで開くこと
 - 撮影が通り、**オーバーレイが写り込んでいない**こと
-  （Windows 10 では撮影の一瞬だけ黄色い枠が出る。これは仕様）
+- **保存されたスライド画像に黄色い枠が入っていないこと。** ここは
+  **MSIX にしたときだけ壊れる**唯一の箇所なので、素のビルドでの検証は根拠にならない。
+  枠を消すには `graphicsCaptureWithoutBorder`（宣言済み）に加えて
+  `GraphicsCaptureAccess.RequestAccessAsync(Borderless)` の同意が要る可能性があり、
+  **欠けていても `SetIsBorderRequired(false)` は `Ok` を返してログに何も出ない**
+  （`docs/windows-spike.md` の「Windows 固有の注意」参照）。
+  枠が入っていたら `RequestAccessAsync` を足す。入っていなければ何もしない
 
 ---
 

@@ -405,6 +405,12 @@ pub fn shoot_monitor(target: &MonitorTarget) -> Result<Frame, ShotError> {
     if let Err(err) = session.SetIsCursorCaptureEnabled(false) {
         crate::debug_log(&format!("win/capture: cursor off unavailable {err}"));
     }
+    // **この Err はほぼ飛ばない。** Microsoft の文書が明示していて、枠を消すには
+    // (a) マニフェストの `graphicsCaptureWithoutBorder`（パッケージ ID が付いたときだけ効く）と
+    // (b) `GraphicsCaptureAccess.RequestAccessAsync(Borderless)` による利用者の同意
+    // の両方が要る。**どちらが欠けても setter は Ok を返したまま値が無視される**ので、
+    // ここのログは「枠が出ていない」ことの根拠にならない。素のビルド（＝VM での検証）では
+    // そもそも要求されず枠は出なかった。MSIX 版で枠が出たら (b) を足す。
     if let Err(err) = session.SetIsBorderRequired(false) {
         crate::debug_log(&format!("win/capture: border off unavailable {err}"));
     }

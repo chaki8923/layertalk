@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
   Microsoft Store 提出用の .msix を作る。**Windows の VM で走らせる。**
 
@@ -56,7 +56,13 @@
      エラーも出ない。** MSIX の中だと原因がさらに追えない。下の Assert-FrontendEmbedded が
      dist の実ファイル名を .exe のバイト列から探して機械的に弾く。
 
-  5. **実行ファイルの名前は presenter-app.exe。** Tauri は cargo のバイナリ名を productName に
+  5. **このファイルは UTF-8 BOM 付きで保存すること。** Windows PowerShell 5.1 は
+     `.ps1` を**システムの ANSI コードページ（日本語環境では CP932）として読む**。
+     BOM が無いと日本語のコメントが全部文字化けし、壊れた文字列が構文まで壊して
+     「式またはステートメントのトークン '}' を使用できません」の山になる（実際に踏んだ）。
+     BOM があれば 5.1 でも 7 でも UTF-8 として読まれる。
+
+  6. **実行ファイルの名前は presenter-app.exe。** Tauri は cargo のバイナリ名を productName に
      改名しない。staging で LayerTalk.exe へ改名する（マニフェストの Executable と合わせる）。
 #>
 
@@ -159,11 +165,11 @@ function Assert-FrontendEmbedded([string]$Exe, [string]$DistDirectory) {
   Fail @"
 ビルドした実行ファイルにフロントが埋め込まれていません（$($marker.Name) がバイナリ中に無い）。
 
-       CLAUDE.md の罠 #19 です。`custom-protocol` feature を足すのは tauri CLI の側で、
-       素の `cargo build --release` は release でも dev と判定され、devUrl
+       CLAUDE.md の罠 #19 です。``custom-protocol`` feature を足すのは tauri CLI の側で、
+       素の ``cargo build --release`` は release でも dev と判定され、devUrl
        (http://localhost:1420) を見に行きます。**どの窓も真っ白のまま、エラーも出ません。**
 
-       cargo でビルドした exe を手で置かず、このスクリプトに `npx tauri build` を走らせてください。
+       cargo でビルドした exe を手で置かず、このスクリプトに ``npx tauri build`` を走らせてください。
 "@
 }
 
@@ -301,7 +307,7 @@ if ($SkipAssetVariants) {
   }
   foreach ($source in $copyMap.Keys) {
     $from = Join-Path $iconsDir $source
-    if (-not (Test-Path -LiteralPath $from)) { Fail "アイコンがありません: $from（apps/presenter-app で `npx tauri icon` を実行）" }
+    if (-not (Test-Path -LiteralPath $from)) { Fail "アイコンがありません: $from（apps/presenter-app で ``npx tauri icon`` を実行）" }
     Copy-Item -LiteralPath $from -Destination (Join-Path $assetsDir $copyMap[$source]) -Force
   }
 
