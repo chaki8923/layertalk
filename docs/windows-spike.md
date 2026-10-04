@@ -280,6 +280,22 @@ cd scripts/winprobe && cargo check --target aarch64-pc-windows-msvc
 **Notepad で作らないこと** — 拡張子に `.txt` が付くか、空のまま保存される
 （実際に 0 バイトのファイルができて、Vite が env を読めずに窓が真っ白になった）。
 
+## 5d. 出荷前の手入れも実機で確認した（2026-10-04）
+
+Windows 11 の VM（dev ビルド）で、全部○:
+
+| 確認 | 結果 |
+|---|---|
+| コントロール窓とトレイの案内が `Ctrl+Shift+L`（`⇧⌘L` ではない） | ○ |
+| `Ctrl+Shift+O` / `Ctrl+Shift+Q` が dev では使える（release からは消える） | ○ |
+| Slack / Discord の webhook を資格情報マネージャーへ保存 → 再起動 → 残る → 削除できる | ○ |
+| 発表中にトレイのツールチップが `LayerTalk ● REC` になる | ○ |
+| 「画像はこのPCだけに30日間保存されます」と出る | ○ |
+
+**トレイ**は画面右下の通知領域（時計の左）。`^` の中に隠れていることがある。
+`● REC` が出るのは**撮影が実際に動いているとき**だけで、Event Pass ＋ 撮影トグル ON ＋
+**その状態で**発表開始、の3つが揃っている必要がある。
+
 ## 5b. 本採用のときの宿題
 
 - **`capture_question` / `hold_question` / `discard_question` は cfg を広げて共有した。**
