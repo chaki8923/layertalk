@@ -255,7 +255,7 @@ export function RoomClient({ code, fallbackLocale }: { code: string; fallbackLoc
         body={t.room.notFoundBody(normalizeRoomCode(code))}
         action={
           <Link
-            href="/"
+            href="/join"
             className="rounded-control border-border hover:bg-surface-strong border px-4 py-2 text-[13px] font-semibold transition-colors"
           >
             {t.room.retype}

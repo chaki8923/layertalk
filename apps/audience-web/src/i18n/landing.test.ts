@@ -5,14 +5,12 @@ import { messages } from "./index";
 const locales = ["ja", "en"] as const;
 
 describe("landing copy", () => {
-  // page.tsx は featureIcons / worksWithIcons / stepIcons を添字で引く。
-  // カタログ側に4件目を足すと `undefined!` を描画してページごと落ちる。
-  it("keeps every icon-backed list at three items in both locales", () => {
+  // 操作図は「開始」「URL共有」の2種類。観客の図には質問の文言を使う。
+  it("keeps two illustrated steps and three reaction types in both locales", () => {
     for (const locale of locales) {
-      const { features, worksWith, howItWorks } = messages[locale].landing;
+      const { features, howItWorks } = messages[locale].landing;
       expect(features.items).toHaveLength(3);
-      expect(worksWith.points).toHaveLength(3);
-      expect(howItWorks.steps).toHaveLength(3);
+      expect(howItWorks.steps).toHaveLength(2);
     }
   });
 

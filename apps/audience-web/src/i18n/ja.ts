@@ -3,7 +3,7 @@
  * 縛ってあるので訳し忘れ・余分なキー・引数の取り違えは tsc で落ちる。
  *
  * 表示言語は**ルームが持つ**（発表者がコントロール窓のトグルで決める）。観客側に
- * 切り替え UI は出さない。ルームがまだ分からない「/」だけ Accept-Language で決める。
+ * 切り替え UI は出さない。ルームがまだ分からない公開ページは Accept-Language で決める。
  */
 export const ja = {
   meta: {
@@ -70,50 +70,51 @@ export const ja = {
       comments: ["その視点、面白い！", "質問があります", "👏👏👏"],
       audience: "128 joined",
     },
-    join: {
-      eyebrow: "Join a room",
-      title: "観客として参加する",
-      description: "発表者から共有された6文字の参加コードを入力してください。QRコードから開いた場合は入力不要です。",
-    },
     features: {
-      eyebrow: "In the room",
-      title: "反応が見えると、発表は一方通行ではなくなる",
+      eyebrow: "From their phone to your slides",
+      title: "スマホからのひとことが、スライドに届く。",
+      description: "観客は共有されたURLをブラウザで開くだけ。アプリのインストールも、会員登録もいりません。",
+      audienceLabel: "観客のスマホ",
+      screenLabel: "あなたの発表画面",
+      comment: "そのアイデア、いいですね！",
+      question: "具体例を聞いてみたいです",
+      slideTitle: "今日のアイデア",
+      diagramCaption: "スマホで送ったコメントやスタンプが、発表中のスライドにリアルタイムで表示されます。",
       items: [
-        { title: "コメントが流れる", description: "観客のひとことを、ニコニコ動画のようにスライドの上へ流します。発表を止めずに、その場の温度が伝わります。" },
-        { title: "質問が残る", description: "質問として投稿された声を分けて表示。見逃さず、次の対話につなげられます。" },
-        { title: "スタンプで応える", description: "言葉にしにくい瞬間も、絵文字やカスタムスタンプなら気軽に反応できます。" },
+        { title: "コメント", description: "「いいですね！」がスライドの上を流れる。" },
+        { title: "質問", description: "「具体例を聞きたい」を質問として残せる。" },
+        { title: "スタンプ", description: "拍手や「いいね」を、ワンタップで送れる。" },
       ],
     },
     worksWith: {
       eyebrow: "Works with anything",
-      title: "重ねるだけだから、ツールは選ばない",
-      description: "LayerTalkはスライドを読み込みません。画面の一番上に透明な層を重ねるだけなので、下がPowerPointでもKeynoteでも、ブラウザで開いたCanvaやNotionでも同じように使えます。",
+      title: "PowerPointもKeynoteも、そのまま。",
+      description: "PowerPointやKeynoteなど、いつもの資料を開いて発表するだけ。資料の変換も、プラグインの追加も不要です。全画面のスライドにもコメントが届きます。",
       toolsLabel: "重ねて使える発表ツールの例",
       tools: ["PowerPoint", "Keynote", "Google スライド", "Canva", "Notion"],
       trademark: "※ 各製品名は各社の商標です。",
-      points: [
-        { title: "取り込みは不要", description: "スライドを書き出したり、変換したりする手順はありません。" },
-        { title: "プラグインは不要", description: "発表ツール側にインストールするものはありません。" },
-        { title: "全画面のままでいい", description: "スライドショーでも、ブラウザのプレゼンモードでも重なります。" },
-      ],
       /** JSON-LD の `featureList` 専用。画面には出ない。 */
       featureName: "PowerPoint、Keynote、Google スライド、Canva、Notionなど、どの発表ツールの画面にも重ねて表示",
     },
     howItWorks: {
       eyebrow: "How it works",
-      title: "共有するのは、ひとつのコードだけ",
+      title: "開始を押して、URLを共有。それだけ。",
       steps: [
-        { title: "ルームをつくる", description: "Presenterアプリで発表用ルームを作成します。" },
-        { title: "QRかコードを共有", description: "スライド上のQR、または6文字コードを観客へ案内します。" },
-        { title: "会場の反応を映す", description: "コメント、質問、スタンプがスライドの上へ届きます。" },
+        { title: "「プレゼンを開始」を押す", description: "MacでLayerTalkを開いて、開始ボタンをクリック。あとはいつもどおり発表するだけ。" },
+        { title: "URLを共有する", description: "「観客用URLをコピー」を押して、チャットなどで観客へ。共有するのは、このURLだけ。" },
       ],
-      /** ⇧⌘L の案内。キー表記はチップで挟むので、前後の文を分けて持つ。 */
-      shortcutLead: "発表中は",
-      shortcutTail: "で、スライドの上にコントロール画面を呼び出せます。",
+      setup: "初回はMacアプリにサインインし、ルームを作成してください。",
+      previewLabel: "操作イメージ",
+      startButton: "プレゼンを開始",
+      copyButton: "観客用URLをコピー",
+      displayLabel: "表示モニター",
+      displayValue: "主ディスプレイに追従",
+      chatLabel: "会場のチャット",
+      invitation: "コメントはこちらから！",
     },
     eventPass: {
-      eyebrow: "For the main event",
-      title: "本番を安全に運営するためのEvent Pass",
+      eyebrow: "Optional",
+      title: "承認制などが必要なときは、Event Pass。",
       description: "承認制、NGワード、入室パスコード、発表レポート、ブランド設定を、購入した1ルームで7日間利用できます。",
       price: "2,980円",
       tax: "税込",
@@ -124,12 +125,13 @@ export const ja = {
       note: "購入はPresenterアプリから開始します。Mac App Store版の価格は、App Storeの表示に従います。",
     },
     finalCta: {
-      title: "次の発表を、会場との対話に変える。",
-      audience: "観客として参加",
+      title: "次のプレゼンで、試してみよう。",
     },
   },
 
   join: {
+    title: "参加コードを入力",
+    description: "発表者から共有された6文字の参加コードを入力してください。URLやQRコードから開く場合、コードの入力は不要です。",
     prompt: "発表者から共有された参加コードを入力してください",
     codeLabel: "参加コード",
     codeLength: (length: number) => `参加コードは${length}文字です`,

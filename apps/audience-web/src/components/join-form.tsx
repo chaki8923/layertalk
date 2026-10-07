@@ -17,7 +17,7 @@ import { messages } from "@/i18n";
 /**
  * 参加コードの入力。
  *
- * ロケールはサーバ側（`app/page.tsx`）が `Accept-Language` から決めて渡す。
+ * ロケールはサーバ側（`app/join/page.tsx`）が `Accept-Language` から決めて渡す。
  * この画面にはまだルームが無いので、ルームの言語には従えない。
  */
 export function JoinForm({ locale }: { locale: Locale }) {

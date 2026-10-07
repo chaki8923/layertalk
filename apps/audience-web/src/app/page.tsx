@@ -1,33 +1,14 @@
 import { headers } from "next/headers";
 import Link from "next/link";
-import {
-  ArrowRight,
-  BadgeHelp,
-  Check,
-  Import,
-  Layers,
-  MessageCircleMore,
-  MonitorPlay,
-  MonitorUp,
-  PartyPopper,
-  Puzzle,
-  QrCode,
-  Radio,
-  ShieldCheck,
-} from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 
-import { JoinForm } from "@/components/join-form";
 import { AppStoreButton } from "@/components/public/app-store-button";
-import { GuideCards } from "@/components/public/guide-cards";
 import { LiveSlideDemo } from "@/components/public/live-slide-demo";
 import { PhraseText, ProtectedText } from "@/components/public/phrase-text";
+import { AudienceFlow, PresentationSteps } from "@/components/public/presentation-walkthrough";
 import { PublicShell } from "@/components/public/public-shell";
 import { localeFromAcceptLanguage, messages } from "@/i18n";
 import { createHomeStructuredData, createPageMetadata, serializeJsonLd } from "@/lib/seo";
-
-const featureIcons = [MessageCircleMore, BadgeHelp, PartyPopper] as const;
-const worksWithIcons = [Import, Puzzle, MonitorPlay] as const;
-const stepIcons = [MonitorUp, QrCode, Radio] as const;
 
 export async function generateMetadata() {
   const locale = localeFromAcceptLanguage((await headers()).get("accept-language"));
@@ -74,7 +55,7 @@ export default async function HomePage() {
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <AppStoreButton locale={locale} />
-                <Link href="/#join" className="lt-tap lt-nowrap border-border bg-surface hover:bg-surface-strong inline-flex min-h-12 items-center justify-center rounded-control border px-5 text-[14px] font-bold transition-colors">
+                <Link href="/join" className="lt-tap lt-nowrap border-border bg-surface hover:bg-surface-strong inline-flex min-h-12 items-center justify-center rounded-control border px-5 text-[14px] font-bold transition-colors">
                   {t.secondaryCta}
                 </Link>
               </div>
@@ -93,152 +74,84 @@ export default async function HomePage() {
           </div>
         </section>
 
-        <section id="join" className="scroll-mt-24 px-4 pb-16 sm:px-6 sm:pb-24">
-          <div className="border-border bg-surface shadow-card mx-auto grid max-w-5xl items-center gap-7 rounded-sheet border p-5 backdrop-blur-xl sm:p-7 lg:grid-cols-[.85fr_1.15fr] lg:p-8">
-            <div>
-              <p className="text-brand text-[10px] font-bold tracking-[.18em] uppercase">{t.join.eyebrow}</p>
-              <h2 className="mt-2 text-[22px] font-bold tracking-[-.035em]">{locale === "ja" ? <PhraseText phrases={["観客として", "参加する"]} /> : t.join.title}</h2>
-              <p className="text-text-muted mt-2 text-[12px] leading-6"><ProtectedText text={t.join.description} /></p>
-            </div>
-            <JoinForm locale={locale} />
+        <section id="how-it-works" className="border-border scroll-mt-16 border-t">
+          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+            <p className="text-brand text-[11px] font-bold tracking-[.18em] uppercase">{t.howItWorks.eyebrow}</p>
+            <h2 className="mt-4 max-w-4xl text-[clamp(2rem,5vw,3.5rem)] leading-[1.2] font-bold tracking-[-.055em]">
+              {locale === "ja" ? <PhraseText phrases={["開始を押して、", "URLを共有。", "それだけ。"]} /> : t.howItWorks.title}
+            </h2>
+            <PresentationSteps locale={locale} />
+            <p className="text-text-muted mt-5 text-[12px] leading-6">{t.howItWorks.setup}</p>
           </div>
         </section>
 
-        <section id="features" className="border-border scroll-mt-16 border-y">
+        <section id="features" className="border-border scroll-mt-16 border-t">
           <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
-            <div className="max-w-2xl">
-              <p className="text-brand text-[11px] font-bold tracking-[.18em] uppercase">{t.features.eyebrow}</p>
-              <h2 className="mt-4 text-[clamp(2rem,5vw,3.5rem)] leading-[1.05] font-bold tracking-[-.055em]">
-                {locale === "ja" ? <PhraseText phrases={["反応が見えると、", "発表は一方通行では", "なくなる"]} /> : t.features.title}
-              </h2>
-            </div>
-            <div className="mt-10 grid gap-2.5 md:grid-cols-3">
-              {t.features.items.map((feature, index) => {
-                const Icon = featureIcons[index]!;
-                return (
-                  <article key={feature.title} className="border-border bg-surface rounded-card border p-6">
-                    <div className="bg-brand/10 text-brand flex h-10 w-10 items-center justify-center rounded-control"><Icon size={19} aria-hidden="true" /></div>
-                    <h3 className="mt-6 text-[16px] font-bold"><ProtectedText text={feature.title} terms={[feature.title]} /></h3>
-                    <p className="text-text-muted mt-3 text-[13px] leading-6"><ProtectedText text={feature.description} /></p>
-                  </article>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-
-        {/* 上の罫線は #features の border-y に任せる。border-t を足すと 2px になる。 */}
-        <section id="works-with" className="border-border scroll-mt-16 border-b">
-          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
-            <div className="max-w-2xl">
-              <div className="text-brand flex items-center gap-2">
-                <Layers size={18} aria-hidden="true" />
-                <p className="text-[11px] font-bold tracking-[.18em] uppercase">{t.worksWith.eyebrow}</p>
-              </div>
-              <h2 className="mt-4 text-[clamp(2rem,5vw,3.2rem)] leading-[1.07] font-bold tracking-[-.05em]">
-                {locale === "ja" ? <PhraseText phrases={["重ねるだけだから、", "ツールは選ばない"]} /> : t.worksWith.title}
-              </h2>
-              <p className="text-text-muted mt-5 text-[13px] leading-7"><ProtectedText text={t.worksWith.description} terms={t.worksWith.tools} /></p>
-            </div>
-
-            <ul className="mt-9 flex flex-wrap gap-2" aria-label={t.worksWith.toolsLabel}>
-              {t.worksWith.tools.map((tool) => (
-                <li key={tool} className="lt-nowrap border-border bg-surface rounded-chip border px-3 py-2 text-[12px] font-semibold">{tool}</li>
+            <p className="text-brand text-[11px] font-bold tracking-[.18em] uppercase">{t.features.eyebrow}</p>
+            <h2 className="mt-4 max-w-3xl text-[clamp(2rem,5vw,3.5rem)] leading-[1.2] font-bold tracking-[-.055em]">
+              {locale === "ja" ? <PhraseText phrases={["スマホからの", "ひとことが、", "スライドに届く。"]} /> : t.features.title}
+            </h2>
+            <p className="text-text-muted mt-5 max-w-2xl text-[15px] leading-7">{t.features.description}</p>
+            <AudienceFlow locale={locale} />
+            <dl className="mt-8 grid gap-6 md:grid-cols-3">
+              {t.features.items.map((feature) => (
+                <div key={feature.title} className="border-brand/30 border-l-2 pl-4">
+                  <dt className="text-[14px] font-bold">{feature.title}</dt>
+                  <dd className="text-text-muted mt-2 text-[13px] leading-6">{feature.description}</dd>
+                </div>
               ))}
-            </ul>
-            <p className="text-text-faint mt-3 text-[11px]">{t.worksWith.trademark}</p>
+            </dl>
+          </div>
+        </section>
 
-            <div className="mt-10 grid gap-2.5 md:grid-cols-3">
-              {t.worksWith.points.map((point, index) => {
-                const Icon = worksWithIcons[index]!;
-                return (
-                  <article key={point.title} className="border-border rounded-card border p-6">
-                    <Icon className="text-brand" size={19} aria-hidden="true" />
-                    <h3 className="mt-5 text-[15px] font-bold"><ProtectedText text={point.title} terms={[point.title]} /></h3>
-                    <p className="text-text-muted mt-2 text-[13px] leading-6"><ProtectedText text={point.description} terms={t.worksWith.tools} /></p>
-                  </article>
-                );
-              })}
+        <section id="works-with" className="border-border scroll-mt-16 border-t">
+          <div className="mx-auto grid max-w-6xl gap-8 px-4 py-12 sm:px-6 sm:py-16 lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-16">
+            <div>
+              <h2 className="text-[clamp(1.5rem,3vw,2rem)] leading-snug font-bold tracking-[-.035em]">
+                {locale === "ja" ? <PhraseText phrases={["PowerPointも", "Keynoteも、", "そのまま。"]} /> : t.worksWith.title}
+              </h2>
+              <p className="text-text-muted mt-4 text-[14px] leading-7"><ProtectedText text={t.worksWith.description} terms={t.worksWith.tools} /></p>
+            </div>
+            <div>
+              <ul className="flex flex-wrap gap-2" aria-label={t.worksWith.toolsLabel}>
+                {t.worksWith.tools.map((tool) => (
+                  <li key={tool} className="lt-nowrap border-border bg-surface rounded-chip border px-4 py-3 text-[13px] font-semibold">{tool}</li>
+                ))}
+              </ul>
+              <p className="text-text-muted mt-4 text-[11px]">{t.worksWith.trademark}</p>
             </div>
           </div>
         </section>
 
-        <section id="how-it-works" className="scroll-mt-16">
-          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
-            <div className="grid gap-10 lg:grid-cols-[.8fr_1.2fr] lg:gap-20">
+        <section className="px-4 pb-12 sm:px-6 sm:pb-16">
+          <div className="border-border bg-surface mx-auto max-w-6xl rounded-card border p-5 sm:p-7">
+            <div className="grid gap-5 md:grid-cols-[1fr_auto] md:items-center md:gap-10">
               <div>
-                <p className="text-brand text-[11px] font-bold tracking-[.18em] uppercase">{t.howItWorks.eyebrow}</p>
-                <h2 className="mt-4 text-[clamp(2rem,5vw,3.2rem)] leading-[1.07] font-bold tracking-[-.05em]">
-                  {locale === "ja" ? <PhraseText phrases={["共有するのは、", "ひとつのコードだけ"]} /> : t.howItWorks.title}
-                </h2>
+                <p className="text-text-muted text-[10px] font-bold tracking-[.15em] uppercase">{t.eventPass.eyebrow}</p>
+                <h2 className="mt-2 text-[18px] leading-snug font-bold tracking-[-.025em]"><ProtectedText text={t.eventPass.title} /></h2>
+                <p className="text-text-muted mt-2 max-w-2xl text-[12px] leading-6"><ProtectedText text={t.eventPass.description} /></p>
               </div>
               <div>
-                <ol className="divide-border border-border divide-y border-y">
-                  {t.howItWorks.steps.map((step, index) => {
-                    const Icon = stepIcons[index]!;
-                    return (
-                      <li key={step.title} className="grid grid-cols-[2.5rem_1fr_auto] items-center gap-4 py-5 sm:gap-6 sm:py-6">
-                        <span className="lt-num text-brand text-[11px] font-bold">{String(index + 1).padStart(2, "0")}</span>
-                        <div><h3 className="text-[15px] font-bold"><ProtectedText text={step.title} terms={[step.title]} /></h3><p className="text-text-muted mt-1 text-[12px] leading-5"><ProtectedText text={step.description} /></p></div>
-                        <Icon className="text-text-faint" size={19} aria-hidden="true" />
-                      </li>
-                    );
-                  })}
-                </ol>
-                {/* ⇧⌘L は lib.rs のグローバルショートカット。アプリ内ではトレイとコントロール窓にしか書いていない。 */}
-                <p className="text-text-muted mt-4 text-[12px] leading-6">
-                  {t.howItWorks.shortcutLead}{" "}
-                  <kbd className="border-border bg-surface rounded-chip border px-1.5 font-sans font-semibold">⇧⌘L</kbd>{" "}
-                  {t.howItWorks.shortcutTail}
-                </p>
+                <p><span className="lt-num text-[22px] font-bold">{t.eventPass.price}</span><span className="text-text-muted ml-2 text-[11px]">{t.eventPass.tax}</span></p>
+                <p className="text-text-muted mt-1 text-[12px]">{t.eventPass.duration}</p>
+                <Link href="/event-pass" className="lt-tap text-brand mt-2 inline-flex min-h-11 items-center gap-2 text-[13px] font-bold">
+                  {t.eventPass.cta}<ArrowRight size={15} aria-hidden="true" />
+                </Link>
               </div>
             </div>
+            <p className="text-text-muted border-border mt-4 border-t pt-4 text-[11px] leading-5"><ProtectedText text={t.eventPass.note} /></p>
           </div>
         </section>
-
-        <section className="px-4 pb-16 sm:px-6 sm:pb-24">
-          <div className="border-border bg-bg-elev relative mx-auto grid max-w-6xl overflow-hidden rounded-sheet border lg:grid-cols-[1fr_auto]">
-            <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_0%,color-mix(in_srgb,var(--lt-brand)_18%,transparent),transparent_45%)]" />
-            <div className="relative p-6 sm:p-10 lg:p-12">
-              <div className="flex items-center gap-2 text-brand"><ShieldCheck size={18} aria-hidden="true" /><p className="text-[11px] font-bold tracking-[.18em] uppercase">{t.eventPass.eyebrow}</p></div>
-              <h2 className="mt-4 max-w-2xl text-[clamp(2rem,5vw,3.5rem)] leading-[1.05] font-bold tracking-[-.055em]">
-                {locale === "ja" ? <PhraseText phrases={["本番を安全に", "運営するための", "Event Pass"]} /> : t.eventPass.title}
-              </h2>
-              <p className="text-text-muted mt-5 max-w-2xl text-[13px] leading-7"><ProtectedText text={t.eventPass.description} /></p>
-              <Link href="/event-pass" className="lt-tap lt-nowrap bg-gradient-brand shadow-glow mt-7 inline-flex min-h-12 items-center gap-2 rounded-control px-5 text-[14px] font-bold text-white">
-                {t.eventPass.cta}<ArrowRight size={16} aria-hidden="true" />
-              </Link>
-              <p className="text-text-faint mt-3 text-[11px]"><ProtectedText text={t.eventPass.note} /></p>
-            </div>
-            <div className="border-border relative flex min-w-[17rem] flex-col justify-center border-t p-6 sm:p-10 lg:border-t-0 lg:border-l lg:p-12">
-              <p><span className="lt-num text-[38px] font-bold tracking-[-.05em]">{t.eventPass.price}</span><span className="text-text-muted ml-2 text-[11px]">{t.eventPass.tax}</span></p>
-              <p className="lt-nowrap text-text-muted mt-2 text-[13px] font-semibold">{t.eventPass.duration}</p>
-            </div>
-          </div>
-        </section>
-
-        {/* 解説記事は日本語だけなので、日本語で見ている人にだけ出す。LP からの内部リンクが記事の評価を押し上げる。 */}
-        {locale === "ja" && (
-          <section id="guides" className="border-border scroll-mt-16 border-t">
-            <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
-              <p className="text-brand text-[11px] font-bold tracking-[.18em] uppercase">Guides</p>
-              <h2 className="mt-4 text-[clamp(1.75rem,4vw,2.75rem)] leading-[1.1] font-bold tracking-[-.05em]">
-                <PhraseText phrases={["プレゼン・LT・会議を", "盛り上げるヒント"]} />
-              </h2>
-              <GuideCards className="mt-9" />
-            </div>
-          </section>
-        )}
 
         <section className="border-border border-t px-4 py-16 text-center sm:px-6 sm:py-24">
           <div className="mx-auto max-w-3xl">
-            <h2 className="text-[clamp(2rem,6vw,4rem)] leading-[1.02] font-bold tracking-[-.06em]">
-              {locale === "ja" ? <PhraseText phrases={["次の発表を、", "会場との対話に", "変える。"]} /> : t.finalCta.title}
+            <h2 className="text-[clamp(2rem,6vw,4rem)] leading-[1.2] font-bold tracking-[-.06em]">
+              {locale === "ja" ? <PhraseText phrases={["次のプレゼンで、", "試してみよう。"]} /> : t.finalCta.title}
             </h2>
-            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+            <div className="mt-8 flex justify-center">
               <AppStoreButton locale={locale} />
-              <Link href="/#join" className="lt-tap lt-nowrap border-border hover:bg-surface inline-flex min-h-12 items-center justify-center rounded-control border px-5 text-[14px] font-bold transition-colors">{t.finalCta.audience}</Link>
             </div>
+            <p className="text-text-muted mt-4 text-[12px]">{messages[locale].public.appStore.note}</p>
           </div>
         </section>
       </main>

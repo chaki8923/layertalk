@@ -6,6 +6,7 @@ import { getSiteUrl } from "@/lib/seo";
 /** `?lang=en` / `?channel=app-store` は canonical が同じページなので載せない。 */
 const PUBLIC_PATHS = [
   "/",
+  "/join",
   "/event-pass",
   "/legal/privacy",
   "/legal/terms",
