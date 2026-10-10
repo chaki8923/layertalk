@@ -1,6 +1,8 @@
 .backdrop {
-  position: fixed;
-  inset: 80px 0 0;
+  --header-height: 80px;
+  --band-height: calc(100svh - var(--header-height));
+  position: absolute;
+  inset: var(--header-height) 0 0;
   z-index: -1;
   overflow: hidden;
   pointer-events: none;
@@ -8,20 +10,38 @@
   opacity: .13;
 }
 
-.crossing {
+.measure {
   position: absolute;
-  left: -128px;
-  top: var(--lane);
-  width: 64px;
-  aspect-ratio: 3 / 2;
+  width: 1px;
+  height: var(--band-height);
+  visibility: hidden;
+}
+
+.band {
+  position: absolute;
+  top: calc(var(--band-index) * var(--band-height));
+  width: 100%;
+  height: var(--band-height);
+}
+
+.crossing {
+  --sprite-width: 64px;
+  position: absolute;
+  left: 0;
+  top: calc(var(--lane) - var(--sprite-width) / 3);
+  width: 100%;
+  height: calc(var(--sprite-width) * 2 / 3);
   animation: cross var(--duration) linear infinite;
   animation-delay: var(--delay);
   animation-play-state: paused;
 }
 
-.crossing[data-size="medium"] { width: 80px; }
-.crossing[data-size="large"] { width: 96px; }
+.crossing[data-size="medium"] { --sprite-width: 80px; }
+.crossing[data-size="large"] { --sprite-width: 96px; }
 .crossing[data-reverse="true"] { animation-direction: reverse; }
+
+.copy { position: absolute; left: 0; width: var(--sprite-width); }
+.copy[data-copy="1"] { left: -100%; }
 
 .float {
   animation: float var(--float-duration) ease-in-out infinite;
@@ -31,14 +51,14 @@
 
 .image { display: block; width: 100%; height: auto; user-select: none; }
 
-.backdrop[data-active="true"] .crossing,
-.backdrop[data-active="true"] .float { animation-play-state: running; }
+.backdrop[data-active="true"] .band[data-near="true"] .crossing,
+.backdrop[data-active="true"] .band[data-near="true"] .float { animation-play-state: running; }
 
 .backdrop[data-reduced="true"] { display: none; }
 
 @keyframes cross {
   from { transform: translate3d(0, 0, 0); }
-  to { transform: translate3d(calc(100vw + 256px), 0, 0); }
+  to { transform: translate3d(100%, 0, 0); }
 }
 
 @keyframes float {
@@ -51,16 +71,14 @@
 }
 
 @media (max-width: 767px) {
-  .backdrop { top: 68px; }
+  .backdrop { --header-height: 68px; }
   .crossing {
-    top: var(--mobile-lane);
-    width: 48px;
+    --sprite-width: 48px;
     animation-duration: var(--mobile-duration);
     animation-delay: var(--mobile-delay);
   }
-  .crossing[data-size="medium"] { width: 60px; }
-  .crossing[data-size="large"] { width: 72px; }
-  .crossing:nth-child(n + 6) { display: none; }
+  .crossing[data-size="medium"] { --sprite-width: 60px; }
+  .crossing[data-size="large"] { --sprite-width: 72px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
