@@ -193,10 +193,19 @@
         BackgroundColor="#0A0C11"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">
+        <!--
+          **Square310x310Logo（大タイル）を足さないこと。** スキーマが
+          「Square310x310Logo を指定するなら Wide310x150Logo も必須」と定めていて、
+          MakeAppx が 0x80080204 で落ちる（実際に踏んだ）。ワイドは 310x150 の
+          横長で、`npx tauri icon` は正方形しか作らないので原本が無い。
+
+          大タイルは **Windows 10 の Start のタイルだけ**の話で、Windows 11 には
+          タイルという概念そのものが無い。Windows 10 でも既定は中タイル（150）
+          なので、落として見える影響は無い。
+        -->
         <uap:DefaultTile
           ShortName="LayerTalk"
-          Square71x71Logo="Assets\Square71x71Logo.png"
-          Square310x310Logo="Assets\Square310x310Logo.png" />
+          Square71x71Logo="Assets\Square71x71Logo.png" />
       </uap:VisualElements>
 
     </Application>

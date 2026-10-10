@@ -318,7 +318,8 @@ if (Test-Path -LiteralPath $loader) {
   Write-Host '    staged WebView2Loader.dll' -ForegroundColor DarkGray
 }
 
-$manifestLogos = @('Square44x44Logo.png', 'Square150x150Logo.png', 'Square71x71Logo.png', 'Square310x310Logo.png', 'StoreLogo.png')
+# Square310x310Logo は**入れない**（マニフェストのコメント参照。ワイドタイルが必須になる）。
+$manifestLogos = @('Square44x44Logo.png', 'Square150x150Logo.png', 'Square71x71Logo.png', 'StoreLogo.png')
 
 if ($SkipAssetVariants) {
   foreach ($logo in $manifestLogos) { Copy-Item -LiteralPath (Join-Path $iconsDir $logo) -Destination $assetsDir -Force }
@@ -334,7 +335,6 @@ if ($SkipAssetVariants) {
     'Square142x142Logo.png' = 'Square71x71Logo.scale-200.png'
     'Square284x284Logo.png' = 'Square71x71Logo.scale-400.png'
     'Square150x150Logo.png' = 'Square150x150Logo.scale-100.png'
-    'Square310x310Logo.png' = 'Square310x310Logo.scale-100.png'
     'StoreLogo.png'         = 'StoreLogo.scale-100.png'
   }
   foreach ($source in $copyMap.Keys) {
