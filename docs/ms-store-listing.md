@@ -128,6 +128,30 @@ reports, and branding for one room for seven days. It does not renew automatical
 > （Windows では Segoe UI Emoji になる）。審査で問題になる水準ではないが、
 > 気になるなら撮り直す。
 
+### 用意できているもの（2026-10-10）
+
+| アップロードするファイル | 出どころ | 寸法 |
+|---|---|---|
+| `assets/コメント表示-appstore.png` | App Store 版から流用 | 1440×900 |
+| `assets/質問パネル-appstore.png` | 同上 | 1440×900 |
+| `assets/参加QR-appstore.png` | 同上 | 1440×900 |
+| `assets/コントロール窓_windows.png` | VM で撮影 | 1920×850 |
+| `assets/安全管理_windows.png` | VM で撮影 | 1920×850 |
+| `assets/イベントパス_windows.png` | VM で撮影 | 1920×850 |
+| `assets/ms-store-tile-300.png` | `icons/icon.png` を縮小 | 300×300 |
+
+最後の1枚は**スクリーンショットではなくアプリタイルアイコン**（1:1）。登録すると
+ストアがパッケージ内のアイコンより優先して使う。
+
+### VM で撮り直すとき
+
+`scripts/take-screenshot.ps1` を使う。手でトリミングすると寸法を割る（最初の3枚が
+1188×768 未満で撮れていた）。
+
+```powershell
+.\scripts\take-screenshot.ps1 -Name コントロール窓 -OutputDirectory "\\Mac\Home\Desktop\LayerTalk\assets"
+```
+
 撮るもの（App Store 版と同じ構図でよい。`docs/app-store-listing.md` の 7. 参照）:
 
 1. スライドにコメントが流れている状態
@@ -137,9 +161,8 @@ reports, and branding for one room for seven days. It does not renew automatical
 5. 安全管理のパネル（NGワード・ブロック）
 6. Event Pass のパネル（価格が出ている状態）
 
-> **NGワードの既定値には罵倒語が入っている。** 撮影用のルームでは消してから撮ること。
-> **1:1 のアプリタイルアイコン（300×300）**も用意すると、ストアがパッケージ内の
-> アイコンより優先して使う。`src-tauri/icons/icon.png`（512px）から縮小すればよい。
+> **NGワードの既定値には罵倒語が入っている**（`bastard` を含む16語）。
+> 撮影用のルームでは消すか、無害な語に差し替えてから撮ること。
 
 ---
 
