@@ -1,6 +1,6 @@
 # Microsoft Store に入れる値（下書き）
 
-最終更新: 2026-10-04
+最終更新: 2026-10-10
 
 **Windows 版の提出先は Microsoft Store のみ。** 直接配布はしないので、コード署名証明書は
 買わない（ストアが Microsoft の証明書で再署名する）。個人アカウントでは EV 証明書が取れず、
@@ -287,6 +287,19 @@ Get-AppxPackage -Name '*LayerTalk*' | Remove-AppxPackage
 | サポート | `https://www.layer-talk.com/support` |
 | 最低 OS | Windows 10 バージョン2004（10.0.19041） |
 | アーキテクチャ | x64 のみ |
-| `MSIX_IDENTITY_NAME` | **未取得**（Partner Center の登録後） |
-| `MSIX_PUBLISHER` | **未取得** |
-| `MSIX_PUBLISHER_DISPLAY_NAME` | **未取得** |
+| `MSIX_IDENTITY_NAME` | `9655B530.LayerTalk` |
+| `MSIX_PUBLISHER` | `CN=D8960943-1293-42F0-91F9-5404066BF9C6` |
+| `MSIX_PUBLISHER_DISPLAY_NAME` | `茶木涼` |
+
+3つとも Partner Center が発行した値で、**推測で書き換えないこと**（不一致だと提出が弾かれる）。
+`MSIX_IDENTITY_NAME` と `MSIX_PUBLISHER` は公開される MSIX の中に入るもので、
+`MSIX_PUBLISHER_DISPLAY_NAME` はストアのページに発行者として出る。秘密ではない。
+
+ビルドのたびに環境変数で渡す:
+
+```powershell
+$env:MSIX_IDENTITY_NAME          = "9655B530.LayerTalk"
+$env:MSIX_PUBLISHER              = "CN=D8960943-1293-42F0-91F9-5404066BF9C6"
+$env:MSIX_PUBLISHER_DISPLAY_NAME = "茶木涼"
+.\scripts\build-msix.ps1
+```
