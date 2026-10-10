@@ -20,6 +20,9 @@
 
 .section { padding-block: 90px; scroll-margin-top: 90px; }
 .hero + .section { padding-top: 0; }
+.stepsHeader { display: flex; align-items: center; justify-content: space-between; gap: 32px; }
+.stepsHeader > div:first-child { min-width: 0; }
+.stepsMascot { width: 220px; flex-shrink: 0; margin-inline: 24px; }
 .heading { max-width: 25em; font-family: var(--lt-home-heading); font-size: clamp(29px, 3.35vw, 46px); font-weight: 800; line-height: 1.4; letter-spacing: -.045em; }
 .body { max-width: 48em; margin-top: 24px; color: var(--lt-text-muted); font-size: 14px; line-height: 1.95; }
 .featureHeader { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
@@ -37,6 +40,7 @@
 
 .works { background: var(--lt-surface); }
 .worksGrid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 75px; align-items: center; }
+.toolsMascot { width: 260px; margin: 0 24px 12px auto; }
 .toolLayers { position: relative; margin: 28px 12px 20px; padding: 56px 30px 30px; border: 1px solid var(--lt-border-strong); background: var(--lt-bg); }
 .toolLayers::before { content: ""; position: absolute; inset: -18px 18px 18px -18px; z-index: 0; border: 1px solid var(--lt-border-strong); background: var(--lt-bg-elev); }
 .layerLabel { position: absolute; top: -2px; left: 8px; z-index: 1; font-family: var(--lt-home-heading); font-size: 20px; font-weight: 700; color: var(--lt-brand); }
@@ -61,6 +65,8 @@
 .passSection { padding-bottom: 90px; }
 .pass { display: grid; grid-template-columns: 1.4fr .6fr; align-items: center; gap: 50px; padding: 52px 56px; border-radius: var(--lt-home-radius-pass); background: var(--lt-bg-elev); }
 .pass .heading { font-size: clamp(28px, 3vw, 40px); }
+.passAside { min-width: 0; }
+.passMascot { width: 240px; margin: 0 auto 18px; }
 .passPrice { padding-left: 45px; border-left: 1px solid var(--lt-border-strong); }
 .price { font-size: clamp(32px, 3.8vw, 46px); font-weight: 700; line-height: 1.3; letter-spacing: -.035em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tax { margin-top: 8px; color: var(--lt-text-faint); font-size: 12px; }
@@ -68,9 +74,11 @@
 
 .guides { padding-top: 10px; }
 .guideList { margin-top: 40px; }
-.final { display: grid; grid-template-columns: 1.3fr .7fr; align-items: center; gap: 24px; padding-top: 75px; padding-bottom: 110px; }
+.final { display: grid; grid-template-columns: 1.2fr 1fr; align-items: center; gap: 24px; padding-top: 75px; padding-bottom: 110px; }
 .final .heading { max-width: 17em; font-size: clamp(32px, 4vw, 52px); }
-.finalMascot { width: 470px; margin-left: -30px; }
+.finalScene { display: flex; align-items: flex-start; padding-inline: 24px; }
+.finalTallMascot { width: 38%; flex-shrink: 0; }
+.finalMascot { width: 62%; flex-shrink: 0; margin-top: 76px; }
 
 @media (max-width: 1100px) {
   .hero { gap: 32px; }
@@ -94,6 +102,8 @@
   .demo { width: 85%; left: 0; right: auto; }
   .sceneCaption { right: 15%; }
   .section { padding-block: 70px; }
+  .stepsHeader { gap: 20px; }
+  .stepsMascot { width: 180px; }
   .worksGrid { grid-template-columns: 1fr 1fr; gap: 32px; }
   .tools { font-size: 14px; }
   .toolLayers { padding: 42px 18px 25px; }
@@ -106,7 +116,9 @@
   .pass { grid-template-columns: 1fr; gap: 30px; }
   .passPrice { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 20px; border-left: 0; border-top: 1px solid var(--lt-border); padding: 25px 0 0; }
   .tax, .duration { margin: 0; }
-  .finalMascot { width: 360px; margin-left: -65px; }
+  .final { grid-template-columns: 1fr; }
+  .finalScene { width: 100%; max-width: 560px; margin-left: auto; padding-inline: 24px; }
+  .finalMascot { margin-top: 56px; }
 }
 
 @media (max-width: 767px) {
@@ -122,6 +134,8 @@
   .sceneCaption { right: 0; gap: 10px; }
   .sceneCaption p { font-size: 9px; }
   .section { padding-block: 60px; }
+  .stepsHeader { display: block; }
+  .stepsMascot { width: 160px; margin: 12px 12px 8px auto; }
   .heading { font-size: clamp(27px, 7.5vw, 36px); line-height: 1.45; }
   .body { margin-top: 21px; font-size: 13px; }
   .meta { margin-top: 13px; font-size: 10px; }
@@ -134,6 +148,7 @@
   .feature h3 { margin-top: 0; font-size: 19px; }
   .feature p { margin-top: 10px; }
   .worksGrid { grid-template-columns: 1fr; gap: 24px; }
+  .toolsMascot { width: 200px; margin-right: 12px; }
   .toolLayers { margin: 26px 6px 10px 18px; }
   .tools { font-size: 16px; }
   .trademark { margin-top: 25px; }
@@ -143,6 +158,7 @@
   .passSection { padding-bottom: 60px; }
   .pass { padding: 30px 25px; gap: 25px; }
   .pass .heading { font-size: 27px; }
+  .passMascot { width: 180px; margin-bottom: 12px; }
   .passPrice { gap: 10px 16px; }
   .price { font-size: 37px; }
   .duration { font-size: 13px; }
@@ -150,5 +166,7 @@
   .guideList { margin-top: 28px; }
   .final { grid-template-columns: 1fr; gap: 0; padding-top: 5px; padding-bottom: 35px; }
   .final .heading { font-size: 32px; }
-  .finalMascot { width: 280px; margin: 0 0 -20px auto; }
+  .finalScene { display: block; padding-inline: 12px; margin-top: 25px; }
+  .finalTallMascot { width: 220px; }
+  .finalMascot { width: 280px; max-width: 100%; margin: 0 0 0 auto; }
 }

@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import HomePage from "./page";
+import { mascotVariants } from "@/components/public/mascot-data";
 import { messages } from "@/i18n";
 
 const request = vi.hoisted(() => ({ locale: "ja" }));
@@ -26,8 +27,16 @@ describe("home page audience entry and reading order", () => {
     ]);
     expect(main.querySelector("form, input, #join")).toBeNull();
     expect(page.querySelectorAll('a[href="/join"]').length).toBeGreaterThan(0);
-    expect(main.querySelector('[data-mascot="round"]')).toBeNull();
-    expect(main.querySelectorAll("[data-mascot]")).toHaveLength(3);
+    const mascots = Array.from(main.querySelectorAll("[data-mascot]"));
+    expect(mascots.map((mascot) => mascot.getAttribute("data-mascot")).sort()).toEqual(Object.keys(mascotVariants).sort());
+    expect(main.querySelector('#how-it-works [data-mascot]')?.getAttribute("data-mascot")).toBe("round");
+    expect(main.querySelector('#works-with [data-mascot]')?.getAttribute("data-mascot")).toBe("flat");
+    const pass = sections.find((section) => section.querySelector('a[href="/event-pass"]'))!;
+    expect(pass.querySelector('[data-mascot]')?.getAttribute("data-mascot")).toBe("puff");
+    expect(Array.from(sections.at(-1)!.querySelectorAll("[data-mascot]")).map((mascot) => mascot.getAttribute("data-mascot"))).toEqual(["tall", "lean"]);
+    for (const mascot of mascots.filter((mascot) => mascot.getAttribute("data-mascot") !== "neutral")) {
+      expect(mascot.querySelector("img")?.getAttribute("loading")).toBe("lazy");
+    }
     expect(main.textContent).toContain(messages[locale].landing.eventPass.price);
     expect(main.querySelectorAll("#how-it-works ol > li")).toHaveLength(2);
   });

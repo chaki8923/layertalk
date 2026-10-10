@@ -60,8 +60,13 @@ export default async function HomePage() {
         </section>
 
         <section id="how-it-works" className={styles.container + " " + styles.section}>
-          <h2 className={styles.heading}>{locale === "ja" ? <PhraseText phrases={["開始を押して、", "URLを共有。", "それだけ。"]} /> : t.howItWorks.title}</h2>
-          <p className={styles.meta}>{t.howItWorks.eyebrow}</p>
+          <div className={styles.stepsHeader}>
+            <div>
+              <h2 className={styles.heading}>{locale === "ja" ? <PhraseText phrases={["開始を押して、", "URLを共有。", "それだけ。"]} /> : t.howItWorks.title}</h2>
+              <p className={styles.meta}>{t.howItWorks.eyebrow}</p>
+            </div>
+            <Mascot locale={locale} variant="round" className={styles.stepsMascot} sizes="(max-width: 767px) 160px, (max-width: 1023px) 180px, 220px" />
+          </div>
           <div className={styles.walkthrough}><PresentationSteps locale={locale} /></div>
           <p className={styles.note}>{t.howItWorks.setup}</p>
         </section>
@@ -97,6 +102,7 @@ export default async function HomePage() {
                 <p className={styles.body}><ProtectedText text={t.worksWith.description} terms={t.worksWith.tools} /></p>
               </div>
               <div>
+                <Mascot locale={locale} variant="flat" className={styles.toolsMascot} sizes="(max-width: 767px) 200px, 260px" />
                 <div className={styles.toolLayers}>
                   <span className={styles.layerLabel} aria-hidden="true">LayerTalk</span>
                   <ul className={styles.tools} aria-label={t.worksWith.toolsLabel}>{t.worksWith.tools.map((tool) => <li key={tool} className="lt-nowrap">{tool}</li>)}</ul>
@@ -116,10 +122,13 @@ export default async function HomePage() {
               <div className={styles.actions}><Link href="/event-pass" className={"lt-tap lt-nowrap inline-flex items-center justify-center " + publicStyles.primaryButton}>{t.eventPass.cta}</Link></div>
               <p className={styles.note}><ProtectedText text={t.eventPass.note} /></p>
             </div>
-            <div className={styles.passPrice}>
-              <p className={styles.price}>{t.eventPass.price}</p>
-              <p className={styles.tax}>{t.eventPass.tax}</p>
-              <p className={"lt-nowrap " + styles.duration}>{t.eventPass.duration}</p>
+            <div className={styles.passAside}>
+              <Mascot locale={locale} variant="puff" className={styles.passMascot} sizes="(max-width: 767px) 180px, 240px" />
+              <div className={styles.passPrice}>
+                <p className={styles.price}>{t.eventPass.price}</p>
+                <p className={styles.tax}>{t.eventPass.tax}</p>
+                <p className={"lt-nowrap " + styles.duration}>{t.eventPass.duration}</p>
+              </div>
             </div>
           </div>
         </section>
@@ -138,7 +147,10 @@ export default async function HomePage() {
               <Link href="/join" className={"lt-tap lt-nowrap inline-flex items-center justify-center " + publicStyles.secondaryButton}>{messages[locale].public.nav.join}</Link>
             </div>
           </div>
-          <Mascot locale={locale} variant="lean" className={styles.finalMascot} sizes="(max-width: 767px) 280px, 470px" />
+          <div className={styles.finalScene}>
+            <Mascot locale={locale} variant="tall" className={styles.finalTallMascot} sizes="220px" />
+            <Mascot locale={locale} variant="lean" className={styles.finalMascot} sizes="(max-width: 767px) 280px, 340px" />
+          </div>
         </section>
       </main>
     </PublicShell>

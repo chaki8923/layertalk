@@ -9,12 +9,15 @@
 | 案 | 元画像 | 生成プロンプト | トップページでの配置 |
 |---|---|---|---|
 | 基本 | [01-neutral.png](01-neutral.png) | [プロンプト](01-neutral-prompt.txt) | ヒーロー |
-| 丸い | [02-round.png](02-round.png) | [プロンプト](02-round-prompt.txt) | 予備（トップの参加フォーム削除後も素材を保持） |
-| 縦長 | [03-tall.png](03-tall.png) | [プロンプト](03-tall-prompt.txt) | 予備 |
+| 丸い | [02-round.png](02-round.png) | [プロンプト](02-round-prompt.txt) | 使い方 |
+| 縦長 | [03-tall.png](03-tall.png) | [プロンプト](03-tall-prompt.txt) | 最後のCTA（傾いた案と2匹） |
 | 横長 | [04-long.png](04-long.png) | [プロンプト](04-long-prompt.txt) | 機能紹介 |
-| 平たい | [05-flat.png](05-flat.png) | [プロンプト](05-flat-prompt.txt) | 予備 |
+| 平たい | [05-flat.png](05-flat.png) | [プロンプト](05-flat-prompt.txt) | 対応ツール |
 | 傾いた | [06-lean.png](06-lean.png) | [プロンプト](06-lean-prompt.txt) | 最後のCTA |
-| 膨らんだ | [07-puff.png](07-puff.png) | [プロンプト](07-puff-prompt.txt) | 予備 |
+| 膨らんだ | [07-puff.png](07-puff.png) | [プロンプト](07-puff-prompt.txt) | Event Passの価格欄の上 |
+
+日英とも7種類を1匹ずつ表示します。ヒーローだけを先読みし、それ以外は遅延読み込みを使います。
+上記のPDF・PNG比較一覧は初回作成時の資料で、掲載場所のラベルは現在の対応表と異なります。色と形の比較には引き続き利用できます。
 
 ## 素材と再生成
 
