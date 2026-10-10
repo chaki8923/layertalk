@@ -1,0 +1,68 @@
+.backdrop {
+  position: fixed;
+  inset: 80px 0 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  /* Keep faint copy readable even over a fully white part of the PNG. */
+  opacity: .13;
+}
+
+.crossing {
+  position: absolute;
+  left: -128px;
+  top: var(--lane);
+  width: 64px;
+  aspect-ratio: 3 / 2;
+  animation: cross var(--duration) linear infinite;
+  animation-delay: var(--delay);
+  animation-play-state: paused;
+}
+
+.crossing[data-size="medium"] { width: 80px; }
+.crossing[data-size="large"] { width: 96px; }
+.crossing[data-reverse="true"] { animation-direction: reverse; }
+
+.float {
+  animation: float var(--float-duration) ease-in-out infinite;
+  animation-delay: var(--float-delay);
+  animation-play-state: paused;
+}
+
+.image { display: block; width: 100%; height: auto; user-select: none; }
+
+.backdrop[data-active="true"] .crossing,
+.backdrop[data-active="true"] .float { animation-play-state: running; }
+
+.backdrop[data-reduced="true"] { display: none; }
+
+@keyframes cross {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(calc(100vw + 256px), 0, 0); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(8px); }
+  50% { transform: translateY(-8px); }
+}
+
+@media (prefers-color-scheme: light) {
+  .backdrop { opacity: .5; }
+}
+
+@media (max-width: 767px) {
+  .backdrop { top: 68px; }
+  .crossing {
+    top: var(--mobile-lane);
+    width: 48px;
+    animation-duration: var(--mobile-duration);
+    animation-delay: var(--mobile-delay);
+  }
+  .crossing[data-size="medium"] { width: 60px; }
+  .crossing[data-size="large"] { width: 72px; }
+  .crossing:nth-child(n + 6) { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop { display: none; }
+}

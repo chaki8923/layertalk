@@ -1,4 +1,6 @@
 .shell {
+  position: relative;
+  isolation: isolate;
   display: flex;
   min-height: 100dvh;
   flex-direction: column;

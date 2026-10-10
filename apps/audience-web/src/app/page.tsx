@@ -6,6 +6,7 @@ import { AppStoreButton } from "@/components/public/app-store-button";
 import { GuideCards } from "@/components/public/guide-cards";
 import { LiveSlideDemo } from "@/components/public/live-slide-demo";
 import { Mascot } from "@/components/public/mascot";
+import { MascotBackdrop } from "@/components/public/mascot-backdrop";
 import { MascotMotionControl } from "@/components/public/mascot-motion";
 import { PhraseText, ProtectedText } from "@/components/public/phrase-text";
 import { AudienceFlow, PresentationSteps } from "@/components/public/presentation-walkthrough";
@@ -34,6 +35,7 @@ export default async function HomePage() {
 
   return (
     <PublicShell locale={locale} appearance="mascot">
+      <MascotBackdrop />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }} />
       <main className={styles.main}>
         <section className={styles.container + " " + styles.hero}>

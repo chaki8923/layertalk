@@ -16,6 +16,15 @@ describe("home page audience entry and reading order", () => {
     const page = document.createElement("div");
     page.innerHTML = renderToStaticMarkup(await HomePage());
     const main = page.querySelector("main")!;
+    const backdrop = page.querySelector("[data-mascot-backdrop]")!;
+    expect(backdrop).not.toBeNull();
+    expect(main.contains(backdrop)).toBe(false);
+    expect(backdrop.getAttribute("aria-hidden")).toBe("true");
+    expect(backdrop.querySelectorAll("button, a, input, [tabindex]")).toHaveLength(0);
+    const travelers = backdrop.querySelectorAll("[data-background-mascot]");
+    expect(travelers).toHaveLength(9);
+    expect(new Set(Array.from(travelers, (element) => element.getAttribute("data-background-mascot"))).size).toBe(7);
+    expect(Array.from(backdrop.querySelectorAll("img")).every((image) => image.alt === "")).toBe(true);
     const sections = Array.from(main.children).filter((element) => element.tagName === "SECTION");
     const order = sections.map((section) => section.id || (
       section.querySelector("h1") ? "hero" :
