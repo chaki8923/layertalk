@@ -2,7 +2,6 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { BadgeHelp, Check, MessageCircleMore, PartyPopper } from "lucide-react";
 
-import { JoinForm } from "@/components/join-form";
 import { AppStoreButton } from "@/components/public/app-store-button";
 import { GuideCards } from "@/components/public/guide-cards";
 import { LiveSlideDemo } from "@/components/public/live-slide-demo";
@@ -60,15 +59,11 @@ export default async function HomePage() {
           </div>
         </section>
 
-        <section id="join" className={styles.container + " " + styles.join}>
-          <div className={styles.joinInner}>
-            <div className={styles.joinCopy}>
-              <Mascot locale={locale} variant="round" className={styles.joinMascot} sizes="220px" />
-              <h2 className={styles.joinHeading}>{messages[locale].join.title}</h2>
-              <p className={styles.joinDescription}><ProtectedText text={messages[locale].join.description} /></p>
-            </div>
-            <div className={styles.joinFormWrap}><JoinForm locale={locale} appearance="mascot" /></div>
-          </div>
+        <section id="how-it-works" className={styles.container + " " + styles.section}>
+          <h2 className={styles.heading}>{locale === "ja" ? <PhraseText phrases={["開始を押して、", "URLを共有。", "それだけ。"]} /> : t.howItWorks.title}</h2>
+          <p className={styles.meta}>{t.howItWorks.eyebrow}</p>
+          <div className={styles.walkthrough}><PresentationSteps locale={locale} /></div>
+          <p className={styles.note}>{t.howItWorks.setup}</p>
         </section>
 
         <section id="features" className={styles.container + " " + styles.section}>
@@ -110,13 +105,6 @@ export default async function HomePage() {
               </div>
             </div>
           </div>
-        </section>
-
-        <section id="how-it-works" className={styles.container + " " + styles.section}>
-          <h2 className={styles.heading}>{locale === "ja" ? <PhraseText phrases={["開始を押して、", "URLを共有。", "それだけ。"]} /> : t.howItWorks.title}</h2>
-          <p className={styles.meta}>{t.howItWorks.eyebrow}</p>
-          <div className={styles.walkthrough}><PresentationSteps locale={locale} /></div>
-          <p className={styles.note}>{t.howItWorks.setup}</p>
         </section>
 
         <section className={styles.container + " " + styles.passSection}>

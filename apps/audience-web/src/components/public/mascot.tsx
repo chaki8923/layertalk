@@ -94,6 +94,8 @@ export function Mascot({
     "--face-x": `${asset.face.x}%`, "--face-y": `${asset.face.y}%`,
     "--face-rx": `${asset.face.rx}%`, "--face-ry": `${asset.face.ry}%`,
     "--hit-area": `polygon(${asset.hit.map(([x, y]) => `${x}% ${y}%`).join(",")})`,
+    "--drift-duration": `${20 + asset.index * .8}s`,
+    "--drift-delay": `${-asset.index * 3.2}s`,
     "--float-duration": `${9 + asset.index * .45}s`,
     "--soft-duration": `${12 + asset.index * .6}s`,
     "--motion-delay": `${-asset.index * 1.3}s`,
@@ -102,32 +104,34 @@ export function Mascot({
 
   return (
     <div ref={ref} className={`${styles.mascot} ${className}`} style={style} data-mascot={variant} data-active={active} data-feedback={feedback}>
-      <div className={styles.float}>
-        <motion.div className={styles.tilt} style={{ rotate: tilt }}>
-          <div className={styles.body}>
-            <motion.div className={styles.reaction} animate={controls} initial={{ scaleX: 1, scaleY: 1 }}>
+      <div className={styles.drift}>
+        <div className={styles.float}>
+          <motion.div className={styles.tilt} style={{ rotate: tilt }}>
+            <div className={styles.body}>
+              <motion.div className={styles.reaction} animate={controls} initial={{ scaleX: 1, scaleY: 1 }}>
+                <Image src={asset.src} alt="" width={1536} height={1024} sizes={sizes} preload={preload} draggable={false} className={styles.image} />
+              </motion.div>
+            </div>
+            <div className={styles.face} aria-hidden="true">
               <Image src={asset.src} alt="" width={1536} height={1024} sizes={sizes} preload={preload} draggable={false} className={styles.image} />
-            </motion.div>
-          </div>
-          <div className={styles.face} aria-hidden="true">
-            <Image src={asset.src} alt="" width={1536} height={1024} sizes={sizes} preload={preload} draggable={false} className={styles.image} />
-          </div>
-          <svg className={styles.outline} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-            <polygon points={asset.hit.map(([x, y]) => `${x},${y}`).join(" ")} vectorEffect="non-scaling-stroke" />
-          </svg>
-          <button
-            type="button" className={styles.hitTarget}
-            aria-label={label.interact(label.names[variant])}
-            onClick={() => void react(true)}
-            onPointerEnter={(event) => {
-              if (event.pointerType !== "touch" && window.matchMedia("(hover: hover)").matches) {
-                point(event);
-                void react();
-              }
-            }}
-            onPointerMove={point} onPointerLeave={leave} onPointerCancel={cancel}
-          />
-        </motion.div>
+            </div>
+            <svg className={styles.outline} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <polygon points={asset.hit.map(([x, y]) => `${x},${y}`).join(" ")} vectorEffect="non-scaling-stroke" />
+            </svg>
+            <button
+              type="button" className={styles.hitTarget}
+              aria-label={label.interact(label.names[variant])}
+              onClick={() => void react(true)}
+              onPointerEnter={(event) => {
+                if (event.pointerType !== "touch" && window.matchMedia("(hover: hover)").matches) {
+                  point(event);
+                  void react();
+                }
+              }}
+              onPointerMove={point} onPointerLeave={leave} onPointerCancel={cancel}
+            />
+          </motion.div>
+        </div>
       </div>
     </div>
   );

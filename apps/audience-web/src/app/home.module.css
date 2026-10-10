@@ -16,15 +16,10 @@
 .sceneCaption { position: absolute; inset: auto 0 0; display: flex; align-items: center; justify-content: space-between; gap: 14px; color: var(--lt-text-faint); font-size: 10px; }
 .sceneCaption p { max-width: 19em; line-height: 1.5; }
 
-.join { scroll-margin-top: 100px; padding-bottom: 80px; }
-.joinInner { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; padding: 36px 44px; background: var(--lt-bg-elev); border-radius: var(--lt-home-radius-join); }
-.joinCopy { position: relative; padding-left: 65px; }
-.joinMascot { position: absolute; top: -46px; left: -110px; width: 220px; }
-.joinHeading { position: relative; font-family: var(--lt-home-heading); font-size: 25px; font-weight: 800; line-height: 1.4; letter-spacing: -.035em; }
-.joinDescription { position: relative; margin-top: 12px; color: var(--lt-text-muted); font-size: 12px; line-height: 1.9; }
 .meta { margin-top: 14px; color: var(--lt-text-faint); font-size: 11px; line-height: 1.7; }
 
 .section { padding-block: 90px; scroll-margin-top: 90px; }
+.hero + .section { padding-top: 0; }
 .heading { max-width: 25em; font-family: var(--lt-home-heading); font-size: clamp(29px, 3.35vw, 46px); font-weight: 800; line-height: 1.4; letter-spacing: -.045em; }
 .body { max-width: 48em; margin-top: 24px; color: var(--lt-text-muted); font-size: 14px; line-height: 1.95; }
 .featureHeader { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
@@ -81,9 +76,6 @@
   .hero { gap: 32px; }
   .scene { height: 530px; }
   .heroMascot { left: -70px; width: 580px; }
-  .joinInner { padding: 32px; gap: 32px; }
-  .joinCopy { padding-left: 32px; }
-  .joinMascot { left: -94px; width: 180px; }
   .featureList { gap: 30px; }
   .worksGrid { gap: 48px; }
   .stepsGrid { gap: 56px; }
@@ -98,14 +90,9 @@
   .title { font-size: clamp(44px, 7.5vw, 70px); }
   .description { max-width: 43em; }
   .scene { width: 100%; max-width: 650px; height: 570px; margin: 20px auto 0; }
-  .heroMascot { top: -65px; left: 130px; width: 580px; }
+  .heroMascot { top: -65px; left: 130px; width: 450px; }
   .demo { width: 85%; left: 0; right: auto; }
   .sceneCaption { right: 15%; }
-  .joinInner { grid-template-columns: 1fr; gap: 28px; }
-  .joinCopy { padding-left: 95px; }
-  .joinMascot { top: -36px; left: -28px; width: 200px; }
-  .joinDescription { max-width: 43em; }
-  .joinFormWrap { padding-left: 95px; }
   .section { padding-block: 70px; }
   .worksGrid { grid-template-columns: 1fr 1fr; gap: 32px; }
   .tools { font-size: 14px; }
@@ -130,24 +117,17 @@
   .signals { margin-top: 22px; gap: 8px 15px; font-size: 10px; }
   .note { font-size: 10px; }
   .scene { max-width: 500px; height: clamp(380px, 100vw, 470px); margin-top: 0; }
-  .heroMascot { top: -35px; left: 12%; width: 112%; }
+  .heroMascot { top: -35px; left: 10%; width: 112%; }
   .demo { width: 100%; bottom: 49px; }
   .sceneCaption { right: 0; gap: 10px; }
   .sceneCaption p { font-size: 9px; }
-  .join { padding-bottom: 20px; }
-  .joinInner { padding: 30px 22px; gap: 23px; }
-  .joinCopy { padding-left: 0; padding-right: 34px; }
-  .joinMascot { top: -64px; right: -56px; left: auto; width: 165px; }
-  .joinHeading { max-width: 11em; font-size: 21px; }
-  .joinDescription { font-size: 11px; }
-  .joinFormWrap { padding-left: 0; }
   .section { padding-block: 60px; }
   .heading { font-size: clamp(27px, 7.5vw, 36px); line-height: 1.45; }
   .body { margin-top: 21px; font-size: 13px; }
   .meta { margin-top: 13px; font-size: 10px; }
   .featureHeader { position: relative; display: block; padding-top: 8px; }
   .featureHeader .heading { max-width: 13em; padding-right: 30px; }
-  .featureMascot { position: absolute; width: 170px; right: -43px; top: -20px; margin: 0; transform: translateY(-42px); }
+  .featureMascot { position: absolute; width: 170px; right: 0; top: -40px; margin: 0; transform: translateY(-42px); }
   .featureList { grid-template-columns: 1fr; margin-top: 25px; gap: 0; }
   .feature, .feature:nth-child(2), .feature:nth-child(3) { display: grid; grid-template-columns: 28px 1fr; column-gap: 16px; padding-top: 30px; }
   .featureIcon { grid-row: span 2; margin-top: 4px; }

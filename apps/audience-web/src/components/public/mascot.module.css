@@ -1,9 +1,18 @@
 .mascot {
+  --drift-range: 24px;
   position: relative;
   width: 100%;
   aspect-ratio: 3 / 2;
   isolation: isolate;
   pointer-events: none;
+}
+
+.drift {
+  position: absolute;
+  inset: 0;
+  animation: drift var(--drift-duration) ease-in-out infinite;
+  animation-delay: var(--drift-delay);
+  animation-play-state: paused;
 }
 
 .float {
@@ -26,6 +35,7 @@
   animation-play-state: paused;
 }
 
+.mascot[data-active="true"] .drift,
 .mascot[data-active="true"] .float,
 .mascot[data-active="true"] .body {
   animation-play-state: running;
@@ -82,6 +92,11 @@
 .mascot:has(.hitTarget:focus-visible) .outline,
 .mascot[data-feedback="true"] .outline { opacity: 1; }
 
+@keyframes drift {
+  0%, 100% { transform: translateX(calc(-1 * var(--drift-range))); }
+  50% { transform: translateX(var(--drift-range)); }
+}
+
 @keyframes float {
   0%, 100% { transform: translateY(5px) rotate(-.65deg); }
   50% { transform: translateY(-8px) rotate(.65deg); }
@@ -92,7 +107,11 @@
   50% { transform: scale(.988, 1.012) skewX(.4deg); }
 }
 
+@media (max-width: 767px) {
+  .mascot { --drift-range: 12px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .float, .body { animation: none; }
+  .drift, .float, .body { animation: none; }
   .outline { transition: none; }
 }
