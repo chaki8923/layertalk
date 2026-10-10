@@ -251,11 +251,10 @@ spike: capture Captured health=CaptureHealth { frames_seen: 1, frames_stored: 1,
   (b) `GraphicsCaptureAccess.RequestAccessAsync(Borderless)` による利用者の同意、の両方が要る。
   **どちらが欠けても setter は `Ok` を返したまま値が無視される**ので、
   `if let Err(...)` のログは「枠が出ていない」ことの根拠にならない。
-  素のビルド（＝ここまでの VM 検証は全部これ）ではパッケージ ID が無いので要求されず、
-  枠は出なかった。**つまり MSIX を入れて初めて撮ったスライド全部に黄枠が焼き付く、
-  という形で出る。** (a) は宣言済み。(b) は同意ダイアログが出るうえ、撮影セッションは
-  26〜36ms で閉じるので枠が出ても一瞬のはず、という判断で**まだ入れていない**
-  — MSIX の実測で枠が残ったら足す
+  素のビルドではパッケージ ID が無いので要求されず、枠は出ない。
+  **つまり MSIX を入れて初めて撮ったスライド全部に黄枠が焼き付く、という形で出る。**
+  → **2026-10-10 に MSIX で実測し、枠は出なかった（(a) の宣言だけで足りた）。**
+  (b) の `RequestAccessAsync` は入れない — 同意ダイアログの分だけ利用者の邪魔になる
 - **`graphicsCaptureProgrammatic` は要らない。** これが要るのは `GraphicsCaptureItem` を
   **`WindowId` / `DisplayId`** から作るときで、こちらは
   `IGraphicsCaptureItemInterop::CreateForMonitor(HMONITOR)` を通る別の API。
@@ -401,6 +400,35 @@ npx tauri build --target x86_64-pc-windows-msvc --no-bundle
 > `npm run tauri:build -- --no-bundle` は使えない（npm がフラグを食う。罠 #19）。
 > x64 のリンクには **x64 の MSVC** が要る。ARM64 用だけでは足りない
 > （Visual Studio Installer の「MSVC v143 - VS 2022 C++ x64/x86 ビルドツール」）。
+
+## 5f. MSIX にして、パッケージ ID 付きでも動いた（2026-10-10）
+
+```powershell
+.\scripts\build-msix.ps1          # → LayerTalk_1.0.0.0_x64.msix (5.6 MB)
+Add-AppxPackage -Register "...\target\msix\staging\AppxManifest.xml"
+```
+
+**スタートメニューから起動して**確認した（`LayerTalk.exe` を直接叩くとパッケージ ID が
+付かないので、この検証の意味が無くなる）。通しの動作・質問スライドの保存とレポート・
+`Ctrl+Shift+L`・トレイ・法務リンク4つ、すべて○。
+
+**そして黄色い枠は出なかった。** ここだけは素のビルドでは絶対に確かめられない項目で
+（パッケージ ID が付いて初めて capability が効き始める）、枠が出たら
+`GraphicsCaptureAccess.RequestAccessAsync(Borderless)` で同意を取る処理を足す予定だった。
+**マニフェストに `graphicsCaptureWithoutBorder` を宣言しただけで足りた。**
+→ 同意を取る処理は**入れない**（同意ダイアログの分だけ利用者の邪魔になる）
+
+途中で踏んだもの:
+
+- **MakeAppx `0x80080204`**: `Square310x310Logo` を指定すると `Wide310x150Logo` も必須。
+  `npx tauri icon` は正方形しか作らないので原本が無い。大タイルを落として解決
+  （Windows 11 にタイルは無く、Windows 10 でも既定は中タイル）
+- **`Add-AppxPackage` `0x80073CFF`**: 開発者モードがオフ。未署名パッケージの
+  ローカル登録にだけ要る（ストア版は署名されて配られるので利用者には不要）。
+  設定 > システム > 開発者向け > 開発者モード
+- **`os error 5` でビルドの最後に落ちる**: トレイに残っていた LayerTalk が
+  release の .exe を掴んでいた。全部コンパイルし終えてから落ちるので、
+  スクリプトの前提検査で先に弾くようにした
 
 ## 5b. 本採用のときの宿題
 

@@ -266,13 +266,17 @@ Get-AppxPackage -Name '*LayerTalk*' | Remove-AppxPackage
 - `Ctrl+Shift+L` が効くこと
 - 法務リンク4つがブラウザで開くこと
 - 撮影が通り、**オーバーレイが写り込んでいない**こと
-- **保存されたスライド画像に黄色い枠が入っていないこと。** ここは
-  **MSIX にしたときだけ壊れる**唯一の箇所なので、素のビルドでの検証は根拠にならない。
-  枠を消すには `graphicsCaptureWithoutBorder`（宣言済み）に加えて
-  `GraphicsCaptureAccess.RequestAccessAsync(Borderless)` の同意が要る可能性があり、
-  **欠けていても `SetIsBorderRequired(false)` は `Ok` を返してログに何も出ない**
-  （`docs/windows-spike.md` の「Windows 固有の注意」参照）。
-  枠が入っていたら `RequestAccessAsync` を足す。入っていなければ何もしない
+- **保存されたスライド画像に黄色い枠が入っていないこと**
+  → **2026-10-10 に確認済み。出なかった。** ここは **MSIX にしたときだけ壊れる**
+  唯一の箇所なので、素のビルドでの検証は根拠にならない（`docs/windows-spike.md` の
+  「Windows 固有の注意」参照）。マニフェストの `graphicsCaptureWithoutBorder` だけで足りた
+
+> **起動はスタートメニューから。** `LayerTalk.exe` を直接叩くとパッケージ ID が付かず、
+> 上の検査（特に黄枠とリダイレクト先）が意味を持たなくなる。
+
+> **開発者モードが要る**（設定 > システム > 開発者向け）。無いと
+> `Add-AppxPackage` が `0x80073CFF` で落ちる。未署名パッケージのローカル登録にだけ
+> 必要なもので、ストア版は署名されて配られるので利用者には要らない。
 
 ---
 
