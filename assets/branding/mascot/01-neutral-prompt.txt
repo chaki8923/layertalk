@@ -1,0 +1,9 @@
+Use case: stylized-concept
+Asset type: LayerTalk mascot character concept, reusable standalone illustration
+Primary request: Create one lovable, slightly strange, absent-minded mystery creature for a live audience conversation product called LayerTalk.
+Subject: A single floating creature whose entire limbless body is an asymmetrical speech bubble silhouette. It feels slightly melted and elastic: one side gently slumps and stretches, with an integrated little speech-bubble tail. No separate arms, hands, legs, feet, ears, antennae, hair, accessories, or clothing. The face stays completely deadpan even though the body shape is distorted: two very small, widely spaced dark dot eyes and one tiny subtle wavy mouth (~). Facial features occupy a small portion of the body, with lots of blank space; expression quiet and vacant, not smiling.
+Style/medium: polished, simple mascot concept; soft dimensional gummy or matte porcelain texture, clean silhouette that remains recognizable at small size. Cute through odd proportions and restraint, not a conventional kawaii character.
+Color palette: milky off-white body with delicate pale lavender shading and slight pearlescent translucency; dark charcoal-lavender tiny facial marks. No strong saturated colors.
+Composition/framing: one centered full-body character, ample breathing room, floating slightly above a faint soft oval shadow. Straight-on three-quarter feel, clear silhouette.
+Background: genuinely transparent background (alpha), no backdrop.
+Constraints: No typography, no logo, no words, no watermark, no other characters. Face must remain neutral. Avoid large eyes, blush, smile, tongues, conventional ghost-sheet shape, and symmetrical bubble shape.

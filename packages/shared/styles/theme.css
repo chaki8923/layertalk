@@ -64,6 +64,61 @@
   }
 }
 
+/* Homepage identity. Scoped to the public homepage; mascot PNG colors stay intact. */
+.lt-home-theme {
+  --lt-home-milk: #f6f5fb;
+  --lt-home-mist: #e7e2f2;
+  --lt-home-lilac: #c9bdde;
+  --lt-home-ink: #312b40;
+  --lt-home-violet: #70538e;
+  --lt-home-night: #231e30;
+  --lt-home-heading: ui-rounded, "Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --lt-home-radius-button: 12px;
+  --lt-home-radius-input: 10px;
+  --lt-home-radius-small: 8px;
+  --lt-home-radius-stage: 6px 6px 28px 6px;
+  --lt-home-radius-join: 32px 8px 32px 8px;
+  --lt-home-radius-pass: 8px 40px 8px 40px;
+  --lt-home-stage: var(--lt-home-mist);
+  --lt-home-stage-ink: var(--lt-home-ink);
+  --lt-home-button: var(--lt-home-lilac);
+  --lt-home-button-text: var(--lt-home-night);
+  --lt-bg: var(--lt-home-night);
+  --lt-bg-elev: var(--lt-home-ink);
+  --lt-text: var(--lt-home-milk);
+  --lt-text-muted: #c1b9ce;
+  --lt-text-faint: #b0a5be;
+  --lt-brand: var(--lt-home-lilac);
+  --lt-border: rgb(201 189 222 / .23);
+  --lt-border-strong: rgb(201 189 222 / .44);
+  --lt-surface: rgb(201 189 222 / .07);
+  --lt-surface-strong: rgb(201 189 222 / .13);
+}
+
+@media (max-width: 767px) {
+  .lt-home-theme {
+    --lt-home-radius-join: 26px 6px 26px 6px;
+    --lt-home-radius-pass: 6px 30px 6px 30px;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  .lt-home-theme {
+    --lt-bg: var(--lt-home-milk);
+    --lt-bg-elev: var(--lt-home-mist);
+    --lt-text: var(--lt-home-ink);
+    --lt-text-muted: #665c76;
+    --lt-text-faint: #746783;
+    --lt-brand: var(--lt-home-violet);
+    --lt-border: rgb(49 43 64 / .16);
+    --lt-border-strong: rgb(49 43 64 / .32);
+    --lt-surface: rgb(112 83 142 / .04);
+    --lt-surface-strong: rgb(112 83 142 / .09);
+    --lt-home-button: var(--lt-home-ink);
+    --lt-home-button-text: var(--lt-home-milk);
+  }
+}
+
 /* ------------------------------------------- Tailwind に流し込むトークン */
 
 @theme inline {

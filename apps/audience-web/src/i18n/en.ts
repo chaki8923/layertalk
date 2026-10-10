@@ -12,6 +12,13 @@ export const en: Messages = {
   },
 
   public: {
+    mascot: {
+      interact: (name: string) => `Make the ${name} wobble`,
+      stopMotion: "Pause motion",
+      startMotion: "Resume motion",
+      reducedMotion: "Reduced motion is on",
+      names: { neutral: "mascot", round: "round mascot", tall: "tall mascot", long: "long mascot", flat: "flat mascot", lean: "leaning mascot", puff: "puffed mascot" },
+    },
     nav: {
       label: "Public pages",
       features: "Features",

@@ -12,8 +12,8 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 describe("JoinForm", () => {
   beforeEach(() => push.mockReset());
 
-  it("normalizes a valid room code and opens the room", () => {
-    render(<JoinForm locale="ja" />);
+  it.each(["default", "mascot"] as const)("normalizes a valid room code with %s appearance and opens the room", (appearance) => {
+    render(<JoinForm locale="ja" appearance={appearance} />);
     fireEvent.change(screen.getByRole("textbox", { name: "参加コード" }), { target: { value: "abc234" } });
     fireEvent.click(screen.getByRole("button", { name: "参加する" }));
     expect(push).toHaveBeenCalledWith("/r/ABC234");

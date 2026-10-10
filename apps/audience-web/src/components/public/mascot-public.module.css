@@ -1,0 +1,177 @@
+.shell {
+  display: flex;
+  min-height: 100dvh;
+  flex-direction: column;
+  background: var(--lt-bg);
+  color: var(--lt-text);
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--lt-bg);
+}
+
+.headerInner {
+  display: flex;
+  width: calc(100% - 64px);
+  max-width: 1200px;
+  min-height: 80px;
+  margin: auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--lt-border);
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--lt-home-heading);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -.04em;
+}
+
+.navigation { display: flex; align-items: center; gap: 12px; }
+.navigation a { font-size: 12px; }
+.navigation a:hover { text-decoration: underline; text-underline-offset: 5px; }
+
+.primaryButton, .secondaryButton, .compactButton {
+  min-height: 48px;
+  padding: 12px 21px;
+  gap: 9px;
+  border-radius: var(--lt-home-radius-button);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+  transition: transform 180ms ease;
+}
+
+.primaryButton {
+  border: 1px solid transparent;
+  background: var(--lt-home-button);
+  color: var(--lt-home-button-text);
+}
+
+.secondaryButton, .compactButton {
+  border: 1px solid var(--lt-border-strong);
+  background: transparent;
+  color: var(--lt-text);
+}
+
+.compactButton { min-height: 38px; padding: 8px 13px; font-size: 12px; }
+.primaryButton:active, .secondaryButton:active, .compactButton:active { transform: translateY(2px); }
+
+.joinForm { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+.joinInput {
+  display: block;
+  width: 100%;
+  height: 60px;
+  padding: 8px 14px;
+  border: 1px solid var(--lt-border-strong);
+  border-radius: var(--lt-home-radius-input);
+  background: var(--lt-bg);
+  color: var(--lt-text);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: .18em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.joinInput::placeholder { color: var(--lt-text-faint); opacity: .75; }
+.joinInput:focus-visible { outline: 2px solid var(--lt-brand); outline-offset: 3px; }
+.joinButton { display: flex; height: 60px; align-items: center; justify-content: center; min-width: 108px; }
+
+.motionControl {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px;
+  border: 1px solid var(--lt-border);
+  border-radius: var(--lt-home-radius-small);
+  background: var(--lt-bg);
+  color: var(--lt-text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.motionControl:disabled { cursor: default; }
+
+.shell[data-motion="paused"] :global(.lt-stage-comment),
+.shell[data-motion="paused"] :global(.lt-stage-stamp) { animation-play-state: paused; }
+
+.footer { margin-top: auto; border-top: 1px solid var(--lt-border); }
+.footerInner {
+  display: flex;
+  width: calc(100% - 64px);
+  max-width: 1200px;
+  margin: auto;
+  padding: 32px 0;
+  flex-direction: column;
+  gap: 24px;
+}
+.footerNav { display: flex; flex-wrap: wrap; gap: 15px 24px; }
+.footerNav a { color: var(--lt-text-muted); font-size: 12px; }
+.footerNav a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.copyright { color: var(--lt-text-faint); font-size: 11px; }
+
+.guideList { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; }
+.guideLink { display: flex; height: 100%; flex-direction: column; padding: 24px 0 0; border-top: 2px solid var(--lt-border); }
+.guideTitle { font-size: 18px; line-height: 1.6; font-weight: 700; }
+.guideDescription { margin-top: 14px; color: var(--lt-text-muted); font-size: 14px; line-height: 1.85; }
+.guideAction { margin-top: auto; padding-top: 22px; color: var(--lt-brand); font-size: 12px; font-weight: 700; text-decoration: underline; text-underline-offset: 5px; }
+.guideLink:hover .guideTitle { text-decoration: underline; text-underline-offset: 5px; }
+
+.stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  isolation: isolate;
+  border: 1px solid var(--lt-border-strong);
+  border-radius: var(--lt-home-radius-stage);
+  background: var(--lt-home-stage);
+  color: var(--lt-home-stage-ink);
+  box-shadow: 12px 12px 0 var(--lt-surface-strong);
+  overflow: hidden;
+}
+.stageHeader { display: flex; height: 40px; padding: 0 18px; align-items: center; justify-content: space-between; border-bottom: 1px solid rgb(49 43 64 / .14); font-size: 10px; font-weight: 600; }
+.stageStatus { display: flex; align-items: center; gap: 6px; }
+.stageStatus::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--lt-home-violet); }
+.stageSurface { position: absolute; inset: 40px 0 0; overflow: hidden; }
+.slide { position: absolute; inset: 10% 7% 14%; display: flex; flex-direction: column; justify-content: center; padding: 7%; border: 1px solid rgb(49 43 64 / .15); background: var(--lt-home-milk); }
+.slideLabel { font-size: clamp(9px, 1vw, 11px); color: var(--lt-home-violet); }
+.slideTitle { max-width: 90%; margin-top: 13px; font-family: var(--lt-home-heading); font-size: clamp(21px, 2.3vw, 32px); font-weight: 800; line-height: 1.3; letter-spacing: -.04em; }
+.slideBody { max-width: 90%; margin-top: 15px; font-size: clamp(10px, 1vw, 12px); line-height: 1.7; }
+.stage :global(.lt-stage-comment) { font-size: clamp(12px, 1.2vw, 16px); text-shadow: 0 1px 2px rgb(49 43 64 / .4); -webkit-text-stroke: 2px var(--lt-home-ink); }
+.audience { position: absolute; right: 15px; bottom: 12px; font-size: 9px; color: var(--lt-home-violet); font-weight: 600; }
+
+@media (max-width: 1023px) {
+  .headerInner, .footerInner { width: calc(100% - 40px); }
+  .navigation { gap: 3px; }
+  .guideList { gap: 24px; }
+  .guideTitle { font-size: 16px; }
+}
+
+@media (max-width: 767px) {
+  .headerInner { min-height: 68px; gap: 12px; }
+  .wordmark { gap: 7px; font-size: 20px; }
+  .navigation a { font-size: 11px; }
+  .guideList { grid-template-columns: 1fr; gap: 32px; }
+  .joinForm { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .joinButton { min-width: 86px; padding: 10px 14px; }
+  .stage { box-shadow: 7px 7px 0 var(--lt-surface-strong); }
+  .stageHeader { height: 32px; padding: 0 12px; font-size: 9px; }
+  .stageSurface { top: 32px; }
+  .slideTitle { font-size: clamp(20px, 5vw, 30px); }
+  .slideLabel { font-size: 9px; }
+  .slideBody { margin-top: 10px; font-size: 10px; }
+  .primaryButton, .secondaryButton { font-size: 12px; padding-inline: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primaryButton, .secondaryButton, .compactButton { transition: none; }
+}
