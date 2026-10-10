@@ -303,6 +303,24 @@ Get-AppxPackage -Name '*LayerTalk*' | Remove-AppxPackage
 
 ---
 
+## 4b. 審査に通ったあとの公開手順（2026-10-10 に提出）
+
+**「申請オプション > 公開の保留オプション」で「[今すぐ公開] を選択するまで、この提出物を
+公開しない」を選んである。** 認定に通っても自動では公開されない。
+
+理由: `feature/windows-spike` を merge すると audience-web が Vercel へデプロイされて
+サイトに「Windows 対応」が出る。認定と同時に自動公開されると、**サイトに載る前に
+ストアにアプリだけ並ぶ**か、逆に merge が早すぎると**ストアに無いのにサイトが対応を
+うたう**ことになる。公開の瞬間を自分で握るためにこうしてある。
+
+認定に通ったらこの順でやる:
+
+1. `feature/windows-spike` を `main` に merge して push
+2. Vercel のデプロイが終わり、`layer-talk.com` に Windows 版の記述が出たことを確認
+3. Partner Center の認定の状態ページで **「今すぐ公開」** を押す
+
+---
+
 ## 5. 記入済みの値
 
 | 項目 | 値 |
