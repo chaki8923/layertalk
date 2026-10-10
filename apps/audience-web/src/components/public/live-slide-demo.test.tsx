@@ -19,8 +19,8 @@ describe("LiveSlideDemo", () => {
     expect(comments.every((comment) => comment.childElementCount === 0)).toBe(true);
   });
 
-  it("uses the localized slide copy", () => {
-    const { container } = render(<LiveSlideDemo locale="en" />);
+  it.each(["default", "mascot"] as const)("uses the localized slide copy with %s appearance", (appearance) => {
+    const { container } = render(<LiveSlideDemo locale="en" appearance={appearance} />);
 
     expect(container).toHaveTextContent("Ideas grow in the room.");
     expect(container).toHaveTextContent("That is a great point!");

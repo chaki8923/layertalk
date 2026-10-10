@@ -17,6 +17,13 @@ export const ja = {
   },
 
   public: {
+    mascot: {
+      interact: (name: string) => `${name}をぷにっと動かす`,
+      stopMotion: "動きを止める",
+      startMotion: "動きを再開",
+      reducedMotion: "動きを減らす設定中",
+      names: { neutral: "キャラ", round: "丸いキャラ", tall: "縦長のキャラ", long: "横長のキャラ", flat: "平たいキャラ", lean: "傾いたキャラ", puff: "膨らんだキャラ" },
+    },
     nav: {
       label: "公開ページ",
       features: "機能",

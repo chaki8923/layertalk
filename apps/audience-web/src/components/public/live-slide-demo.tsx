@@ -3,9 +3,35 @@ import type { Locale } from "@layertalk/shared/i18n";
 import { messages } from "@/i18n";
 
 import { PhraseText, ProtectedText } from "./phrase-text";
+import type { PublicAppearance } from "./appearance";
+import styles from "./mascot-public.module.css";
 
-export function LiveSlideDemo({ locale }: { locale: Locale }) {
+export function LiveSlideDemo({ locale, appearance = "default" }: { locale: Locale; appearance?: PublicAppearance }) {
   const stage = messages[locale].landing.stage;
+
+  if (appearance === "mascot") {
+    return (
+      <div className={styles.stage} aria-hidden="true">
+        <div className={styles.stageHeader}>
+          <span>{stage.label}</span>
+          <span className={styles.stageStatus}>{stage.status}</span>
+        </div>
+        <div className={styles.stageSurface}>
+          <div className={styles.slide}>
+            <p className={styles.slideLabel}>LayerTalk session</p>
+            <p className={styles.slideTitle}>{locale === "ja" ? <PhraseText phrases={["アイデアは、", "会場で育つ。"]} /> : stage.slideTitle}</p>
+            <p className={styles.slideBody}><ProtectedText text={stage.slideBody} /></p>
+          </div>
+          <div className="lt-stage-comment top-[22%] [animation-delay:-1.8s]">{stage.comments[0]}</div>
+          <div className="lt-stage-comment top-[53%] [animation-delay:-5.2s]">{stage.comments[1]}</div>
+          <div className="lt-stage-comment top-[73%] [animation-delay:-3.4s]">{stage.comments[2]}</div>
+          <span className="lt-stage-stamp left-[18%] top-[70%] [animation-delay:-1s]">✨</span>
+          <span className="lt-stage-stamp left-[78%] top-[72%] [animation-delay:-3.8s]">👏</span>
+          <span className={styles.audience}>{stage.audience}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div aria-hidden="true" className="relative mx-auto w-full max-w-[44rem] lg:max-w-none">

@@ -1,0 +1,97 @@
+{
+  "reference": "../layertalk-mascot-concept-v1.png",
+  "generation": "Built-in image generation, one variant per call, same original reference, transparent background; 01 is an unchanged copy of the original.",
+  "assets": [
+    {
+      "filename": "01-neutral.png",
+      "width": 1536,
+      "height": 1024,
+      "hasAlpha": true,
+      "alphaRange": [
+        0,
+        254
+      ],
+      "sha256": "164b3bac88ea107adfa8ceff08b68e0166ba6a4ae60e02905d8a5df9501954fa",
+      "publicCopyIdentical": true,
+      "prompt": "01-neutral-prompt.txt"
+    },
+    {
+      "filename": "02-round.png",
+      "width": 1536,
+      "height": 1024,
+      "hasAlpha": true,
+      "alphaRange": [
+        0,
+        254
+      ],
+      "sha256": "b203ff95424f90803eb450d6d166e52a47fdfd7c25afc8aad5a8cfcc697313b3",
+      "publicCopyIdentical": true,
+      "prompt": "02-round-prompt.txt"
+    },
+    {
+      "filename": "03-tall.png",
+      "width": 1536,
+      "height": 1024,
+      "hasAlpha": true,
+      "alphaRange": [
+        0,
+        254
+      ],
+      "sha256": "005ffa46cedbe29e791cfb6b9e9341d277f47c7523c9a88f7e74d6e6549f9e09",
+      "publicCopyIdentical": true,
+      "prompt": "03-tall-prompt.txt"
+    },
+    {
+      "filename": "04-long.png",
+      "width": 1536,
+      "height": 1024,
+      "hasAlpha": true,
+      "alphaRange": [
+        0,
+        254
+      ],
+      "sha256": "455b0abddb37a44aaedaafde7abb9b3cd70fd2a7c80bc0e7ee63da69681ad025",
+      "publicCopyIdentical": true,
+      "prompt": "04-long-prompt.txt"
+    },
+    {
+      "filename": "05-flat.png",
+      "width": 1536,
+      "height": 1024,
+      "hasAlpha": true,
+      "alphaRange": [
+        0,
+        254
+      ],
+      "sha256": "651780ecad0376c0952f027fc013093be13ec2ab4406827f640ceceb9c70457f",
+      "publicCopyIdentical": true,
+      "prompt": "05-flat-prompt.txt"
+    },
+    {
+      "filename": "06-lean.png",
+      "width": 1536,
+      "height": 1024,
+      "hasAlpha": true,
+      "alphaRange": [
+        0,
+        254
+      ],
+      "sha256": "b3ad054049e7157a67b5634460f55fda49597a2b82e0ab65aa3131c22aa3f6ae",
+      "publicCopyIdentical": true,
+      "prompt": "06-lean-prompt.txt"
+    },
+    {
+      "filename": "07-puff.png",
+      "width": 1536,
+      "height": 1024,
+      "hasAlpha": true,
+      "alphaRange": [
+        0,
+        254
+      ],
+      "sha256": "1d38d2e35646b57e30af351c103492d9bb522ad00f4d622fe7720f22861b6122",
+      "publicCopyIdentical": true,
+      "prompt": "07-puff-prompt.txt"
+    }
+  ]
+}
