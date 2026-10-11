@@ -167,17 +167,23 @@ reports, and branding for one room for seven days. It does not renew automatical
 > （Windows では Segoe UI Emoji になる）。審査で問題になる水準ではないが、
 > 気になるなら撮り直す。
 
-### 用意できているもの（2026-10-10）
+### 用意できているもの（2026-10-11）
 
 | アップロードするファイル | 出どころ | 寸法 |
 |---|---|---|
 | `assets/コメント表示-appstore.png` | App Store 版から流用 | 1440×900 |
 | `assets/質問パネル-appstore.png` | 同上 | 1440×900 |
 | `assets/参加QR-appstore.png` | 同上 | 1440×900 |
-| `assets/コントロール窓_windows.png` | VM で撮影 | 1920×850 |
-| `assets/安全管理_windows.png` | VM で撮影 | 1920×850 |
+| `assets/コントロール窓_windows.png` | VM で撮影（**1.0.1 で撮り直し**） | 1920×850 |
+| `assets/安全管理_windows.png` | VM で撮影（**1.0.1 で撮り直し**） | 1920×850 |
 | `assets/イベントパス_windows.png` | VM で撮影 | 1920×850 |
 | `assets/ms-store-tile-300.png` | `icons/icon.png` を縮小 | 300×300 |
+
+> **VM は仮想ディスプレイ1台なので、「コメントを出す画面」はラジオではなく
+> 「このPCの画面に出します。…」の1文になる。** Windows 側の不具合ではない
+> （1.0.0 の画像にも「現在つながっているディスプレイは1台です」と出ている）。
+> 2行のセレクタを Windows でも見せたいなら、VM にディスプレイを2つ割り当てる。
+> いまは Mac 版の1枚がそれを見せているので、揃えていない。
 
 最後の1枚は**スクリーンショットではなくアプリタイルアイコン**（1:1）。登録すると
 ストアがパッケージ内のアイコンより優先して使う。
