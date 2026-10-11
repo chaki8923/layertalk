@@ -2,7 +2,9 @@
 
 最終更新: 2026-10-11
 
-> ## 1.0.0 は審査を通って配信中。いまは **1.0.1（bundleVersion 3）の更新作業**
+> ## 1.0.1（bundleVersion 3）を 2026-10-11 に提出。審査待ち
+>
+> 1.0.0 は配信中。1.0.1 は Transporter で 12:38 にアップロードし、同日に審査へ出した。
 >
 > 下の「4. 提出」までは 1.0.0 で済んだ話。**初回提出の手順として残してある**ので、
 > 更新のときに全部やり直すものだと読まないこと。更新で要るのは
@@ -206,7 +208,8 @@ open apps/presenter-app/src-tauri/target/dev-signed/LayerTalk.app
   **Slack / Teams の節は PDF にして「添付ファイル」欄へ回した**。
   審査用の Teams Webhook URL は添付ファイルの中だけに置く（リポジトリには書かない）。
   `<REVIEW_PASSWORD>` は App Store Connect に直接入れる（リポジトリには書かない）。
-- [ ] **Transporter でアップロードして提出する** — IAP は初回だけ、アプリ本体と一緒に審査へ出す
+- [x] **Transporter でアップロードして提出する**（1.0.0 は 2026-09-22、1.0.1 は 2026-10-11）—
+  IAP は初回だけ、アプリ本体と一緒に審査へ出す。更新では同梱不要
 - [ ] **2 回目以降は `bundleVersion` を上げてからビルドする**
   `apps/presenter-app/src-tauri/tauri.mas.conf.json`（いまは `"3"`、version は `1.0.1`）。App Store Connect は同じビルド番号を二度受け付けない。
   **`tauri.conf.json` の `version` は Windows の MSIX のバージョンの元にもなる**
@@ -231,11 +234,11 @@ open apps/presenter-app/src-tauri/target/dev-signed/LayerTalk.app
   `on delete restrict` で、**一度でもブロックを押した発表者だけ退会できなかった**（5.1.1(v)）。
   `20260923030200_allow_account_deletion_after_block.sql` を本番に適用済み（`set null` に張り替え）。
   アプリの再ビルドは不要。確かめ方: ブロック → 退会が通ること
-- [ ] **Stripe 表記の出し分けを入れたビルドを出す** — 退会ダイアログの `deleteKeeps` が
+- [x] **Stripe 表記の出し分けを入れたビルドを出す**（2026-10-11、1.0.1 で提出）— 退会ダイアログの `deleteKeeps` が
   MAS 版でも「Stripe 側に残ります」と出ていた（3.1.1）。`isMasBuild` で Apple 表記に出し分け済みで、
   画面収録用の `build-dev.sh` には入っている（2026-09-23）。**提出ビルドにはまだ入っていない。**
   1.0.0 は通ったので、**1.0.1（`bundleVersion` 3）で初めて出荷される**。
-  2026-10-11 に版を上げた（`tauri.conf.json` 1.0.1 / `tauri.mas.conf.json` 3）
+  2026-10-11 に版を上げて提出済み（`tauri.conf.json` 1.0.1 / `tauri.mas.conf.json` 3）
 
 ## 5. 審査が通ったら
 
