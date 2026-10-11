@@ -29,7 +29,8 @@ OV/IV を買っても SmartScreen の警告は消えないので、買う意味�
   **参加コード → コメントを出す画面 → 安全管理** に変えた
 
 再提出のときは:
-- **バージョンの3番目を上げる**（`$env:MSIX_VERSION = "1.0.1.0"`）
+- **バージョンはもう上がっている。** 2026-10-11 に `tauri.conf.json` を `1.0.1` にしたので、
+  `build-msix.ps1` が既定で `1.0.1.0` を使う（`version + ".0"`）。`$env:MSIX_VERSION` は渡さなくてよい
 - **`assets/コントロール窓_windows.png` と `assets/安全管理_windows.png` を撮り直す**
   （並びも文言も変わったので、いまの画像は古い）
 
@@ -46,7 +47,7 @@ OV/IV を買っても SmartScreen の警告は消えないので、買う意味�
 | `runFullTrust` の理由 | 記入済み |
 | 年齢区分 | IARC 完了（Microsoft Store は 12+） |
 | 公開 | **手動**（下の 4b を見ること） |
-| MSIX のバージョン | 再提出で `1.0.1.0` へ |
+| MSIX のバージョン | `1.0.1.0`（`tauri.conf.json` が `1.0.1`。2026-10-11 に更新済み） |
 
 **`feature/windows-spike` は main に merge していない。** 理由と順番は 4b。
 

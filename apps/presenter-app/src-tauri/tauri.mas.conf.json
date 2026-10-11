@@ -5,7 +5,7 @@
     ],
     "macOS": {
       "entitlements": "Entitlements.mas.plist",
-      "bundleVersion": "2"
+      "bundleVersion": "3"
     }
   }
 }

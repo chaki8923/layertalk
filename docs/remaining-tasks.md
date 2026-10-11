@@ -1,6 +1,26 @@
 # 残りのやるべきこと（App Store 審査まで）
 
-最終更新: 2026-09-23
+最終更新: 2026-10-11
+
+> ## 1.0.0 は審査を通って配信中。いまは **1.0.1（bundleVersion 3）の更新作業**
+>
+> 下の「4. 提出」までは 1.0.0 で済んだ話。**初回提出の手順として残してある**ので、
+> 更新のときに全部やり直すものだと読まないこと。更新で要るのは
+> **`bundleVersion` を上げる → `build-mas.sh` → Transporter → ASC で新バージョンを作って提出**だけ。
+>
+> 1.0.1 に入るもの（2026-10-11 時点）:
+> - **表示先モニターの既定を「自動＝外部ディスプレイ優先」に**。会議室で挿す
+>   プロジェクターは主ディスプレイにならないので、手元の画面にだけコメントが出ていた
+> - **画面の選び方を役割で言い切る**（「このMacの画面」「外部ディスプレイ」）。
+>   機種名は出さない。画面2台で3行出ていたのを2行に畳んだ
+> - **コントロール窓の並び**を 開始 → 参加コード → コメントを出す画面 → 安全管理 に
+> - **Stripe 表記の出し分け**（9/23 から持ち越し。退会ダイアログが MAS 版でも
+>   「Stripe 側に残ります」と出ていた＝3.1.1）。コードは入っていて、このビルドで初めて出荷される
+>
+> **スクリーンショットの差し替えが要る。** コントロール窓と安全管理の 2 枚は、
+> 並びも文言も変わっていて実物と違う（`docs/app-store-listing.md` の 4 と 5）。
+>
+> Windows 版は別管理 → `docs/ms-store-listing.md`
 
 **審査までの残作業の正はこのファイルだけ。** 以前の `docs/app-store-gates.html`・`docs/mas-migration-handover.md`・
 `docs/handoff.md` は消した（中身はここと `CLAUDE.md` に移してある。戻したければ git の履歴から）。
@@ -188,7 +208,9 @@ open apps/presenter-app/src-tauri/target/dev-signed/LayerTalk.app
   `<REVIEW_PASSWORD>` は App Store Connect に直接入れる（リポジトリには書かない）。
 - [ ] **Transporter でアップロードして提出する** — IAP は初回だけ、アプリ本体と一緒に審査へ出す
 - [ ] **2 回目以降は `bundleVersion` を上げてからビルドする**
-  `apps/presenter-app/src-tauri/tauri.mas.conf.json`（いまは `"1"`、version は `1.0.0`）。App Store Connect は同じビルド番号を二度受け付けない
+  `apps/presenter-app/src-tauri/tauri.mas.conf.json`（いまは `"3"`、version は `1.0.1`）。App Store Connect は同じビルド番号を二度受け付けない。
+  **`tauri.conf.json` の `version` は Windows の MSIX のバージョンの元にもなる**
+  （`build-msix.ps1` が `version + ".0"` を使う）ので、上げたら Windows 側の提出番号も動く
 
 ## 4b. 2.1 Information Needed への返信（2026-09-23 に差し戻し）
 
@@ -212,9 +234,8 @@ open apps/presenter-app/src-tauri/target/dev-signed/LayerTalk.app
 - [ ] **Stripe 表記の出し分けを入れたビルドを出す** — 退会ダイアログの `deleteKeeps` が
   MAS 版でも「Stripe 側に残ります」と出ていた（3.1.1）。`isMasBuild` で Apple 表記に出し分け済みで、
   画面収録用の `build-dev.sh` には入っている（2026-09-23）。**提出ビルドにはまだ入っていない。**
-  9/23 13:13 に返信を送って審査が動いているので、**いまは新しいビルドを上げない**
-  （上げると提出が差し替わって並び直しになる）。通ったら 1.0.1 で出す。
-  3.1.1 を指摘されたら `bundleVersion` を `3` にして `build-mas.sh` → Transporter
+  1.0.0 は通ったので、**1.0.1（`bundleVersion` 3）で初めて出荷される**。
+  2026-10-11 に版を上げた（`tauri.conf.json` 1.0.1 / `tauri.mas.conf.json` 3）
 
 ## 5. 審査が通ったら
 
