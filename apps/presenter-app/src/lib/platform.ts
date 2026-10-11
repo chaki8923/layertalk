@@ -29,6 +29,14 @@ export function thisDevice(ja: boolean): string {
 }
 
 /** OS が持つ資格情報の保管庫の名前。Webhook の URL を預ける先。 */
+/**
+ * 機種の呼び名。`thisDevice` は「このMac」という句なので、「この◯◯の画面」のような
+ * 文に差し込めない。名詞だけ欲しいときはこちら。
+ */
+export function deviceNoun(): "Mac" | "PC" {
+  return IS_WINDOWS ? "PC" : "Mac";
+}
+
 export function credentialStoreName(ja: boolean): string {
   if (IS_WINDOWS) return ja ? "資格情報マネージャー" : "Windows Credential Manager";
   return "Keychain";

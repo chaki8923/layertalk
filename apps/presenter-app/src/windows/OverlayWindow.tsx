@@ -35,12 +35,18 @@ import {
   onPresentationStateChanged,
   overlayPushComment,
   refitOverlay,
+  listMonitors,
+  type MonitorInfo,
 } from "../lib/tauri";
+import { describeTarget } from "../lib/monitors";
+import { deviceNoun } from "../lib/platform";
 
 export function OverlayWindow() {
   const [settings, setSettings] = useState<PresenterSettings>(loadSettings);
   const [live, setLive] = useState(false);
   const [peeking, setPeeking] = useState(false);
+  // 確認カードに出す画面名のためだけに持つ。この窓は一覧を使わないので peek のときだけ取る。
+  const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
   const [moderation, setModeration] = useState<ModerationRules | null>(null);
 
   // 参加QRカードのロゴ・色・LayerTalk表記。窓をまたぐ伝達はフックの中の Tauri イベント。
@@ -75,6 +81,8 @@ export function OverlayWindow() {
     let timer: number | undefined;
     const unlisten = onOverlayPeek((ms) => {
       setPeeking(true);
+      // 「自動」だと保存値だけでは画面名が分からないので、出す直前に引き直す。
+      void listMonitors().then(setMonitors);
       window.clearTimeout(timer);
       timer = window.setTimeout(() => setPeeking(false), ms);
     });
@@ -287,7 +295,8 @@ export function OverlayWindow() {
     };
   }, [showComment]);
 
-  const monitorLabel = settings.monitorName ?? t.monitor.primary;
+  // `monitorName` は照合用の ID（Windows では `\\.\DISPLAY1`）なので、そのままは出さない。
+  const monitorLabel = describeTarget(monitors, settings.monitorName, t) ?? t.monitor.thisScreen(deviceNoun());
 
   // 右端は質問パネルの領域なので、QR は左下に逃がす。
   // peek 中にも出して、発表前でも置き場所を確認できるようにする。

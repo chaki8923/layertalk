@@ -11,6 +11,11 @@ export const currentWindowLabel = (): WindowLabel => getCurrentWindow().label as
 export const startCurrentWindowDragging = () => getCurrentWindow().startDragging();
 
 export type MonitorInfo = {
+  /**
+   * 照合用の ID。**文言ではないので画面に出さない**
+   * （Windows は `\\.\DISPLAY1`、macOS は機種名。どちらも*どの画面か*を教えない）。
+   * 行に出す名前は `lib/monitors.ts` の `describeMonitor` が役割から作る。
+   */
   name: string;
   width: number;
   height: number;
@@ -22,7 +27,7 @@ export type MonitorInfo = {
 
 export const listMonitors = () => invoke<MonitorInfo[]>("list_monitors");
 
-/** 表示先モニターを変更する。null でプライマリ。 */
+/** 表示先モニターを変更する。null で自動（外部ディスプレイ優先）。 */
 export const setOverlayMonitor = (monitor: string | null) =>
   invoke<void>("set_overlay_monitor", { monitor });
 

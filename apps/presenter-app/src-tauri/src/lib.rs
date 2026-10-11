@@ -381,6 +381,20 @@ mod native_overlay {
         }
     }
 
+    /// 表示先が選ばれていない（＝「自動」）ときに使う画面。
+    ///
+    /// **外部ディスプレイを優先する。** 会議室ではプロジェクターや大型モニターを挿すが、
+    /// それは主ディスプレイではないので、主へ落とすと手元のノート画面にだけコメントが出る。
+    /// `NSScreen::screens` の先頭がメニューバーのある画面（＝主）なので、2番目があれば
+    /// それが外部。1台しか無ければその1台。
+    ///
+    /// **Windows の `auto_monitor` と、JS の `resolveAutoMonitor` は同じ規則であること。**
+    /// 3つのどれかだけを変えると、一覧に出る「いまの出力先」と実際の表示先がずれる。
+    fn auto_screen(mtm: MainThreadMarker) -> Option<Retained<NSScreen>> {
+        let screens = NSScreen::screens(mtm);
+        screens.iter().nth(1).or_else(|| screens.iter().next())
+    }
+
     fn screen_display_id(screen: &NSScreen) -> Option<u32> {
         let description = screen.deviceDescription();
         let key = NSString::from_str("NSScreenNumber");
@@ -399,10 +413,7 @@ mod native_overlay {
                 }
             }
         }
-        screens
-            .iter()
-            .next()
-            .and_then(|screen| screen_display_id(&screen))
+        auto_screen(mtm).and_then(|screen| screen_display_id(&screen))
     }
 
     /// 選択中のモニターの矩形（AppKit の座標系・ポイント単位）。
@@ -417,10 +428,11 @@ mod native_overlay {
             }
         }
 
-        // フォールバックは**主ディスプレイ**（メニューバーがある画面 = `screens[0]`）。
+        // 未選択のときも、選んだ画面が見つからないときも `auto_screen`（外部優先）へ落とす。
+        // ケーブルが抜けても真っ暗にしない、という意図は変わらない。
         // `mainScreen` は「キーボードフォーカスがある画面」を返すので使ってはいけない。
-        // 発表中は他アプリにフォーカスがあるため、外部モニターへ飛ぶ。
-        screens.iter().next().map(|screen| screen.frame())
+        // 発表中は他アプリにフォーカスがあるため、意図しない画面へ飛ぶ。
+        auto_screen(mtm).map(|screen| screen.frame())
     }
 
     /// 表示先の候補一覧。名前は `screen_frame` と同じ実装で作る。
@@ -649,6 +661,11 @@ fn reset_control_window_level(_window: &WebviewWindow) {}
 
 #[derive(Serialize, Clone)]
 struct MonitorInfo {
+    /// **照合用の ID。文言ではない**（罠 #12）。`settings.monitorName` に保存され、
+    /// 表示先を決めるときに文字列一致で引き当てる。**画面には出さない** —
+    /// Windows ではこれが GDI のデバイス名（`\\.\DISPLAY1`）、macOS では機種名
+    /// （「JAPANNEXT.MNT」）で、どちらも*どの画面か*を人に教えない。行に出すのは
+    /// `lib/monitors.ts` が `is_primary` から作る役割名だけ。
     name: String,
     width: u32,
     height: u32,
@@ -697,8 +714,30 @@ fn collect_monitors(window: &WebviewWindow) -> Vec<MonitorInfo> {
         .collect()
 }
 
+/// 表示先が選ばれていない（＝「自動」）ときに使うモニター。
+///
+/// **外部ディスプレイを優先する。** 会議室ではプロジェクターや大型モニターを挿すが、
+/// それは主ディスプレイではないので、主へ落とすと手元の画面にだけコメントが出る。
+/// 外部が無ければ主ディスプレイ。
+///
+/// **macOS の `native_overlay::auto_screen` と、JS の `resolveAutoMonitor` は同じ規則で
+/// あること。** 3つのどれかだけを変えると、一覧に出る「いまの出力先」と実際の表示先がずれる。
+#[cfg(not(target_os = "macos"))]
+fn auto_monitor(window: &WebviewWindow) -> Option<Monitor> {
+    let primary = window.primary_monitor().ok().flatten();
+    let primary_position = primary.as_ref().map(|monitor| *monitor.position());
+
+    window
+        .available_monitors()
+        .unwrap_or_default()
+        .into_iter()
+        // `collect_monitors` の `is_primary` と同じ突き合わせ方。
+        .find(|monitor| primary_position != Some(*monitor.position()))
+        .or(primary)
+}
+
 /// 指定した名前のモニター全面（メニューバー領域含む）にオーバーレイを合わせる。
-/// 見つからなければプライマリに落とす — 発表直前にケーブルが抜けても真っ暗にしないため。
+/// 見つからなければ `auto_monitor` に落とす — 発表直前にケーブルが抜けても真っ暗にしないため。
 #[cfg(not(target_os = "macos"))]
 fn fit_overlay_to_monitor(window: &WebviewWindow, target: Option<&str>) {
     let monitors = window.available_monitors().unwrap_or_default();
@@ -711,7 +750,7 @@ fn fit_overlay_to_monitor(window: &WebviewWindow, target: Option<&str>) {
                 .find(|(index, monitor)| monitor_label(monitor, *index) == name)
                 .map(|(_, monitor)| monitor.clone())
         })
-        .or_else(|| window.primary_monitor().ok().flatten());
+        .or_else(|| auto_monitor(window));
 
     match chosen {
         Some(monitor) => {
@@ -740,7 +779,7 @@ fn fit_question_panel_to_monitor(window: &WebviewWindow, target: Option<&str>) {
                 .find(|(index, monitor)| monitor_label(monitor, *index) == name)
                 .map(|(_, monitor)| monitor.clone())
         })
-        .or_else(|| window.primary_monitor().ok().flatten());
+        .or_else(|| auto_monitor(window));
 
     match chosen {
         Some(monitor) => {
@@ -1380,8 +1419,17 @@ fn capture_display_id(app: &AppHandle, monitor: Option<String>) -> Option<u32> {
 ///
 /// macOS と違って `run_on_main_thread` が要らない（GDI の列挙にスレッド親和性は無い）。
 #[cfg(target_os = "windows")]
-fn capture_display_id(_app: &AppHandle, monitor: Option<String>) -> Option<u32> {
-    windows_capture::monitor_index(monitor.as_deref())
+fn capture_display_id(app: &AppHandle, monitor: Option<String>) -> Option<u32> {
+    // 「自動」のときは、**ここでデバイス名まで解決してから**渡す。
+    // `windows_capture` の `EnumDisplayMonitors` の並びが tao の `available_monitors()` と
+    // 一致する保証は無いので、あちらに「自動」の判断をさせると、オーバーレイと別の画面を
+    // 撮ることがある（外部が2台あるときに実害が出る）。表示先を決める規則は1箇所に置く。
+    let target = monitor.or_else(|| {
+        app.get_webview_window(OVERLAY)
+            .and_then(|window| auto_monitor(&window))
+            .and_then(|monitor| monitor.name().cloned())
+    });
+    windows_capture::monitor_index(target.as_deref())
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
