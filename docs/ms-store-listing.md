@@ -155,25 +155,32 @@ reports, and branding for one room for seven days. It does not renew automatical
 - 重要な要素は**上から 2/3 の範囲**に置く（下 1/3 にキャプションが重なる）
 - **ロゴ・アイコン・宣伝文句を画像に足さないこと**
 
-**App Store 版（`assets/*-appstore.png`、1440×900）のうち3枚はそのまま使える。**
-寸法は 1366×768 以上を満たしている。
+### App Store 版の流用は**できない**（2026-10-11 に 10.1.1.3 で落ちた）
 
-| 枚 | 流用 | 理由 |
-|---|---|---|
-| コメント表示 / 質問パネル / 参加QR | **可** | スライドとオーバーレイだけで、OS の要素が写っていない |
-| コントロール窓 / 安全管理 / Event Pass | **不可** | macOS の信号機ボタン、「内蔵Retinaディスプレイ」、「このMacのKeychainに保存されます」が写っている。文言は Windows 版で直したので、画像のほうが古い |
+以前ここには「コメント表示 / 質問パネル / 参加QR の3枚はスライドとオーバーレイだけなので
+流用可」と書いてあった。**嘘だった。** 2026-10-11 の提出がこれで差し戻された:
 
-> 流用する3枚の唯一の難点は、**絵文字が Apple のデザイン**であること
-> （Windows では Segoe UI Emoji になる）。審査で問題になる水準ではないが、
-> 気になるなら撮り直す。
+> **10.1.1.3 Inaccurate Representation** — The images submitted in the Metadata show
+> non-Windows UI or devices.
+
+実際に写っていたもの:
+
+| 画像 | Windows 以外の要素 |
+|---|---|
+| 参加QR | **macOS の信号機ボタン**（赤・黄・緑）と「この**Mac**の**Keychain**に保存されます」。コントロール窓がまるごと写っていた |
+| コメント表示 | **Apple デザインの絵文字**（👏 👍）。Windows は Segoe UI Emoji |
+| 質問パネル | OS 要素は無し。巻き添えと思われる |
+
+**6枚すべてを VM で撮ること。** 「OS の要素が写っていない」は目視で判断せず、
+信号機ボタン・絵文字・「Mac」「Keychain」などの文字列まで見る。
 
 ### 用意できているもの（2026-10-11）
 
 | アップロードするファイル | 出どころ | 寸法 |
 |---|---|---|
-| `assets/コメント表示-appstore.png` | App Store 版から流用 | 1440×900 |
-| `assets/質問パネル-appstore.png` | 同上 | 1440×900 |
-| `assets/参加QR-appstore.png` | 同上 | 1440×900 |
+| `assets/コメント表示_windows.png` | VM で撮影（10.1.1.3 を受けて撮り直し） | 1920×850 |
+| `assets/質問パネル_windows.png` | 同上 | 1920×850 |
+| `assets/参加QR_windows.png` | 同上 | 1920×850 |
 | `assets/コントロール窓_windows.png` | VM で撮影（**1.0.1 で撮り直し**） | 1920×850 |
 | `assets/安全管理_windows.png` | VM で撮影（**1.0.1 で撮り直し**） | 1920×850 |
 | `assets/イベントパス_windows.png` | VM で撮影 | 1920×850 |
@@ -187,6 +194,20 @@ reports, and branding for one room for seven days. It does not renew automatical
 
 最後の1枚は**スクリーンショットではなくアプリタイルアイコン**（1:1）。登録すると
 ストアがパッケージ内のアイコンより優先して使う。
+
+> **VM の Windows は未ライセンスなので、画面の下 230px は永久に使えない。**
+> Parallels の年額は仮想化ソフトの料金で、**Windows のライセンスは含まれない**
+> （Parallels が Windows 11 を自動で入れてくれるので込みに見えるが別物）。
+> 「Windows のライセンス認証」の透かしが右下に出るため、`take-screenshot.ps1` が
+> 下 230px を切り落としている。
+>
+> **その結果、画面下端に出る UI は Windows のストア画像に入れられない。**
+> スライド左下の参加QR がこれで、カードは下端から 32px の位置に高さ約 290px
+> （`OverlayWindow.tsx` の `bottom-8` ＋ `JoinQrCard size={220}`）なので、
+> 切り落としで上 1/3 しか残らない。透かしの上端は下から 212px なので、
+> 切り落としを減らして逃げることもできない。
+> **`参加QR_windows.png` がコントロール窓の中のプレビューだけなのはこのため。**
+> 直すならライセンスを買って `-BottomCrop 0` で撮る。2万円弱。
 
 ### VM で撮り直すとき
 
