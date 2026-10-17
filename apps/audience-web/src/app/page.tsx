@@ -45,10 +45,11 @@ export default async function HomePage() {
               <span className={styles.titleLine}>{locale === "ja" ? <PhraseText phrases={["スライド", "の上へ。"]} /> : t.titleHighlight}</span>
             </h1>
             <p className={styles.description}><ProtectedText text={t.description} /></p>
-            {/* ヘッダの「アプリを入手」がここへ飛ぶ。id を外すとあのリンクが行き先を失う。 */}
+            {/* ヘッダの「アプリを入手」がここへ飛ぶ。id を外すとあのリンクが行き先を失う。
+                **観客向けの導線はここに置かない。** 発表者に入れてもらう行に、別の人の
+                行動（参加する）が混ざると、どちらも弱くなる。参加はヘッダと下の `#join`。 */}
             <div id="get" className={styles.actions}>
               <StoreButtons locale={locale} />
-              <Link href="/#join" className={"lt-tap lt-nowrap inline-flex items-center justify-center " + publicStyles.secondaryButton}>{t.secondaryCta}</Link>
             </div>
             <p className={styles.note}>{messages[locale].public.appStore.note}</p>
             <ul className={styles.signals} aria-label="LayerTalk highlights">
@@ -59,18 +60,6 @@ export default async function HomePage() {
             <Mascot locale={locale} variant="neutral" className={styles.heroMascot} preload sizes="(max-width: 767px) 110vw, 650px" />
             <div className={styles.demo}><LiveSlideDemo locale={locale} appearance="mascot" /></div>
             <div className={styles.sceneCaption}><p>{t.eyebrow}</p><MascotMotionControl locale={locale} /></div>
-          </div>
-        </section>
-
-        <section id="join" className={styles.container + " " + styles.join}>
-          <div className={styles.joinInner}>
-            <div className={styles.joinCopy}>
-              <Mascot locale={locale} variant="round" className={styles.joinMascot} sizes="220px" />
-              <h2 className={styles.joinHeading}>{locale === "ja" ? <PhraseText phrases={["観客として", "参加する"]} /> : t.join.title}</h2>
-              <p className={styles.joinDescription}><ProtectedText text={t.join.description} /></p>
-              <p className={styles.meta}>{t.join.eyebrow}</p>
-            </div>
-            <div className={styles.joinFormWrap}><JoinForm locale={locale} appearance="mascot" /></div>
           </div>
         </section>
 
@@ -145,6 +134,24 @@ export default async function HomePage() {
           </div>
         </section>
 
+        {/* **発表者向けのページなので、ヒーローには置かない。**
+            観客は LP を眺めに来るのではなく、QR か URL で送り込まれてくる。
+            ここが要るのは QR が使えなかったときの退路 — 発表者が QR を出していない
+            （手動トグルなので出すとは限らない）、後ろの席で読めない、遅れて来た、
+            口頭で «layer-talk.com でコード 9R2BUS» と言われた、など。
+            そういう人のために、ヘッダの「参加」は全ページで常に出してある。 */}
+        <section id="join" className={styles.container + " " + styles.join}>
+          <div className={styles.joinInner}>
+            <div className={styles.joinCopy}>
+              <Mascot locale={locale} variant="round" className={styles.joinMascot} sizes="220px" />
+              <h2 className={styles.joinHeading}>{locale === "ja" ? <PhraseText phrases={["観客として", "参加する"]} /> : t.join.title}</h2>
+              <p className={styles.joinDescription}><ProtectedText text={t.join.description} /></p>
+              <p className={styles.meta}>{t.join.eyebrow}</p>
+            </div>
+            <div className={styles.joinFormWrap}><JoinForm locale={locale} appearance="mascot" /></div>
+          </div>
+        </section>
+
         <section className={styles.container + " " + styles.passSection}>
           <div className={styles.pass}>
             <div>
@@ -172,8 +179,9 @@ export default async function HomePage() {
           <div>
             <h2 className={styles.heading}>{locale === "ja" ? <PhraseText phrases={["次の発表を、", "会場との対話に", "変える。"]} /> : t.finalCta.title}</h2>
             <div className={styles.actions}>
+              {/* ここもヒーローと同じで、発表者に向けた行に観客の導線を混ぜない。
+                  参加はすぐ上の `#join` とヘッダにある。 */}
               <StoreButtons locale={locale} />
-              <Link href="/#join" className={"lt-tap lt-nowrap inline-flex items-center justify-center " + publicStyles.secondaryButton}>{t.finalCta.audience}</Link>
             </div>
           </div>
           <Mascot locale={locale} variant="lean" className={styles.finalMascot} sizes="(max-width: 767px) 280px, 470px" />

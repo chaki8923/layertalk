@@ -142,7 +142,6 @@ export const ja = {
     },
     finalCta: {
       title: "次の発表を、会場との対話に変える。",
-      audience: "観客として参加",
     },
   },
 

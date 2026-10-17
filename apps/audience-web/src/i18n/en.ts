@@ -122,7 +122,6 @@ export const en: Messages = {
     },
     finalCta: {
       title: "Turn your next presentation into a conversation.",
-      audience: "Join as audience",
     },
   },
 
