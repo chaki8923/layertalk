@@ -47,7 +47,7 @@ export default async function HomePage() {
             <p className={styles.description}><ProtectedText text={t.description} /></p>
             {/* ヘッダの「アプリを入手」がここへ飛ぶ。id を外すとあのリンクが行き先を失う。 */}
             <div id="get" className={styles.actions}>
-              <StoreButtons locale={locale} appearance="mascot" />
+              <StoreButtons locale={locale} />
               <Link href="/#join" className={"lt-tap lt-nowrap inline-flex items-center justify-center " + publicStyles.secondaryButton}>{t.secondaryCta}</Link>
             </div>
             <p className={styles.note}>{messages[locale].public.appStore.note}</p>
@@ -172,7 +172,7 @@ export default async function HomePage() {
           <div>
             <h2 className={styles.heading}>{locale === "ja" ? <PhraseText phrases={["次の発表を、", "会場との対話に", "変える。"]} /> : t.finalCta.title}</h2>
             <div className={styles.actions}>
-              <StoreButtons locale={locale} appearance="mascot" />
+              <StoreButtons locale={locale} />
               <Link href="/#join" className={"lt-tap lt-nowrap inline-flex items-center justify-center " + publicStyles.secondaryButton}>{t.finalCta.audience}</Link>
             </div>
           </div>
