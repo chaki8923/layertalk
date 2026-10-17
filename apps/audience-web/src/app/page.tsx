@@ -38,17 +38,18 @@ export default async function HomePage() {
     <PublicShell locale={locale} appearance="mascot">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }} />
       <main className={styles.main}>
-        <section className={styles.container + " " + styles.hero}>
+        {/* ヘッダの「アプリを入手」の行き先。**バッジの行ではなくヒーロー全体に付ける。**
+            行に付けると、見出しが画面外に切れた中途半端な位置へ飛ぶ。 */}
+        <section id="get" className={styles.container + " " + styles.hero}>
           <div className={styles.heroCopy}>
             <h1 className={styles.title}>
               <span className={styles.titleLine}>{locale === "ja" ? <PhraseText phrases={["会場の声を、"]} /> : t.titleLead}</span>
               <span className={styles.titleLine}>{locale === "ja" ? <PhraseText phrases={["スライド", "の上へ。"]} /> : t.titleHighlight}</span>
             </h1>
             <p className={styles.description}><ProtectedText text={t.description} /></p>
-            {/* ヘッダの「アプリを入手」がここへ飛ぶ。id を外すとあのリンクが行き先を失う。
-                **観客向けの導線はここに置かない。** 発表者に入れてもらう行に、別の人の
+            {/* **観客向けの導線はここに置かない。** 発表者に入れてもらう行に、別の人の
                 行動（参加する）が混ざると、どちらも弱くなる。参加はヘッダと下の `#join`。 */}
-            <div id="get" className={styles.actions}>
+            <div className={styles.actions}>
               <StoreButtons locale={locale} />
             </div>
             <p className={styles.note}>{messages[locale].public.appStore.note}</p>
