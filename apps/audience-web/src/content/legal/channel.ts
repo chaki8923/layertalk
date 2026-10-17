@@ -2,7 +2,14 @@
  * どの販売経路の条件を表示するか。
  *
  * LayerTalk は同じ法務ページを2つの配布チャネルから開かせている:
- * 直接配布版（Stripe Checkout）と Mac App Store 版（App Store 決済）。
+ * Stripe Checkout 版と Mac App Store 版（App Store 決済）。
+ *
+ * **Windows 版は Microsoft Store で配っているが、チャネルは `stripe` に落ちる。**
+ * Store の商取引システムを使わず Stripe Checkout で売っているため（ポリシー 10.8.1 で
+ * 第三者決済として申告済み。`scripts/build-msix.ps1` が `LAYERTALK_DISTRIBUTION_CHANNEL=mas`
+ * を弾いて direct=Stripe に固定している）。**チャネルを増やさないこと。**
+ * 画面の呼び名だけ「Windows版・直接配布版」にしてある — Microsoft Store から入れた人に
+ * 「直接配布版」とだけ書くと事実と食い違うため。
  * 支払方法・返金の窓口・価格の決まり方がまるごと違うので、Stripe 前提の文面を
  * App Store 版のアプリ内から開かせると、**別の決済手段の販売条件へ誘導している**
  * 形になり App Store 3.1.1 の指摘対象になる。価格も食い違う

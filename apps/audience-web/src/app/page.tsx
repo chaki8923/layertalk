@@ -3,7 +3,7 @@ import Link from "next/link";
 import { BadgeHelp, Check, Import, MessageCircleMore, MonitorPlay, MonitorUp, PartyPopper, Puzzle, QrCode, Radio } from "lucide-react";
 
 import { JoinForm } from "@/components/join-form";
-import { AppStoreButton } from "@/components/public/app-store-button";
+import { StoreButtons } from "@/components/public/store-buttons";
 import { GuideCards } from "@/components/public/guide-cards";
 import { LiveSlideDemo } from "@/components/public/live-slide-demo";
 import { Mascot } from "@/components/public/mascot";
@@ -45,8 +45,9 @@ export default async function HomePage() {
               <span className={styles.titleLine}>{locale === "ja" ? <PhraseText phrases={["スライド", "の上へ。"]} /> : t.titleHighlight}</span>
             </h1>
             <p className={styles.description}><ProtectedText text={t.description} /></p>
-            <div className={styles.actions}>
-              <AppStoreButton locale={locale} appearance="mascot" />
+            {/* ヘッダの「アプリを入手」がここへ飛ぶ。id を外すとあのリンクが行き先を失う。 */}
+            <div id="get" className={styles.actions}>
+              <StoreButtons locale={locale} appearance="mascot" />
               <Link href="/#join" className={"lt-tap lt-nowrap inline-flex items-center justify-center " + publicStyles.secondaryButton}>{t.secondaryCta}</Link>
             </div>
             <p className={styles.note}>{messages[locale].public.appStore.note}</p>
@@ -171,7 +172,7 @@ export default async function HomePage() {
           <div>
             <h2 className={styles.heading}>{locale === "ja" ? <PhraseText phrases={["次の発表を、", "会場との対話に", "変える。"]} /> : t.finalCta.title}</h2>
             <div className={styles.actions}>
-              <AppStoreButton locale={locale} appearance="mascot" />
+              <StoreButtons locale={locale} appearance="mascot" />
               <Link href="/#join" className={"lt-tap lt-nowrap inline-flex items-center justify-center " + publicStyles.secondaryButton}>{t.finalCta.audience}</Link>
             </div>
           </div>

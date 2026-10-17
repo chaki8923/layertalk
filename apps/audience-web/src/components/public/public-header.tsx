@@ -1,9 +1,9 @@
+import { Download } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
 import type { Locale } from "@layertalk/shared/i18n";
 
-import { AppStoreButton } from "@/components/public/app-store-button";
 import { messages } from "@/i18n";
 
 import layerTalkMark from "./layertalk-mark.png";
@@ -25,7 +25,11 @@ export function PublicHeader({ locale = "ja", appearance = "default" }: { locale
           <Link href="/#features" className="lt-nowrap text-text-muted hover:text-text hidden rounded-control px-2.5 py-2 text-[12px] font-semibold transition-colors md:inline-flex">{nav.features}</Link>
           <Link href="/#how-it-works" className="lt-nowrap text-text-muted hover:text-text hidden rounded-control px-2.5 py-2 text-[12px] font-semibold transition-colors md:inline-flex">{nav.howItWorks}</Link>
           <Link href="/event-pass" className="lt-nowrap text-text-muted hover:text-text rounded-control px-2.5 py-2 text-[12px] font-semibold transition-colors">{nav.eventPass}</Link>
-          <AppStoreButton locale={locale} variant="compact" appearance={appearance} className="hidden sm:inline-flex" />
+          {/* ナビは既に詰まっているので、ここだけはストアを2つ並べない。LP の導線（`/#get`）へ送る。 */}
+          <Link href="/#get" className={`lt-tap lt-nowrap hidden items-center gap-2 sm:inline-flex ${mascot ? styles.compactButton : "border-border bg-surface hover:bg-surface-strong min-h-9 rounded-control border px-3 text-[12px] font-bold transition-colors"}`}>
+            <Download size={14} aria-hidden="true" />
+            {messages[locale].public.appStore.compact}
+          </Link>
           <Link href="/#join" className={`lt-tap lt-nowrap inline-flex items-center ${mascot ? styles.compactButton : "border-border bg-surface hover:bg-surface-strong min-h-9 rounded-control border px-3 text-[12px] font-bold transition-colors"}`}>{nav.join}</Link>
         </nav>
       </div>

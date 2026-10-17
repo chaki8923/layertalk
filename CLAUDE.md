@@ -1,11 +1,12 @@
 # LayerTalk
 
 発表中のスライド最前面に、観客からのリアルタイムコメント／スタンプを
-「背景透過・クリックスルー」で重ねて表示する macOS アプリ ＋ 観客用 Web アプリ。
+「背景透過・クリックスルー」で重ねて表示する macOS / Windows アプリ ＋ 観客用 Web アプリ。
+Mac App Store と Microsoft Store の両方で配信中。
 
 ```
 apps/audience-web/     観客用 Web    Next.js 16 / React 19 / Tailwind v4 / shadcn(radix-nova)
-apps/presenter-app/    発表者用 macOS Tauri v2 + Vite + React
+apps/presenter-app/    発表者用 macOS/Windows Tauri v2 + Vite + React
 packages/shared/       型・Supabase クライアント・Realtime フック・デザイントークン
 supabase/migrations/   MCP で適用済みスキーマのミラー
 docs/design-system.md  デザインの唯一の正
@@ -480,6 +481,15 @@ CSS の `paint-order: stroke fill` に当たる指定は無いので、**縁（�
   1 台目で finish 済みの購入を 2 台目に戻せない。**サーバの `validateEventPassTransaction` も
   NRS だけを受理する** — 型を Consumable から変えたときここが取り残され、Apple が正しく署名した
   取引まで弾いて購入も復元も全件落ちていた（`app-store.test.ts` が型を固定している）
+- **ストアの URL は `seo.ts` の定数**（`APP_STORE_URL` / `MICROSOFT_STORE_URL`）。env に
+  しない — `LEGAL_*` を env にしてあるのは法的に動く値だからで、ストアの URL は動かない。
+  **サイトは2つのストアのボタンを両方出し、OS 判定はしない**（`StoreButtons`）。
+  判定が外れた人に相手 OS のボタンしか見えない状態を作らないため。ヘッダだけは
+  ナビが詰まるので「アプリを入手」1つにして LP の `#get` へ送る
+- **Windows 版の決済は Stripe で、法務ページのチャネルは `stripe` に落ちる**
+  （Microsoft Store の商取引システムを使わない＝ポリシー 10.8.1 で第三者決済として申告済み）。
+  **`SALES_CHANNELS` を増やさないこと。** 画面の呼び名だけ「Windows版・直接配布版」にしてある
+  — Microsoft Store から入れた人に「直接配布版」とだけ書くと事実と食い違う
 - **audience-web はダークファースト。** 観客は暗い会場でスマホを見る
 - **日本語 Web フォントは読み込まない。** 数MBあり会場の Wi-Fi で初期表示が壊れる
 - **表示言語を決めるのは発表者だけ。** コントロール窓のタイトルバーの JA/EN トグルが唯一の入口で、

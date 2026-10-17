@@ -3,7 +3,7 @@ import Link from "next/link";
 import { GUIDES_PATH, GUIDES_TITLE, guidePath, guides, type GuideArticle as GuideArticleContent } from "@/content/guides";
 import { messages } from "@/i18n";
 
-import { AppStoreButton } from "./app-store-button";
+import { StoreButtons } from "./store-buttons";
 import { ProtectedText } from "./phrase-text";
 
 /** 解説記事（日本語のみ）。見た目は `LegalDocument` と揃え、末尾にアプリへの導線と関連記事を置く。 */
@@ -54,7 +54,7 @@ export function GuideArticle({ guide }: { guide: GuideArticleContent }) {
           {text("LayerTalkは、観客のコメント・質問・スタンプを発表中のスライドへリアルタイムに重ねるmacOS・Windows用アプリです。観客はQRコードか6文字コードで参加でき、アプリも登録も要りません。")}
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <AppStoreButton />
+          <StoreButtons />
           <Link href="/" className="lt-tap lt-nowrap border-border bg-surface hover:bg-surface-strong inline-flex min-h-12 items-center justify-center rounded-control border px-5 text-[14px] font-bold transition-colors">
             LayerTalkについて
           </Link>

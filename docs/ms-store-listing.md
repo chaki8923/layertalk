@@ -14,7 +14,20 @@ OV/IV を買っても SmartScreen の警告は消えないので、買う意味�
 
 ---
 
-## いまの状態（2026-10-11）
+## いまの状態（2026-10-17）
+
+**公開済み。** `https://apps.microsoft.com/detail/9ngk6gx4p2xf`
+1.0.1.0 が 2026-10-17 に認定を通り、ストアを先に公開してからサイトを出した（下の 4b）。
+
+<details>
+<summary>2026-10-11 の差し戻しと、その前の経緯</summary>
+
+### 10.1.1.3 Inaccurate Representation（2026-10-11）
+
+App Store 版から流用した3枚に Windows 以外の UI が写っていた。6枚すべてを VM で
+撮り直して解消した（下の「スクリーンショット」を見ること）。
+
+### いったん認定を取り消した（2026-10-11）
 
 **提出を取り下げて修正中。** Submission 1（`LayerTalk_1.0.0.0_x64.msix`）は 2026-10-10 に
 出したが、コントロール窓が壇上の実態と合っていないので認定を取り消した:
@@ -35,6 +48,8 @@ OV/IV を買っても SmartScreen の警告は消えないので、買う意味�
   （並びも文言も変わったので、いまの画像は古い）
 
 認定は通常数時間、長くて3営業日。
+
+</details>
 
 | | |
 |---|---|
@@ -369,21 +384,26 @@ Get-AppxPackage -Name '*LayerTalk*' | Remove-AppxPackage
 
 ---
 
-## 4b. 審査に通ったあとの公開手順（2026-10-10 に提出）
+## 4b. 公開の順番 — **ストアを先に、サイトを後に**（2026-10-17 に実施）
 
 **「申請オプション > 公開の保留オプション」で「[今すぐ公開] を選択するまで、この提出物を
-公開しない」を選んである。** 認定に通っても自動では公開されない。
+公開しない」を選んである。** 認定に通っても自動では公開されない。公開の瞬間を自分で
+握るためで、これは今後も維持する。
 
-理由: `feature/windows-spike` を merge すると audience-web が Vercel へデプロイされて
-サイトに「Windows 対応」が出る。認定と同時に自動公開されると、**サイトに載る前に
-ストアにアプリだけ並ぶ**か、逆に merge が早すぎると**ストアに無いのにサイトが対応を
-うたう**ことになる。公開の瞬間を自分で握るためにこうしてある。
+正しい順番は**ストアが先**:
 
-認定に通ったらこの順でやる:
+1. Partner Center の認定の状態ページで **「今すぐ公開」** を押す
+2. `https://apps.microsoft.com/detail/9ngk6gx4p2xf` が**実際に開けることを確認**
+   （「今すぐ公開」を押してから掲載が見えるまで数時間かかることがある）
+3. `feature/windows-spike` を `main` に merge して push
+4. Vercel のデプロイが終わり、`layer-talk.com` に Windows 版の記述とボタンが出たことを確認
 
-1. `feature/windows-spike` を `main` に merge して push
-2. Vercel のデプロイが終わり、`layer-talk.com` に Windows 版の記述が出たことを確認
-3. Partner Center の認定の状態ページで **「今すぐ公開」** を押す
+> **以前ここには「merge が先」と書いてあった。間違いだった。**
+> サイトを先に出すと、**サイトの「Microsoft Storeで入手」ボタンが 404 を指す時間が
+> 数時間できる**。逆（ストアが先）だと「ストアにはあるがサイトがまだ言及していない」
+> という状態になるが、これは誰も困らない。
+> もともとの心配は「ストアに無いのにサイトが対応をうたう」ことで、それを避けるなら
+> ストアを先に出すのが筋。
 
 ---
 
@@ -401,6 +421,12 @@ Get-AppxPackage -Name '*LayerTalk*' | Remove-AppxPackage
 | `MSIX_IDENTITY_NAME` | `9655B530.LayerTalk` |
 | `MSIX_PUBLISHER` | `CN=D8960943-1293-42F0-91F9-5404066BF9C6` |
 | `MSIX_PUBLISHER_DISPLAY_NAME` | `茶木涼` |
+| 製品 ID（ストアの URL に出る） | `9NGK6GX4P2XF` |
+| ストアの掲載 | `https://apps.microsoft.com/detail/9ngk6gx4p2xf` |
+
+> 掲載 URL はサイトからも張っている（`apps/audience-web/src/lib/seo.ts` の
+> `MICROSOFT_STORE_URL`）。**env ではなく定数**なので、変えたら Vercel の再デプロイで反映される。
+> `?hl=…&gl=…` は付けない — 英語ロケールでも同じ定数を使うため。
 
 3つとも Partner Center が発行した値で、**推測で書き換えないこと**（不一致だと提出が弾かれる）。
 `MSIX_IDENTITY_NAME` と `MSIX_PUBLISHER` は公開される MSIX の中に入るもので、

@@ -8,11 +8,13 @@
 export const ja = {
   meta: {
     // title は検索結果でいちばん効くので、キャッチコピーではなく検索される語（コメント・質問・流す・Mac・
-    // プレゼン）を入れる。キャッチコピー「会場の声を、スライドの上へ。」は LP の H1 が持っている。
+    // Windows・プレゼン）を入れる。キャッチコピー「会場の声を、スライドの上へ。」は LP の H1 が持っている。
+    // **Windows は 2026-10 のストア公開に合わせて足した。** 「Windows プレゼン」で探す人を取りこぼさない
+    // ため。OS 名を消して短くする案もあったが、「Mac」は実際に効いている検索語なので残す。
     // 狙う検索語: 「プレゼン 盛り上げる」「LT 盛り上げる」「発表 盛り上げる」「スライド コメント 流す」。
     // 方法を探す検索は解説記事（/guides）が受け、LP は製品名と機能の検索を受ける。
-    title: "LayerTalk | プレゼン・LTを盛り上げる、スライドにコメントを流すMacアプリ",
-    description: "プレゼンやLT、会議を盛り上げるMac用アプリ。発表中のスライドに、観客のコメント・質問・スタンプをリアルタイムで流せます。観客はQRか6文字コードで参加、アプリも登録も不要。PowerPoint・Keynote・Canvaなどそのまま使えます。",
+    title: "LayerTalk | プレゼン・LTを盛り上げる、スライドにコメントを流すMac・Windowsアプリ",
+    description: "プレゼンやLT、会議を盛り上げるMac・Windows用アプリ。発表中のスライドに、観客のコメント・質問・スタンプをリアルタイムで流せます。観客はQRか6文字コードで参加、アプリも登録も不要。PowerPoint・Keynote・Canvaなどそのまま使えます。",
     keywords: ["プレゼンテーション", "リアルタイムコメント", "質疑応答", "観客参加", "イベント運営", "スライドオーバーレイ"],
   },
 
@@ -41,11 +43,19 @@ export const ja = {
       label: "サイト情報・法務・サポート",
       copyright: "© 2026 LayerTalk",
     },
-    /** 発表者アプリ（Mac App Store）への入口。LP・ヘッダ・Event Pass ページで使う。 */
+    /**
+     * 発表者アプリへの入口。LP・ヘッダ・ガイド末尾で使う。
+     *
+     * **ストアは2つある。** OS 判定はせず両方並べる（`StoreButtons`）。
+     * `compact` はヘッダ専用で、ストアへ直接飛ばさず LP の導線（`/#get`）へ送る
+     * — ナビにボタンを2つ置くと詰まるため。
+     * キー名が `appStore` のままなのは、改名すると4ファイルに波及するから。
+     */
     appStore: {
-      cta: "Mac App Storeで入手",
+      apple: "Mac App Storeで入手",
+      microsoft: "Microsoft Storeで入手",
       compact: "アプリを入手",
-      note: "macOS 13以降・無料でダウンロード",
+      note: "macOS 13以降 ／ Windows 10 バージョン2004以降・無料でダウンロード",
     },
     /** 法務ページの見出し。英語版は `?lang=en`（`content/legal/locale.ts`）。 */
     legal: {
@@ -66,7 +76,7 @@ export const ja = {
     eyebrow: "Live audience, on your slides",
     titleLead: "会場の声を、",
     titleHighlight: "スライドの上へ。",
-    description: "LayerTalkは、観客のコメント・質問・スタンプをプレゼン画面へリアルタイムに重ねる、macOS向けの参加型プレゼンツールです。",
+    description: "LayerTalkは、観客のコメント・質問・スタンプをプレゼン画面へリアルタイムに重ねる、macOS・Windows向けの参加型プレゼンツールです。",
     secondaryCta: "参加コードを入力",
     signals: ["観客アプリ不要", "QR・6文字コードで参加", "観客数の制限なし"],
     stage: {

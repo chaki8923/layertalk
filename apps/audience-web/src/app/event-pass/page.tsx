@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowDown, Check, FileDown, KeyRound, ShieldCheck, Sparkles } from "lucide-react";
 
-import { AppStoreButton } from "@/components/public/app-store-button";
+import { StoreButtons } from "@/components/public/store-buttons";
 import { PhraseText, ProtectedText } from "@/components/public/phrase-text";
 import { PublicShell } from "@/components/public/public-shell";
 import { createEventPassStructuredData, createPageMetadata, serializeJsonLd } from "@/lib/seo";
@@ -47,7 +47,7 @@ export default function EventPassPage() {
               <wbr /><span className="text-brand lt-nowrap">1イベント用</span><wbr /><span className="lt-nowrap">パス</span>
             </h1>
             <div className="mt-8 flex flex-wrap items-end gap-x-5 gap-y-2">
-              <p className="lt-nowrap"><span className="lt-num text-[32px] font-bold tracking-[-0.04em]">2,980円</span><span className="text-text-muted ml-2 text-[12px]">税込・直接配布版</span></p>
+              <p className="lt-nowrap"><span className="lt-num text-[32px] font-bold tracking-[-0.04em]">2,980円</span><span className="text-text-muted ml-2 text-[12px]">税込・Windows版・直接配布版</span></p>
               <p className="lt-nowrap text-text-muted pb-1 text-[13px]">購入した1ルームで7日間</p>
             </div>
             <a href="#how-to-buy" className="lt-tap lt-nowrap bg-gradient-brand shadow-glow mt-8 inline-flex min-h-12 items-center gap-2 rounded-control px-5 text-[14px] font-bold text-white transition-transform active:scale-[.94]">
@@ -108,7 +108,7 @@ export default function EventPassPage() {
           <div id="how-to-buy" className="scroll-mt-24">
             <h2 className="text-[24px] font-bold tracking-[-.035em]">購入方法</h2>
             {/* 手順の1つ目より前に、まずアプリが要る。 */}
-            <AppStoreButton variant="secondary" className="mt-5 inline-flex" />
+            <div className="mt-5 flex flex-wrap gap-3"><StoreButtons /></div>
             <ol className="mt-6 space-y-3">
               {steps.map((step, index) => <li key={step} className="border-border flex items-center gap-4 border-b pb-3"><span className="lt-num text-brand text-[11px] font-bold">{String(index + 1).padStart(2, "0")}</span><span className="text-[13px] font-semibold"><ProtectedText text={step} terms={[step]} /></span></li>)}
             </ol>
@@ -120,10 +120,10 @@ export default function EventPassPage() {
             <h2 className="text-[18px] font-bold">決済前にご確認ください</h2>
             {/* 決済手段は配布チャネルで違う。このページは App Store のマーケティング URL からも辿られるので、
                 片方（Stripe）だけを「決済方法」として書かない。 */}
-            <p className="text-text-muted mt-3 text-[13px] leading-6"><ProtectedText text="お支払いは、Mac App Store版ではApp Store、直接配布版ではStripeを通じて行います。どちらの場合も、カード情報をLayerTalkが保持することはありません。購入前に、お使いの版の返金条件と各文書をご確認ください。" terms={["Mac App Store版", "App Store", "直接配布版"]} /></p>
+            <p className="text-text-muted mt-3 text-[13px] leading-6"><ProtectedText text="お支払いは、Mac App Store版ではApp Store、Windows版と直接配布版ではStripeを通じて行います。どちらの場合も、カード情報をLayerTalkが保持することはありません。購入前に、お使いの版の返金条件と各文書をご確認ください。" terms={["Mac App Store版", "App Store", "Windows版", "直接配布版"]} /></p>
             <dl className="mt-5 grid gap-3 text-[12px] font-semibold">
               <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2"><dt className="lt-nowrap text-text-faint w-full text-[11px] sm:w-auto">Mac App Store版</dt><dd className="flex flex-wrap gap-x-5 gap-y-2"><Link className="lt-nowrap text-brand" href="/support?channel=app-store#refunds">返金について</Link><Link className="lt-nowrap" href="/legal/terms?channel=app-store">利用規約</Link><Link className="lt-nowrap" href="/legal/tokusho?channel=app-store">特定商取引法に基づく表記</Link></dd></div>
-              <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2"><dt className="lt-nowrap text-text-faint w-full text-[11px] sm:w-auto">直接配布版</dt><dd className="flex flex-wrap gap-x-5 gap-y-2"><Link className="lt-nowrap text-brand" href="/support#refunds">返金・キャンセル条件</Link><Link className="lt-nowrap" href="/legal/terms">利用規約</Link><Link className="lt-nowrap" href="/legal/tokusho">特定商取引法に基づく表記</Link></dd></div>
+              <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2"><dt className="lt-nowrap text-text-faint w-full text-[11px] sm:w-auto">Windows版・直接配布版</dt><dd className="flex flex-wrap gap-x-5 gap-y-2"><Link className="lt-nowrap text-brand" href="/support#refunds">返金・キャンセル条件</Link><Link className="lt-nowrap" href="/legal/terms">利用規約</Link><Link className="lt-nowrap" href="/legal/tokusho">特定商取引法に基づく表記</Link></dd></div>
               <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2"><dt className="lt-nowrap text-text-faint w-full text-[11px] sm:w-auto">共通</dt><dd><Link className="lt-nowrap" href="/legal/privacy">プライバシーポリシー</Link></dd></div>
             </dl>
           </div>
