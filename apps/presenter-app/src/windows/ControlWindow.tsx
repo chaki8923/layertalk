@@ -56,6 +56,7 @@ import { ReportQueue } from "../components/ReportQueue";
 import { SafetyPanel } from "../components/SafetyPanel";
 import { useDocumentLang, useMessages, type Messages } from "../i18n";
 import { audienceUrl as buildAudienceUrl } from "../lib/audience";
+import { describeMonitor, describeTarget, externalMonitors, monitorSpec, resolveAutoMonitor, resolveTarget } from "../lib/monitors";
 import { patchRoomBranding, useRoomBranding } from "../lib/branding";
 import {
   loadSettings,
@@ -72,6 +73,7 @@ import { clientId, supabase } from "../lib/supabase";
 import { startSelftestPump } from "../lib/selftest-pump";
 import { initializeBillingRecovery } from "../lib/billing";
 import { isPaidPresentationSession, loadQuestionCapturePreference, questionCaptureAction, questionCaptureErrorMessage, questionCapturePendingMessage } from "../lib/question-capture";
+import { CONTROL_SHORTCUT_LABEL, deviceNoun } from "../lib/platform";
 import {
   captureQuestionSlide,
   discardQuestionSlide,
@@ -101,6 +103,9 @@ import {
 } from "../lib/tauri";
 
 const PEEK_MS = 2600;
+
+/** ルームに繋ぐまで出せないセクション。どちらも room_id が無いと何も操作できない。 */
+const HIDDEN_WITHOUT_ROOM = new Set<SectionId>(["safety", "eventPass"]);
 
 const prefersReducedMotion = () =>
   window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
@@ -468,6 +473,14 @@ export function ControlWindow() {
   const reloadMonitors = useCallback(() => {
     void listMonitors().then(setMonitors);
   }, []);
+
+  // 「自動」のときに実際に出る画面と、明示的に選んだ画面が外れていないか。
+  // 規則は Rust の auto_screen / auto_monitor と対（`lib/monitors.ts`）。
+  const autoMonitor = resolveAutoMonitor(monitors);
+  const monitorMissing = resolveTarget(monitors, settings.monitorName).missing;
+  // 行は「外部 → この端末の画面」の順。外部が無ければ選ぶものが無いのでラジオを出さない。
+  const externals = externalMonitors(monitors);
+  const monitorRows = [...externals, ...monitors.filter((monitor) => monitor.is_primary)];
 
   // 起動時と、ディスプレイの抜き差しで変わるのでウィンドウが前面に来たときにも取り直す
   useEffect(() => {
@@ -843,9 +856,9 @@ export function ControlWindow() {
     update({ sectionOrder: draftOrderRef.current });
   }, [update]);
 
-  // Event Pass だけルーム未接続で消える。`Reorder.Group` の `values` は
+  // 安全管理と Event Pass はルーム未接続で消える。`Reorder.Group` の `values` は
   // 実際に描いた children と一致していないといけないので、見えているものだけ渡す。
-  const visibleOrder = draftOrder.filter((id) => id !== "eventPass" || Boolean(settings.roomId));
+  const visibleOrder = draftOrder.filter((id) => !HIDDEN_WITHOUT_ROOM.has(id) || Boolean(settings.roomId));
   const handleReorder = useCallback((next: SectionId[]) => {
     // 見えている枠だけを新しい順に置き換え、隠れている id は元の位置に留める。
     setDraftOrder((current) => {
@@ -876,34 +889,56 @@ export function ControlWindow() {
       <section className="space-y-3">
         <SectionLabel>{t.monitor.section}</SectionLabel>
 
-        <div className="border-border bg-bg-elev overflow-hidden rounded-[16px] border">
-          <MonitorRow
-            label={t.monitor.followPrimary}
-            sub={t.monitor.followPrimarySub}
-            selected={settings.monitorName === null}
-            onSelect={() => handlePickMonitor(null)}
-          />
-          {monitors.map((monitor) => (
-            <MonitorRow
-              key={monitor.name}
-              label={monitor.name}
-              sub={`${monitor.width}×${monitor.height}${monitor.is_primary ? t.monitor.primarySuffix : ""}`}
-              selected={settings.monitorName === monitor.name}
-              onSelect={() => handlePickMonitor(monitor.name)}
-            />
-          ))}
-        </div>
+        {externals.length > 0 && (
+          <div className="border-border bg-bg-elev overflow-hidden rounded-[16px] border">
+            {monitorRows.map((monitor, index) => {
+              // **先頭の外部行が「自動」そのもの。** 保存値を null にしておくと、
+              // つなぎ替えても Rust 側の auto_monitor が付いていく。明示的にその外部を
+              // 選んであった状態から移っても選択が外れないよう、名前の一致も見る。
+              const isAuto = index === 0;
+              const selected = isAuto
+                ? settings.monitorName === null || settings.monitorName === monitor.name
+                : settings.monitorName === monitor.name;
+              return (
+                // `monitor.name` は照合用の ID。画面に出すのは `describeMonitor` の方。
+                <MonitorRow
+                  key={monitor.name}
+                  label={describeMonitor(monitor, monitors, t)}
+                  sub={isAuto ? t.monitor.externalAutoSub : undefined}
+                  trailing={monitorSpec(monitor)}
+                  selected={selected}
+                  onSelect={() => handlePickMonitor(isAuto ? null : monitor.name)}
+                />
+              );
+            })}
+          </div>
+        )}
 
-        <p className="text-text-faint text-[11px] leading-relaxed">
-          {t.monitor.hint}
-          {monitors.length <= 1 && t.monitor.hintSingle}
-        </p>
+        {/* 選んだ画面が外れたことは黙って起きる（Rust が自動へ落とす）ので、ここで言う。
+            外部が無いときは「この端末に出します」より、外れたことの方が要る情報。 */}
+        {monitorMissing && autoMonitor ? (
+          <p className="text-like text-[11px] leading-relaxed">
+            {t.monitor.missing(describeMonitor(autoMonitor, monitors, t))}
+          </p>
+        ) : externals.length === 0 ? (
+          <p className="text-text-faint text-[11px] leading-relaxed">{t.monitor.soloNotice(deviceNoun())}</p>
+        ) : (
+          <p className="text-text-faint text-[11px] leading-relaxed">{t.monitor.hint}</p>
+        )}
       </section>
     ),
+    // 自前で見出しを持っているので `SectionLabel` は付けない（`SafetyPanel.tsx`）。
+    safety: settings.roomId ? (
+      <SafetyPanel
+        roomId={settings.roomId}
+        locale={settings.language}
+        comments={comments}
+        onCommentBlocked={handleCommentModerated}
+      />
+    ) : null,
     room: (
       <section className="space-y-3">
         <SectionLabel>{t.room.section}</SectionLabel>
-        {accountId && settings.roomId && <RoomNotifications key={`${accountId}:${settings.roomId}`} notifications={notifications} locale={settings.language} audienceUrl={audienceUrl} disabled={live || transitioning} />}
 
         {settings.roomCode ? (
           <div className="border-border bg-bg-elev space-y-3 rounded-[20px] border p-4">
@@ -1177,6 +1212,9 @@ export function ControlWindow() {
           </div>
         )}
 
+        {/* 壇上で最初に要るのは参加コードなので、送信先の設定はカードのあとに置く。 */}
+        {accountId && settings.roomId && <RoomNotifications key={`${accountId}:${settings.roomId}`} notifications={notifications} locale={settings.language} audienceUrl={audienceUrl} disabled={live || transitioning} />}
+
         {error && <p className="text-like text-[12px]">{error}</p>}
       </section>
     ),
@@ -1425,7 +1463,7 @@ export function ControlWindow() {
             {!settings.roomId
               ? t.live.needsRoom
               : live
-                ? t.live.showingOn(settings.monitorName ?? t.monitor.primary)
+                ? t.live.showingOn(describeTarget(monitors, settings.monitorName, t) ?? t.monitor.thisScreen(deviceNoun()))
                 : t.live.hidden}
           </p>
           {/* 全画面のスライドの上へこの窓を戻す手段は ⇧⌘L（lib.rs のグローバルショートカット）だけ。
@@ -1433,7 +1471,7 @@ export function ControlWindow() {
           {settings.roomId && (
             <p className="text-text-faint text-center text-[11px] leading-relaxed">
               {t.live.shortcut}{" "}
-              <kbd className="border-border bg-surface rounded-chip border px-1.5 font-sans font-semibold">⇧⌘L</kbd>{" "}
+              <kbd className="border-border bg-surface rounded-chip border px-1.5 font-sans font-semibold">{CONTROL_SHORTCUT_LABEL}</kbd>{" "}
               {t.live.shortcutSuffix}
             </p>
           )}
@@ -1479,13 +1517,6 @@ export function ControlWindow() {
           onModerated={handleCommentModerated}
           onStampDeleted={removeStampLocal}
         />
-
-        {settings.roomId && <SafetyPanel
-          roomId={settings.roomId}
-          locale={settings.language}
-          comments={comments}
-          onCommentBlocked={handleCommentModerated}
-        />}
 
         <Reorder.Group
           axis="y"
@@ -1587,12 +1618,15 @@ function LanguageToggle({ label, value, onChange }: LanguageToggleProps) {
 
 type MonitorRowProps = {
   label: string;
-  sub: string;
+  /** 補足。先頭の外部行（＝自動）にしか出さない。 */
+  sub?: React.ReactNode;
+  /** 右端に薄く出す解像度。 */
+  trailing?: React.ReactNode;
   selected: boolean;
   onSelect: () => void;
 };
 
-function MonitorRow({ label, sub, selected, onSelect }: MonitorRowProps) {
+function MonitorRow({ label, sub, trailing, selected, onSelect }: MonitorRowProps) {
   return (
     <button
       type="button"
@@ -1612,10 +1646,11 @@ function MonitorRow({ label, sub, selected, onSelect }: MonitorRowProps) {
           />
         )}
       </span>
-      <span className="min-w-0">
+      <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-medium">{label}</span>
-        <span className="text-text-faint lt-num block text-[11px]">{sub}</span>
+        {sub && <span className="text-text-faint mt-0.5 block text-[11px] leading-relaxed">{sub}</span>}
       </span>
+      {trailing && <span className="text-text-faint lt-num shrink-0 text-[11px]">{trailing}</span>}
     </button>
   );
 }

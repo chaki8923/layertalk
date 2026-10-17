@@ -14,6 +14,17 @@ body,
   overflow: hidden;
 }
 
+/* 質問パネル窓だけは中身の高さに合わせる。
+ * Windows では窓の矩形がそのまま当たり判定になるので、画面の高さいっぱいの窓を出すと
+ * 右端の帯が全部クリックを吸ってスライドを触れなくなる。窓を中身の大きさへ縮めるため、
+ * まず文書側が中身の高さで止まる必要がある。
+ * この属性は質問窓のエントリだけが立てるので、他の窓と macOS には影響しない。 */
+html[data-window="questions"],
+html[data-window="questions"] body,
+html[data-window="questions"] #root {
+  height: auto;
+}
+
 body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;

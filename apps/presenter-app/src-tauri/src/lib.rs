@@ -5,6 +5,11 @@ mod question_capture;
 mod question_render;
 #[cfg(target_os = "macos")]
 mod storekit;
+// 中で `#![cfg(target_os = "windows")]` しているので、他のプラットフォームでは空になる
+// （`overlay_render` と同じ作法）。
+mod windows_capture;
+mod windows_overlay;
+mod windows_shell;
 
 use std::sync::Mutex;
 use std::time::Duration;
@@ -16,17 +21,55 @@ use tauri::{
     AppHandle, Emitter, Manager, WebviewWindow,
 };
 #[cfg(not(target_os = "macos"))]
-use tauri::{Monitor, PhysicalPosition, PhysicalSize};
+use tauri::{Monitor, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+
+/// コントロール窓を呼び出すショートカットの修飾キー。
+///
+/// **Windows で `SUPER` を使わないこと。** `SUPER` は Windows キーなので
+/// `Win+Shift+L` になり、OS 側の予約と紛らわしいうえ登録に失敗しうる。
+/// 画面の表示（`ControlWindow` の `<kbd>`）も本来はここに合わせる必要があるが、
+/// スパイクの範囲外なので触っていない。
+#[cfg(target_os = "macos")]
+const CONTROL_SHORTCUT_MODIFIERS: Modifiers = Modifiers::SUPER;
+#[cfg(not(target_os = "macos"))]
+const CONTROL_SHORTCUT_MODIFIERS: Modifiers = Modifiers::CONTROL;
+
+/// 画面に出すキーの表記。**上の修飾キーと必ず揃えること** — ずれると
+/// 「書いてあるキーを押しても何も起きない」という、報告されるまで気付けない嘘になる。
+/// フロント側の対になる定数は `src/lib/tauri.ts` の `CONTROL_SHORTCUT_LABEL`。
+#[cfg(target_os = "macos")]
+const CONTROL_SHORTCUT_LABEL: &str = "⇧⌘L";
+#[cfg(not(target_os = "macos"))]
+const CONTROL_SHORTCUT_LABEL: &str = "Ctrl+Shift+L";
 
 const OVERLAY: &str = "overlay";
 const CONTROL: &str = "control";
 const QUESTIONS: &str = "questions";
+/// どの窓も同じ `index.html` を読む。中身は `main.tsx` が窓ラベルで分岐して差し替える
+/// （`currentWindowLabel()`）。HTML を窓ごとに分けると Tailwind の CSS が窓の数だけ出るし、
+/// `index.html` と同期を取る対象が増える。
+#[cfg(not(target_os = "macos"))]
+const WINDOW_PAGE: &str = "index.html";
 // macOS の質問パネルの大きさは `question_render` が持つ。これは macOS 以外の webview 窓用。
 #[cfg(not(target_os = "macos"))]
 const QUESTION_PANEL_WIDTH: f64 = 430.0;
 #[cfg(not(target_os = "macos"))]
 const QUESTION_TAB_WIDTH: f64 = 56.0;
+
+/// 質問パネル窓の実寸（論理 px）。
+///
+/// **Windows では窓の矩形がそのまま当たり判定になる。** 画面の高さいっぱいに取ると
+/// 右端の帯が丸ごとクリックを吸い、発表者がスライドを触れなくなる
+/// （macOS は `question_render` が中身の高さに合わせた NSPanel を作るので起きない）。
+/// そこで webview に中身の実寸を測らせ、`set_question_panel_size` で受けてここに置く。
+/// 初期値は折りたたみタブの想定サイズ — 最初の報告が来るまでのあいだだけ使う。
+#[cfg(not(target_os = "macos"))]
+static PANEL_SIZE: Mutex<(f64, f64)> = Mutex::new((QUESTION_TAB_WIDTH, 132.0));
+
+/// 画面の上端から何割の位置にパネルを置くか。`QuestionWindow` の `top-[5vh]` と揃える。
+#[cfg(not(target_os = "macos"))]
+const PANEL_TOP_RATIO: f64 = 0.05;
 
 /// 発表中かどうか。ウィンドウの表示・非表示は Rust の責務なので、
 /// ここを唯一の真実にする。永続化しない = 再起動したら必ず停止状態から始まる。
@@ -62,12 +105,16 @@ struct TrayMenu {
 
 /// トレイの 3 項目のラベル。フロントの文言カタログはここへ届かないので、
 /// この 3 本だけ Rust 側にも持つ。
-fn tray_labels(language: &str) -> (&'static str, &'static str, &'static str) {
+fn tray_labels(language: &str) -> (String, &'static str, &'static str) {
     if language == "en" {
-        ("Show Controls  ⇧⌘L", "Stop presenting", "Quit LayerTalk")
+        (
+            format!("Show Controls  {CONTROL_SHORTCUT_LABEL}"),
+            "Stop presenting",
+            "Quit LayerTalk",
+        )
     } else {
         (
-            "コントロールを表示  ⇧⌘L",
+            format!("コントロールを表示  {CONTROL_SHORTCUT_LABEL}"),
             "プレゼンを終了",
             "LayerTalk を終了",
         )
@@ -105,7 +152,33 @@ fn ns_window_ptr(window: &WebviewWindow) -> Option<*mut objc2::runtime::AnyObjec
     Some(ns_window)
 }
 
-#[cfg(not(target_os = "macos"))]
+/// 最前面に上げる（Windows）。
+///
+/// **`WS_EX_TOPMOST` と `WS_EX_NOACTIVATE` を手で立てないこと。** tao は
+/// フラグが1つでも変わるたびに拡張スタイルを**自分のフラグから計算し直して
+/// 丸ごと書き戻す**（`window_state.rs:426-441`）ので、手で足した分は
+/// 次の `show()` / `set_ignore_cursor_events()` で消える。
+/// topmost は `set_always_on_top`、非アクティブ化は窓を作るときの
+/// `focusable(false)` が tao 側のフラグとして持っている。
+/// ここで面倒を見るのは、tao が知らない `WS_EX_TOOLWINDOW` だけ。
+///
+/// **この関数は「窓を見せたあと」に呼ぶこと。** `show()` も書き戻しの引き金なので、
+/// 先に呼ぶと `WS_EX_TOOLWINDOW` が消える。
+#[cfg(target_os = "windows")]
+fn elevate_overlay_window(window: &WebviewWindow) {
+    if let Err(err) = window.set_always_on_top(true) {
+        eprintln!("[layertalk] 最前面の設定に失敗: {err}");
+    }
+    windows_overlay::apply_tool_window(window);
+    windows_overlay::raise(window);
+    debug_log(&format!(
+        "win/elevate {} {}",
+        window.label(),
+        windows_overlay::state(window)
+    ));
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn elevate_overlay_window(_window: &WebviewWindow) {}
 
 /// 調査用ログ。**`LAYERTALK_DEBUG_OVERLAY=1` のときだけ**出す。
@@ -114,7 +187,6 @@ fn elevate_overlay_window(_window: &WebviewWindow) {}
 /// App Sandbox（Mac App Store 版）では `/tmp` に書けず `if let Ok(..)` で黙って
 /// 失敗し続けるだけになり、直接配布版では**同じ Mac の全ユーザーが読める場所**に
 /// モニター構成が残る。書くのは調査するときだけ、書き先はアプリのコンテナ内へ。
-#[cfg(target_os = "macos")]
 fn debug_enabled() -> bool {
     std::env::var("LAYERTALK_DEBUG_OVERLAY").is_ok_and(|value| value != "0")
 }
@@ -131,7 +203,21 @@ fn debug_log_path() -> Option<std::path::PathBuf> {
     Some(directory.join("overlay-debug.log"))
 }
 
-#[cfg(target_os = "macos")]
+/// Windows 版の出力先は `%APPDATA%\app.layertalk.presenter\overlay-debug.log`。
+/// macOS と揃えて、**環境変数で明示したときだけ**書く。
+#[cfg(target_os = "windows")]
+fn debug_log_path() -> Option<std::path::PathBuf> {
+    let appdata = std::env::var_os("APPDATA")?;
+    let directory = std::path::PathBuf::from(appdata).join("app.layertalk.presenter");
+    std::fs::create_dir_all(&directory).ok()?;
+    Some(directory.join("overlay-debug.log"))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn debug_log_path() -> Option<std::path::PathBuf> {
+    None
+}
+
 fn debug_log(line: &str) {
     use std::io::Write;
 
@@ -153,9 +239,6 @@ fn debug_log(line: &str) {
         }
     }
 }
-
-#[cfg(not(target_os = "macos"))]
-fn debug_log(_line: &str) {}
 
 /// オーバーレイの中身（wry の contentView = WKWebView）を、**自前で作った素の NSWindow** へ
 /// 載せ替える。
@@ -298,6 +381,20 @@ mod native_overlay {
         }
     }
 
+    /// 表示先が選ばれていない（＝「自動」）ときに使う画面。
+    ///
+    /// **外部ディスプレイを優先する。** 会議室ではプロジェクターや大型モニターを挿すが、
+    /// それは主ディスプレイではないので、主へ落とすと手元のノート画面にだけコメントが出る。
+    /// `NSScreen::screens` の先頭がメニューバーのある画面（＝主）なので、2番目があれば
+    /// それが外部。1台しか無ければその1台。
+    ///
+    /// **Windows の `auto_monitor` と、JS の `resolveAutoMonitor` は同じ規則であること。**
+    /// 3つのどれかだけを変えると、一覧に出る「いまの出力先」と実際の表示先がずれる。
+    fn auto_screen(mtm: MainThreadMarker) -> Option<Retained<NSScreen>> {
+        let screens = NSScreen::screens(mtm);
+        screens.iter().nth(1).or_else(|| screens.iter().next())
+    }
+
     fn screen_display_id(screen: &NSScreen) -> Option<u32> {
         let description = screen.deviceDescription();
         let key = NSString::from_str("NSScreenNumber");
@@ -316,10 +413,7 @@ mod native_overlay {
                 }
             }
         }
-        screens
-            .iter()
-            .next()
-            .and_then(|screen| screen_display_id(&screen))
+        auto_screen(mtm).and_then(|screen| screen_display_id(&screen))
     }
 
     /// 選択中のモニターの矩形（AppKit の座標系・ポイント単位）。
@@ -334,10 +428,11 @@ mod native_overlay {
             }
         }
 
-        // フォールバックは**主ディスプレイ**（メニューバーがある画面 = `screens[0]`）。
+        // 未選択のときも、選んだ画面が見つからないときも `auto_screen`（外部優先）へ落とす。
+        // ケーブルが抜けても真っ暗にしない、という意図は変わらない。
         // `mainScreen` は「キーボードフォーカスがある画面」を返すので使ってはいけない。
-        // 発表中は他アプリにフォーカスがあるため、外部モニターへ飛ぶ。
-        screens.iter().next().map(|screen| screen.frame())
+        // 発表中は他アプリにフォーカスがあるため、意図しない画面へ飛ぶ。
+        auto_screen(mtm).map(|screen| screen.frame())
     }
 
     /// 表示先の候補一覧。名前は `screen_frame` と同じ実装で作る。
@@ -566,6 +661,11 @@ fn reset_control_window_level(_window: &WebviewWindow) {}
 
 #[derive(Serialize, Clone)]
 struct MonitorInfo {
+    /// **照合用の ID。文言ではない**（罠 #12）。`settings.monitorName` に保存され、
+    /// 表示先を決めるときに文字列一致で引き当てる。**画面には出さない** —
+    /// Windows ではこれが GDI のデバイス名（`\\.\DISPLAY1`）、macOS では機種名
+    /// （「JAPANNEXT.MNT」）で、どちらも*どの画面か*を人に教えない。行に出すのは
+    /// `lib/monitors.ts` が `is_primary` から作る役割名だけ。
     name: String,
     width: u32,
     height: u32,
@@ -614,8 +714,30 @@ fn collect_monitors(window: &WebviewWindow) -> Vec<MonitorInfo> {
         .collect()
 }
 
+/// 表示先が選ばれていない（＝「自動」）ときに使うモニター。
+///
+/// **外部ディスプレイを優先する。** 会議室ではプロジェクターや大型モニターを挿すが、
+/// それは主ディスプレイではないので、主へ落とすと手元の画面にだけコメントが出る。
+/// 外部が無ければ主ディスプレイ。
+///
+/// **macOS の `native_overlay::auto_screen` と、JS の `resolveAutoMonitor` は同じ規則で
+/// あること。** 3つのどれかだけを変えると、一覧に出る「いまの出力先」と実際の表示先がずれる。
+#[cfg(not(target_os = "macos"))]
+fn auto_monitor(window: &WebviewWindow) -> Option<Monitor> {
+    let primary = window.primary_monitor().ok().flatten();
+    let primary_position = primary.as_ref().map(|monitor| *monitor.position());
+
+    window
+        .available_monitors()
+        .unwrap_or_default()
+        .into_iter()
+        // `collect_monitors` の `is_primary` と同じ突き合わせ方。
+        .find(|monitor| primary_position != Some(*monitor.position()))
+        .or(primary)
+}
+
 /// 指定した名前のモニター全面（メニューバー領域含む）にオーバーレイを合わせる。
-/// 見つからなければプライマリに落とす — 発表直前にケーブルが抜けても真っ暗にしないため。
+/// 見つからなければ `auto_monitor` に落とす — 発表直前にケーブルが抜けても真っ暗にしないため。
 #[cfg(not(target_os = "macos"))]
 fn fit_overlay_to_monitor(window: &WebviewWindow, target: Option<&str>) {
     let monitors = window.available_monitors().unwrap_or_default();
@@ -628,7 +750,7 @@ fn fit_overlay_to_monitor(window: &WebviewWindow, target: Option<&str>) {
                 .find(|(index, monitor)| monitor_label(monitor, *index) == name)
                 .map(|(_, monitor)| monitor.clone())
         })
-        .or_else(|| window.primary_monitor().ok().flatten());
+        .or_else(|| auto_monitor(window));
 
     match chosen {
         Some(monitor) => {
@@ -646,7 +768,7 @@ fn fit_overlay_to_monitor(window: &WebviewWindow, target: Option<&str>) {
 /// 質問窓を指定モニターの右端へ合わせる。
 /// 幅はCSSピクセルで指定し、Retinaでも同じ見た目になるよう物理ピクセルへ変換する。
 #[cfg(not(target_os = "macos"))]
-fn fit_question_panel_to_monitor(window: &WebviewWindow, target: Option<&str>, logical_width: f64) {
+fn fit_question_panel_to_monitor(window: &WebviewWindow, target: Option<&str>) {
     let monitors = window.available_monitors().unwrap_or_default();
 
     let chosen = target
@@ -657,19 +779,38 @@ fn fit_question_panel_to_monitor(window: &WebviewWindow, target: Option<&str>, l
                 .find(|(index, monitor)| monitor_label(monitor, *index) == name)
                 .map(|(_, monitor)| monitor.clone())
         })
-        .or_else(|| window.primary_monitor().ok().flatten());
+        .or_else(|| auto_monitor(window));
 
     match chosen {
         Some(monitor) => {
             let position = *monitor.position();
             let size = *monitor.size();
-            let physical_width = (logical_width * monitor.scale_factor()).round() as u32;
+            let scale = monitor.scale_factor();
+            let (logical_width, logical_height) = panel_size();
+
+            let physical_width = (logical_width * scale).round().max(1.0) as u32;
+            // 質問が積み上がっても画面からはみ出させない。あふれる分は中身が自分で
+            // スクロールする（webview 側の max-height）。
+            let physical_height = (logical_height * scale)
+                .round()
+                .clamp(1.0, size.height as f64 * 0.9) as u32;
+
             let x = position.x + size.width as i32 - physical_width as i32;
-            let _ = window.set_size(PhysicalSize::new(physical_width, size.height));
-            let _ = window.set_position(PhysicalPosition::new(x, position.y));
+            let y = position.y + (size.height as f64 * PANEL_TOP_RATIO).round() as i32;
+
+            let _ = window.set_size(PhysicalSize::new(physical_width, physical_height));
+            let _ = window.set_position(PhysicalPosition::new(x, y));
+            debug_log(&format!(
+                "panel/fit: {logical_width}x{logical_height} logical -> {physical_width}x{physical_height} @ {x},{y}"
+            ));
         }
         None => eprintln!("[layertalk] 質問パネルを表示できるモニターが見つかりません"),
     }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn panel_size() -> (f64, f64) {
+    PANEL_SIZE.lock().map(|guard| *guard).unwrap_or((QUESTION_TAB_WIDTH, 132.0))
 }
 
 /// 現在の質問パネル幅（展開中／折りたたみ中）を保ったまま、モニター右端へ貼り直す。
@@ -690,17 +831,8 @@ fn refit_question_panel(app: &AppHandle) {
     #[cfg(not(target_os = "macos"))]
     {
         if let Some(window) = app.get_webview_window(QUESTIONS) {
-            let logical_width = window
-                .outer_size()
-                .ok()
-                .and_then(|size| {
-                    window
-                        .scale_factor()
-                        .ok()
-                        .map(|scale| size.width as f64 / scale)
-                })
-                .unwrap_or(QUESTION_PANEL_WIDTH);
-            fit_question_panel_to_monitor(&window, monitor.as_deref(), logical_width);
+            // 窓の実寸から論理幅を逆算していたが、実寸は `PANEL_SIZE` が正になったので不要。
+            fit_question_panel_to_monitor(&window, monitor.as_deref());
         }
     }
 }
@@ -708,26 +840,158 @@ fn refit_question_panel(app: &AppHandle) {
 /// 質問パネルを指定幅で出す（macOS 以外）。macOS は `native_overlay::show_panel` が
 /// 自前の NSPanel に出し、大きさは `question_render` の状態で決まる。
 #[cfg(not(target_os = "macos"))]
-fn show_question_panel(app: &AppHandle, logical_width: f64) {
+fn show_question_panel(app: &AppHandle) {
     let monitor = target_monitor(app);
     let Some(questions) = app.get_webview_window(QUESTIONS) else {
+        // 窓が無いのに黙って戻ると「開いたのに何も出ない」になる。必ず理由を残す。
+        eprintln!("[layertalk] 質問パネルの窓（{QUESTIONS}）がありません");
+        debug_log("windows/panel/show: missing window");
         return;
     };
-    elevate_overlay_window(&questions);
-    fit_question_panel_to_monitor(&questions, monitor.as_deref(), logical_width);
+    fit_question_panel_to_monitor(&questions, monitor.as_deref());
     let _ = questions.show();
+    // `show()` のあと。スタイルの書き戻しに消されないため。
+    elevate_overlay_window(&questions);
+}
+
+/// オーバーレイ窓を実行時に作る（macOS 以外）。
+///
+/// **`tauri.conf.json` には書かない。** config の窓は全プラットフォームで作られるので、
+/// macOS ではネイティブ描画の窓と二重になる。
+///
+/// `visible(false)` で作るのは既存の決めごとどおり（「プレゼンを開始」を押すまで
+/// オーバーレイはどこにも出さない）。`focused(false)` と拡張スタイルの
+/// `WS_EX_NOACTIVATE` はセットで、**出た瞬間にスライドショーからフォーカスを奪わない**
+/// ためにある（奪うと矢印キーでのページ送りが死ぬ）。
+#[cfg(not(target_os = "macos"))]
+fn create_overlay_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    if let Some(existing) = app.get_webview_window(OVERLAY) {
+        return Ok(existing);
+    }
+
+    #[allow(unused_mut)]
+    let mut builder = WebviewWindowBuilder::new(app, OVERLAY, WebviewUrl::App(WINDOW_PAGE.into()))
+        .title("LayerTalk Overlay")
+        .transparent(true)
+        .decorations(false)
+        .visible(false)
+        .always_on_top(true)
+        // **`focused(false)` ではない。** あちらは「最初にフォーカスを当てるか」だけ。
+        // `focusable(false)` が tao のフラグ経由で `WS_EX_NOACTIVATE` になり
+        // （`window_state.rs:296-297`）、スタイルの書き戻しでも消えない。
+        // これが無いと、オーバーレイが出た瞬間にスライドショーからフォーカスを奪い、
+        // 矢印キーでのページ送りが死ぬ。
+        .focusable(false)
+        .resizable(false);
+
+    #[cfg(target_os = "windows")]
+    {
+        // **`skip_taskbar(true)` は必須。** これを false にすると tao が
+        // `WS_EX_APPWINDOW` を立て（`window_state.rs:258-259`）、それが
+        // `WS_EX_TOOLWINDOW` を打ち消して **Alt+Tab とタスクバーに出てしまう**
+        // （実測: ex=0x080c01b8 は tool=1 なのに一覧に出た）。
+        // tao の skip_taskbar は `ITaskbarList::DeleteTab` で、所有者ウィンドウを
+        // 作らないので最前面は壊れない。
+        builder = builder.shadow(false).skip_taskbar(true);
+    }
+
+    let overlay = builder.build()?;
+    debug_log(&format!("overlay/create: page={WINDOW_PAGE}"));
+
+    // 透過そのものは wry が `transparent: true` から当てている（`webview2/mod.rs:127-131`）。
+    // ここは**切り分け用**で、`LAYERTALK_WIN_WEBVIEW_TRANSPARENT=1` のときだけ当て直す。
+    #[cfg(target_os = "windows")]
+    {
+        windows_overlay::force_webview_transparent(&overlay);
+        // 質問スライドを撮る一瞬だけ、この窓をキャプチャから外すために覚えておく。
+        // どちらの窓も `CloseRequested` を止めていて破棄されないので、ここで一度でよい。
+        if let Ok(hwnd) = overlay.hwnd() {
+            windows_capture::register_excluded(hwnd.0 as isize);
+        }
+    }
+
+    // 一度でも破棄されると `get_webview_window` は以後ずっと None を返し、
+    // 非 mac の経路が全部「窓がありません」で止まる。コントロール窓と同じく閉じさせない。
+    let closing = overlay.clone();
+    overlay.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = closing.hide();
+        }
+    });
+
+    Ok(overlay)
+}
+
+/// 質問パネル窓を作る（macOS 以外）。
+///
+/// オーバーレイと違い **クリックスルーにしない**。この窓だけが操作を受け付ける
+/// （展開／折りたたみ）。`focusable(false)` でフォーカスは奪わないので、
+/// 触ってもスライドショーの矢印キーは生きたまま — macOS の
+/// `NonactivatingPanel` + `setBecomesKeyOnlyIfNeeded(true)` と同じ狙い。
+///
+/// **大きさは中身に合わせる。** 画面の高さいっぱいに取ると、Windows では
+/// その矩形が全部当たり判定になってスライドの右端が触れなくなる。
+#[cfg(not(target_os = "macos"))]
+fn create_question_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    if let Some(existing) = app.get_webview_window(QUESTIONS) {
+        return Ok(existing);
+    }
+
+    #[allow(unused_mut)]
+    let mut builder =
+        WebviewWindowBuilder::new(app, QUESTIONS, WebviewUrl::App(WINDOW_PAGE.into()))
+            .title("LayerTalk Questions")
+            .transparent(true)
+            .decorations(false)
+            .visible(false)
+            .always_on_top(true)
+            .focusable(false)
+            .resizable(false)
+            .inner_size(QUESTION_TAB_WIDTH, 132.0);
+
+    #[cfg(target_os = "windows")]
+    {
+        builder = builder.shadow(false).skip_taskbar(true);
+    }
+
+    let questions = builder.build()?;
+    debug_log(&format!("questions/create: page={WINDOW_PAGE}"));
+
+    #[cfg(target_os = "windows")]
+    {
+        windows_overlay::force_webview_transparent(&questions);
+        // 質問スライドを撮る一瞬だけ、この窓をキャプチャから外すために覚えておく。
+        // どちらの窓も `CloseRequested` を止めていて破棄されないので、ここで一度でよい。
+        if let Ok(hwnd) = questions.hwnd() {
+            windows_capture::register_excluded(hwnd.0 as isize);
+        }
+    }
+
+    let closing = questions.clone();
+    questions.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = closing.hide();
+        }
+    });
+
+    Ok(questions)
 }
 
 /// オーバーレイはクリックスルー固定。切り替える手段は用意しない。
 /// 発表中に「気づかないまま背面が操作できなくなっている」事故が起きないようにするため。
 #[cfg(not(target_os = "macos"))]
 fn apply_overlay_behaviour(window: &WebviewWindow, target: Option<&str>) {
-    elevate_overlay_window(window);
     fit_overlay_to_monitor(window, target);
 
     if let Err(err) = window.set_ignore_cursor_events(true) {
         eprintln!("[layertalk] クリックスルーの設定に失敗: {err}");
     }
+
+    // **最後に呼ぶこと。** `set_ignore_cursor_events` は tao のフラグを変えるので、
+    // 先に前面化しておくと `WS_EX_TOOLWINDOW` がそこで消える（Windows）。
+    elevate_overlay_window(window);
 }
 
 /// オーバーレイを表示する。
@@ -751,11 +1015,112 @@ fn show_overlay(app: &AppHandle) {
     #[cfg(not(target_os = "macos"))]
     {
         let Some(overlay) = app.get_webview_window(OVERLAY) else {
+            // ここを黙って戻ると、`set_live(true)` だけ通って「発表中なのに画面に何も無い」
+            // 状態になる。原因が分からなくなるので必ず出す。
+            eprintln!("[layertalk] オーバーレイの窓（{OVERLAY}）がありません");
+            debug_log("windows/overlay/show: missing window");
             return;
         };
         apply_overlay_behaviour(&overlay, monitor.as_deref());
-        let _ = overlay.show();
+        if let Err(err) = overlay.show() {
+            eprintln!("[layertalk] オーバーレイを表示できませんでした: {err}");
+            debug_log(&format!("windows/overlay/show: failed {err}"));
+            return;
+        }
+        // `show()` も拡張スタイルの書き戻しの引き金なので、見せたあとに当て直す。
+        elevate_overlay_window(&overlay);
+        debug_log(&format!(
+            "overlay/show: monitor={}",
+            monitor.as_deref().unwrap_or("(primary)")
+        ));
     }
+}
+
+/// **スパイク用の裏口（Windows のみ）。** `Ctrl+Shift+O` でオーバーレイを出し入れする。
+///
+/// 「プレゼンを開始」ボタンはルーム必須（`ControlWindow.tsx` の
+/// `disabled={!settings.roomId || …}`）で、ルームを作るにはサインインが要る。
+/// **透過と最前面が成立するかを見るだけなのに、VM で Supabase の認証を通すのは過剰**なので、
+/// Rust 側のグローバルショートカットから直接叩けるようにしてある。
+///
+/// `set_live` も一緒に動かすのは、**最前面を当て直すウォッチドッグが発表中しか回らない**ため
+/// （これを省くと、いちばん見たい「スライドショーに勝ち続けられるか」が試せない）。
+///
+/// 透過の可否が確定したらこの関数ごと消す。
+#[cfg(all(target_os = "windows", debug_assertions))]
+fn toggle_spike_overlay(app: &AppHandle) {
+    if is_live(app) {
+        if let Some(overlay) = app.get_webview_window(OVERLAY) {
+            let _ = overlay.hide();
+        }
+        set_live(app, false);
+        app.state::<question_capture::QuestionCaptureState>().stop();
+        debug_log("spike: overlay off");
+    } else {
+        show_overlay(app);
+        set_live(app, true);
+        // 撮影も始める。本番は `start_presentation` がここをやるが、あちらはルームと
+        // サインインが要る。**スパイクは撮影の可否を見るのが目的**なので直接起こす。
+        let session_id = uuid::Uuid::new_v4().to_string();
+        // **UUID でないと `parse_id` に弾かれる**（保存先のパスも UUID で組む）。
+        start_question_capture(app, &session_id, target_monitor(app));
+        debug_log(&format!("spike: overlay on (session {session_id})"));
+    }
+}
+
+/// **スパイク用の裏口（Windows のみ）。** `Ctrl+Shift+Q` でダミーの質問を1件流す。
+///
+/// 本来は Supabase の購読 → `sendQuestionToPanel` で届くが、質問パネルの
+/// 当たり判定を確かめるだけなら認証もルームも要らない。`QuestionWindow` が
+/// 待っているのと同じ `question-received` イベントをそのまま投げる。
+///
+/// 当たり判定の可否が確定したらこの関数ごと消す。
+#[cfg(all(target_os = "windows", debug_assertions))]
+fn push_spike_question(app: &AppHandle) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    let n = COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+    let question_id = uuid::Uuid::new_v4().to_string();
+    // `QuestionWindow` が読むのは id と content だけ。型は shared の Comment だが、
+    // 足りないフィールドは使われないので JSON で足りる。
+    let payload = serde_json::json!({
+        "id": question_id,
+        "content": format!("ダミーの質問 {n} 件目。パネルの高さが中身に追従するかを見る。"),
+        "is_question": true,
+        "status": "approved",
+    });
+
+    set_panel_shown(app, true);
+    show_question_panel(app);
+    let _ = app.emit("question-received", payload);
+    debug_log(&format!("spike: question {n} ({question_id})"));
+
+    // **撮影は必ず別スレッドへ。** 1枚撮るのに数百 ms かかるので、ショートカットの
+    // ハンドラで待つとその間オーバーレイが止まる（本番は
+    // `#[tauri::command(async)]` がこの役をしている）。
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let Ok(app_data) = app.path().app_data_dir() else {
+            debug_log("spike: app_data_dir が取れません");
+            return;
+        };
+        let state = app.state::<question_capture::QuestionCaptureState>();
+        match state.capture_question(&app_data, &question_id) {
+            Ok(result) => debug_log(&format!(
+                "spike: capture {:?} reason={:?} health={:?} path={}",
+                result.status,
+                result.reason,
+                state.health(),
+                app_data
+                    .join("question-captures")
+                    .join(state.active_session_id().unwrap_or_default())
+                    .join(format!("{question_id}.jpg"))
+                    .display()
+            )),
+            Err(err) => debug_log(&format!("spike: capture failed {err}")),
+        }
+    });
 }
 
 // ------------------------------------------------------------------ ヘルパ
@@ -806,6 +1171,10 @@ fn set_live(app: &AppHandle, value: bool) {
     }
     let _ = app.emit("presentation-state-changed", value);
 }
+
+/// ウォッチドッグが最後に出したオーバーレイの拡張スタイル。変化したときだけログに出す。
+#[cfg(target_os = "windows")]
+static LAST_OVERLAY_STATE: Mutex<Option<String>> = Mutex::new(None);
 
 /// 前面化は「一度勝てば終わり」ではない。
 ///
@@ -917,6 +1286,34 @@ fn start_front_watchdog(app: &AppHandle) {
                         ));
                     }
                 }
+
+                // Windows も「一度勝てば終わり」ではない。PowerPoint のスライドショーは
+                // それ自身が topmost なので、**同じ帯の中では後から当てた方が上**になる。
+                // 位置・サイズ・アクティブ状態は触らず z オーダーだけ当て直す。
+                #[cfg(target_os = "windows")]
+                if let Some(overlay) = app.get_webview_window(OVERLAY) {
+                    if overlay.is_visible().unwrap_or(false) {
+                        // 立っていれば何もしない（毎秒 FRAMECHANGED を撃たない）。
+                        windows_overlay::apply_tool_window(&overlay);
+                        windows_overlay::raise(&overlay);
+                        // **変わったときだけ出す。** 毎秒出すとログが埋まり、
+                        // 撮影の行のような「1回しか出ない大事な行」が探せなくなる。
+                        let state = windows_overlay::state(&overlay);
+                        let changed = LAST_OVERLAY_STATE
+                            .lock()
+                            .map(|mut last| {
+                                let changed = last.as_deref() != Some(state.as_str());
+                                if changed {
+                                    *last = Some(state.clone());
+                                }
+                                changed
+                            })
+                            .unwrap_or(true);
+                        if changed {
+                            debug_log(&format!("win/overlay: {state}"));
+                        }
+                    }
+                }
             });
         }
 
@@ -927,18 +1324,32 @@ fn start_front_watchdog(app: &AppHandle) {
     });
 }
 
-/// 収録中をコントロール窓とメニューバーに出す（App Store 2.5.14「収録中は明確に示す」）。
+/// 収録中をコントロール窓とトレイに出す（App Store 2.5.14「収録中は明確に示す」）。
 ///
-/// コントロール窓は発表中に閉じられていることがあるので、常に見えるトレイのタイトルにも出す。
+/// コントロール窓は発表中に閉じられていることがあるので、常に見えるトレイにも出す。
 /// フロントは `question-capture-state` を受け、開き直したときは `question_capture_recording` で取り直す。
+///
+/// **トレイの出し方がプラットフォームで違う。** `set_title` はメニューバーに文字を置く
+/// macOS の仕組みで、**Windows では黙って無視される**（`tray-icon` のドキュメントが
+/// "Windows: Unsupported" と明記している）。Windows には通知領域のアイコンの横に
+/// 文字を置く場所が無いので、ツールチップに出す。これを `set_title` のままにすると、
+/// **発表中にコントロール窓を閉じた瞬間、収録中の表示がどこにも無くなる。**
 fn show_recording(app: &AppHandle, recording: bool) {
     let _ = app.emit("question-capture-state", recording);
     let handle = app.clone();
     // NSStatusItem の変更はメインスレッドから行う。
     let _ = app.run_on_main_thread(move || {
-        if let Some(tray) = handle.tray_by_id(TRAY_ID) {
-            let _ = tray.set_title(if recording { Some("● REC") } else { None });
-        }
+        let Some(tray) = handle.tray_by_id(TRAY_ID) else {
+            return;
+        };
+        #[cfg(target_os = "macos")]
+        let _ = tray.set_title(if recording { Some("● REC") } else { None });
+        #[cfg(not(target_os = "macos"))]
+        let _ = tray.set_tooltip(Some(if recording {
+            "LayerTalk  ● REC"
+        } else {
+            "LayerTalk"
+        }));
     });
 }
 
@@ -1002,7 +1413,26 @@ fn capture_display_id(app: &AppHandle, monitor: Option<String>) -> Option<u32> {
     rx.recv_timeout(Duration::from_secs(2)).ok().flatten()
 }
 
-#[cfg(not(target_os = "macos"))]
+/// **Windows の u32 は CGDirectDisplayID ではない。** `HMONITOR` は 32bit に入らないし
+/// 画面構成が変わると無効になるので、ここでは `EnumDisplayMonitors` の添字だけを渡し、
+/// `QuestionCaptureState::start` がすぐ GDI のデバイス名（`\\.\DISPLAY1`）へ格上げする。
+///
+/// macOS と違って `run_on_main_thread` が要らない（GDI の列挙にスレッド親和性は無い）。
+#[cfg(target_os = "windows")]
+fn capture_display_id(app: &AppHandle, monitor: Option<String>) -> Option<u32> {
+    // 「自動」のときは、**ここでデバイス名まで解決してから**渡す。
+    // `windows_capture` の `EnumDisplayMonitors` の並びが tao の `available_monitors()` と
+    // 一致する保証は無いので、あちらに「自動」の判断をさせると、オーバーレイと別の画面を
+    // 撮ることがある（外部が2台あるときに実害が出る）。表示先を決める規則は1箇所に置く。
+    let target = monitor.or_else(|| {
+        app.get_webview_window(OVERLAY)
+            .and_then(|window| auto_monitor(&window))
+            .and_then(|monitor| monitor.name().cloned())
+    });
+    windows_capture::monitor_index(target.as_deref())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn capture_display_id(_app: &AppHandle, _monitor: Option<String>) -> Option<u32> {
     None
 }
@@ -1328,9 +1758,13 @@ fn open_external_url(url: String) -> Result<(), String> {
     {
         open_url_with_workspace(&url)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     {
-        Err("opening URLs is only implemented on macOS".into())
+        windows_shell::open_url(&url)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        Err("opening URLs is only implemented on macOS and Windows".into())
     }
 }
 
@@ -1498,14 +1932,46 @@ fn set_question_panel_expanded(app: AppHandle, expanded: bool) {
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let width = if expanded {
-            QUESTION_PANEL_WIDTH
-        } else {
-            QUESTION_TAB_WIDTH
-        };
-        show_question_panel(&app, width);
+        // 幅だけ先に当てる。高さは webview が測り直して `set_question_panel_size` で送ってくる。
+        if let Ok(mut guard) = PANEL_SIZE.lock() {
+            guard.0 = if expanded {
+                QUESTION_PANEL_WIDTH
+            } else {
+                QUESTION_TAB_WIDTH
+            };
+        }
+        show_question_panel(&app);
     }
     set_panel_shown(&app, true);
+}
+
+/// 質問パネルの中身の実寸（論理 px）を webview から受け取る。
+///
+/// **Windows では窓の矩形がそのまま当たり判定になる**ので、中身より大きい窓を出すと
+/// スライドの右端が触れなくなる。CSS では解決できない（`pointer-events: none` は
+/// OS の当たり判定には効かない）ので、測った値で窓そのものを縮める。
+/// macOS は `question_render` が同じことをネイティブ側でやっているため何もしない。
+#[tauri::command]
+fn set_question_panel_size(app: AppHandle, width: f64, height: f64) {
+    let _ = (&app, width, height);
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        // 0 や異常値で窓を潰さない。報告が来る前の既定値より小さくはしない。
+        if !width.is_finite() || !height.is_finite() || width < 1.0 || height < 1.0 {
+            debug_log(&format!("panel/size: ignored {width}x{height}"));
+            return;
+        }
+        if let Ok(mut guard) = PANEL_SIZE.lock() {
+            *guard = (width, height);
+        }
+        // まだ出していないパネルをここで出さない（最初の質問まで出さない仕様）。
+        if is_panel_shown(&app) {
+            if let Some(window) = app.get_webview_window(QUESTIONS) {
+                fit_question_panel_to_monitor(&window, target_monitor(&app).as_deref());
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -1706,6 +2172,23 @@ fn start_overlay_selftest(app: &AppHandle) {
 }
 
 pub fn run() {
+    // **WebView2 が無いと、窓が出ないか真っ白になるだけで理由がどこにも出ない。**
+    // Windows 11 には同梱だが、最低対応を Windows 10 2004 にしたので入っていない端末がある。
+    // webview が作れない状況では画面に何も出せないので、ここだけ Win32 のダイアログで伝える。
+    #[cfg(target_os = "windows")]
+    {
+        match windows_shell::webview2_runtime_version() {
+            Some(version) => debug_log(&format!("webview2: {version}")),
+            None => {
+                windows_shell::show_fatal_message(
+                    "LayerTalk",
+                    "LayerTalk を起動するには Microsoft Edge WebView2 ランタイムが必要です。\n\n                     https://developer.microsoft.com/microsoft-edge/webview2/ から\n                     「エバーグリーン ブートストラッパー」を入れてから、もう一度起動してください。",
+                );
+                return;
+            }
+        }
+    }
+
     tauri::Builder::default()
         // `tauri-plugin-opener` は入れていない。あれは `/usr/bin/open` を spawn するので
         // App Sandbox で黙って失敗する。URL は `open_external_url`（NSWorkspace）が開く。
@@ -1717,9 +2200,24 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
                     if event.state == ShortcutState::Pressed
-                        && shortcut.matches(Modifiers::SUPER | Modifiers::SHIFT, Code::KeyL)
+                        && shortcut.matches(CONTROL_SHORTCUT_MODIFIERS | Modifiers::SHIFT, Code::KeyL)
                     {
                         focus_control_window(app);
+                    }
+
+                    // スパイクの裏口。**release ビルドには入らない。**
+                    #[cfg(all(target_os = "windows", debug_assertions))]
+                    if event.state == ShortcutState::Pressed
+                        && shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyO)
+                    {
+                        toggle_spike_overlay(app);
+                    }
+
+                    #[cfg(all(target_os = "windows", debug_assertions))]
+                    if event.state == ShortcutState::Pressed
+                        && shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyQ)
+                    {
+                        push_spike_question(app);
                     }
                 })
                 .build(),
@@ -1751,6 +2249,7 @@ pub fn run() {
             peek_overlay,
             refit_overlay,
             set_question_panel_expanded,
+            set_question_panel_size,
             show_control,
             set_app_language,
             screen_capture_permission,
@@ -1780,25 +2279,58 @@ pub fn run() {
             // LayerTalk が背面・非表示でも設定窓へ戻れる常設入口。
             // 競合していてもアプリ自体は起動できるよう、登録エラーはログに留める。
             let control_shortcut =
-                Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyL);
+                Shortcut::new(Some(CONTROL_SHORTCUT_MODIFIERS | Modifiers::SHIFT), Code::KeyL);
             if let Err(err) = app.global_shortcut().register(control_shortcut) {
-                eprintln!("[layertalk] ⇧⌘L の登録に失敗しました: {err}");
+                eprintln!("[layertalk] コントロール窓のショートカットの登録に失敗しました: {err}");
+            }
+
+            // スパイクの裏口（Ctrl+Shift+O / Ctrl+Shift+Q）。
+            //
+            // **`debug_assertions` で縛ってあるので release ビルドには入らない。**
+            // これを外さないこと — `Ctrl+Shift+O` はサインインもルームも Event Pass も
+            // 撮影の opt-in も素通りして画面収録を始める。同意なく録画を始める
+            // グローバルホットキーは、ストアの審査を通らないし通ってもいけない。
+            // `tauri dev` は debug ビルドなので、開発中はこれまでどおり使える。
+            #[cfg(all(target_os = "windows", debug_assertions))]
+            {
+                let spike_shortcut =
+                    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyO);
+                if let Err(err) = app.global_shortcut().register(spike_shortcut) {
+                    eprintln!("[layertalk] Ctrl+Shift+O の登録に失敗しました: {err}");
+                }
+                let question_shortcut =
+                    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyQ);
+                if let Err(err) = app.global_shortcut().register(question_shortcut) {
+                    eprintln!("[layertalk] Ctrl+Shift+Q の登録に失敗しました: {err}");
+                }
             }
 
             let handle = app.handle().clone();
 
             // macOS では tao の窓（overlay / questions）は表示にも配置にも使わない。
             // 「プレゼンを開始」で `native_overlay` が自前の窓を作り、webview の
-            // contentView をそこへ移す。tauri.conf.json で visible:false にしてあるので、
-            // ここでは何もしない。
+            // contentView をそこへ移す。だから macOS ではここで窓を作らない。
+            //
+            // **`tauri.conf.json` に書かないのは、config の窓が全プラットフォーム共通で
+            // 作られてしまうから。** macOS で作ると、ネイティブ描画の窓と二重になる。
             #[cfg(not(target_os = "macos"))]
             {
-                if let Some(overlay) = app.get_webview_window(OVERLAY) {
-                    apply_overlay_behaviour(&overlay, None);
+                match create_overlay_window(app.handle()) {
+                    Ok(overlay) => apply_overlay_behaviour(&overlay, None),
+                    Err(err) => {
+                        eprintln!("[layertalk] オーバーレイ窓を作れませんでした: {err}");
+                        debug_log(&format!("windows/overlay/create: failed {err}"));
+                    }
                 }
-                if let Some(questions) = app.get_webview_window(QUESTIONS) {
-                    elevate_overlay_window(&questions);
-                    fit_question_panel_to_monitor(&questions, None, QUESTION_PANEL_WIDTH);
+                match create_question_window(app.handle()) {
+                    Ok(questions) => {
+                        elevate_overlay_window(&questions);
+                        fit_question_panel_to_monitor(&questions, None);
+                    }
+                    Err(err) => {
+                        eprintln!("[layertalk] 質問パネル窓を作れませんでした: {err}");
+                        debug_log(&format!("questions/create: failed {err}"));
+                    }
                 }
             }
 

@@ -6,8 +6,8 @@ import type { Messages } from "./index";
  */
 export const en: Messages = {
   meta: {
-    title: "LayerTalk | Live audience comments and Q&A on your slides, for Mac",
-    description: "A Mac app that shows audience comments, questions, and reactions over your presentation slides in real time. The audience joins with a QR or 6-character code, no app or sign-up needed. Works with PowerPoint, Keynote, Canva, and more.",
+    title: "LayerTalk | Live audience comments and Q&A on your slides, for Mac and Windows",
+    description: "A Mac and Windows app that shows audience comments, questions, and reactions over your presentation slides in real time. The audience joins with a QR or 6-character code, no app or sign-up needed. Works with PowerPoint, Keynote, Canva, and more.",
     keywords: ["presentation software", "live audience engagement", "Q&A", "real-time comments", "event presentation", "slide overlay"],
   },
 
@@ -37,9 +37,10 @@ export const en: Messages = {
       copyright: "© 2026 LayerTalk",
     },
     appStore: {
-      cta: "Download on the Mac App Store",
+      apple: "Download on the Mac App Store",
+      microsoft: "Get it from the Microsoft Store",
       compact: "Get the app",
-      note: "macOS 13 or later · Free download",
+      note: "macOS 13 or later / Windows 10 version 2004 or later · Free download",
     },
     legal: {
       eyebrow: "LayerTalk legal",
@@ -59,7 +60,7 @@ export const en: Messages = {
     eyebrow: "Live audience, on your slides",
     titleLead: "Bring the room ",
     titleHighlight: "onto your slides.",
-    description: "LayerTalk is a participatory presentation tool for macOS that puts audience comments, questions, and reactions directly over your slides in real time.",
+    description: "LayerTalk is a participatory presentation tool for macOS and Windows that puts audience comments, questions, and reactions directly over your slides in real time.",
     secondaryCta: "Enter a join code",
     signals: ["No audience app", "Join by QR or 6-character code", "No audience limit"],
     stage: {

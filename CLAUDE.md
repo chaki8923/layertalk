@@ -1,11 +1,12 @@
 # LayerTalk
 
 発表中のスライド最前面に、観客からのリアルタイムコメント／スタンプを
-「背景透過・クリックスルー」で重ねて表示する macOS アプリ ＋ 観客用 Web アプリ。
+「背景透過・クリックスルー」で重ねて表示する macOS / Windows アプリ ＋ 観客用 Web アプリ。
+Mac App Store と Microsoft Store の両方で配信中。
 
 ```
 apps/audience-web/     観客用 Web    Next.js 16 / React 19 / Tailwind v4 / shadcn(radix-nova)
-apps/presenter-app/    発表者用 macOS Tauri v2 + Vite + React
+apps/presenter-app/    発表者用 macOS/Windows Tauri v2 + Vite + React
 packages/shared/       型・Supabase クライアント・Realtime フック・デザイントークン
 supabase/migrations/   MCP で適用済みスキーマのミラー
 docs/design-system.md  デザインの唯一の正
@@ -139,14 +140,33 @@ filter 無しで購読し、手元に無い id は受け取ってから捨てて
 public バケットは画像の取得だけならポリシー無しで通るので気付きにくい。
 `room-stamps` には insert / delete に加えて **select** も開けてある。
 
-**12. `ディスプレイ N` は文言ではなく ID — 絶対に翻訳しないこと**
-`lib.rs` の `native_overlay::screen_name` と `monitor_label` が作る
-`format!("ディスプレイ {}", index + 1)` は、`settings.monitorName` に**保存されて
-文字列一致で照合される**（`lib.rs` の 3 箇所）。英語化のときにここを訳すと、
-既存ユーザーの保存済みモニター選択が一致しなくなり、**黙って主ディスプレイに戻る**。
-壇上で初めて気付く類の壊れ方なので、読める文字列だが不透明な ID として扱う。
-コントロール窓の一覧も `monitor.name` を生のまま出している。訳すのは周りの
-「主ディスプレイに追従」「・ 主ディスプレイ」など、**モニター未選択のときの表示名**だけ。
+**12. `MonitorInfo.name` は文言ではなく ID — 訳さない・画面にも出さない**
+`lib.rs` の `native_overlay::screen_name` と `monitor_label` が作る `name` は、
+`settings.monitorName` に**保存されて文字列一致で照合される**
+（`lib.rs` の `display_id` / `screen_frame` / `fit_overlay_to_monitor` /
+`fit_question_panel_to_monitor` と、`windows_capture::monitor_index`）。
+英語化のときに `format!("ディスプレイ {}", index + 1)` を訳すと、既存ユーザーの保存済み
+モニター選択が一致しなくなり、**黙って別の画面へ移る**。壇上で初めて気付く類の壊れ方。
+
+**画面に出すのは役割だけ。機種名は出さない。** Windows の `name` は GDI のデバイス名
+（`\\.\DISPLAY1`）、macOS は機種名（「JAPANNEXT.MNT」「内蔵Retinaディスプレイ」）で、
+**どちらも*どの画面か*を発表者に教えない**。行に出すのは `lib/monitors.ts` の
+`describeMonitor` が `is_primary` から作る「このMacの画面」「外部ディスプレイ」だけ。
+**`monitor.name` を JSX に書かないこと。** 一度 macOS の `localizedName` を「読めるから」と
+そのまま出して差し戻された。外部が2台で解像度も同じだと行だけでは見分けられないが、
+それは確認の枠（`peek_overlay`）が引き受ける。
+「このMacの画面」の Mac / PC は `lib/platform.ts` の `deviceNoun()`（OS の事実なので
+i18n カタログには入れない）。
+
+**一覧は「外部 → この端末」の順で、先頭の外部行が「自動」そのもの**（保存値は `null`）。
+自動行を別に持たない — 画面2台で「自動」「内蔵」「外部」の3行が出て、同じ画面を指す
+選択肢が2つ並んでいたのを畳んだ。外部が0台なら選ぶものが無いのでラジオを出さない。
+
+**表示先の既定（`monitorName: null`）は「自動 ＝ 外部ディスプレイ優先」**で、主ディスプレイ
+ではない。会議室で挿すプロジェクターは主ディスプレイにならないので、主へ落とすと手元の
+画面にだけコメントが出てスライドには何も重ならない。規則は3箇所に写しがあるので
+**必ず揃えて直すこと**: `native_overlay::auto_screen`（macOS）/ `auto_monitor`（Windows）/
+`lib/monitors.ts` の `resolveAutoMonitor`（一覧の「いまの出力先」）。
 
 **13. dev ビルドと `.app` は localStorage も CORS の origin も別物**
 `tauri.conf.json` の `devUrl` は `http://localhost:1420`、リリース版の origin は `tauri://localhost`。
@@ -355,6 +375,15 @@ CSS の `paint-order: stroke fill` に当たる指定は無いので、**縁（�
   （nonactivating な NSPanel なので、スライドショーからフォーカスを奪わない）。展開中の窓はカードの分の
   高さしか取らず、折りたたみ中は右上の小さなタブだけにする — 画面の高さいっぱいに取ると、
   右端のスライドまで操作できなくなる
+- **コメントを出す画面の既定は「自動＝外部ディスプレイ優先」。** 壇上では外部モニターや
+  プロジェクターが刺さっていて、そこにスライドが出ている。主ディスプレイを既定にすると
+  手元の画面にだけコメントが出る。規則の写しが3箇所にあるので揃えて直すこと（罠 #12）
+- **コントロール窓のセクションの既定順は `SECTION_IDS`**（room / monitor / safety / display /
+  stamp / customStamp / eventPass）。壇上で最初に要るのは参加コード、次が表示先。
+  安全管理は通報・承認と違って常時見るものではないのでその下に置く（受信側の
+  `PendingApprovalQueue` / `ReportQueue` は並び替えの外で固定）。
+  **既定の順を変えたら `SECTION_ORDER_VERSION` を上げる** — 上げないと、一度でも並び替えた
+  人には新しい既定が永久に届かない（`normalizeSectionOrder` は保存値を正とするため）
 - **参加 QR は手動トグルだけ。** 自動表示はしない（スライドを勝手に隠さない）。
   URL は `VITE_AUDIENCE_BASE_URL`（未設定なら localhost）で、LAN IP の自動検出はしない
 - **フキダシは白の不透明板。** 縁取り文字（`.lt-overlay-text`）とは併用しない（白板の上に
@@ -452,6 +481,15 @@ CSS の `paint-order: stroke fill` に当たる指定は無いので、**縁（�
   1 台目で finish 済みの購入を 2 台目に戻せない。**サーバの `validateEventPassTransaction` も
   NRS だけを受理する** — 型を Consumable から変えたときここが取り残され、Apple が正しく署名した
   取引まで弾いて購入も復元も全件落ちていた（`app-store.test.ts` が型を固定している）
+- **ストアの URL は `seo.ts` の定数**（`APP_STORE_URL` / `MICROSOFT_STORE_URL`）。env に
+  しない — `LEGAL_*` を env にしてあるのは法的に動く値だからで、ストアの URL は動かない。
+  **サイトは2つのストアのボタンを両方出し、OS 判定はしない**（`StoreButtons`）。
+  判定が外れた人に相手 OS のボタンしか見えない状態を作らないため。ヘッダだけは
+  ナビが詰まるので「アプリを入手」1つにして LP の `#get` へ送る
+- **Windows 版の決済は Stripe で、法務ページのチャネルは `stripe` に落ちる**
+  （Microsoft Store の商取引システムを使わない＝ポリシー 10.8.1 で第三者決済として申告済み）。
+  **`SALES_CHANNELS` を増やさないこと。** 画面の呼び名だけ「Windows版・直接配布版」にしてある
+  — Microsoft Store から入れた人に「直接配布版」とだけ書くと事実と食い違う
 - **audience-web はダークファースト。** 観客は暗い会場でスマホを見る
 - **日本語 Web フォントは読み込まない。** 数MBあり会場の Wi-Fi で初期表示が壊れる
 - **表示言語を決めるのは発表者だけ。** コントロール窓のタイトルバーの JA/EN トグルが唯一の入口で、

@@ -7,6 +7,13 @@ import { GUIDES_PATH, GUIDES_TITLE } from "@/content/guides";
 export const SITE_NAME = "LayerTalk";
 export const DEFAULT_SITE_URL = "https://www.layer-talk.com";
 export const APP_STORE_URL = "https://apps.apple.com/app/layertalk/id6814319511";
+/**
+ * Windows 版の掲載。**`?hl=…&gl=…` は付けない** — 同じ定数を英語ロケールでも使うので、
+ * 表示言語はストア側に訪問者で決めさせる。製品 ID は Partner Center 発行の `9NGK6GX4P2XF`。
+ *
+ * **ここは env ではなく定数。** 変えたら Vercel の再デプロイで反映される。
+ */
+export const MICROSOFT_STORE_URL = "https://apps.microsoft.com/detail/9ngk6gx4p2xf";
 export const SOCIAL_IMAGE_ALT = "LayerTalk — Bring the room onto your slides";
 
 const openGraphLocale: Record<Locale, string> = {
@@ -141,12 +148,14 @@ export function createHomeStructuredData({
         description,
         applicationCategory: "BusinessApplication",
         applicationSubCategory: "Presentation software",
-        operatingSystem: "macOS 13 or later",
-        downloadUrl: APP_STORE_URL,
+        operatingSystem: "macOS 13 or later, Windows 10 version 2004 or later",
+        // 両方挙げる。`operatingSystem` が Windows を名乗っているのに Apple の URL しか
+        // 無いと、構造化データ自体が食い違う。
+        downloadUrl: [APP_STORE_URL, MICROSOFT_STORE_URL],
         softwareRequirements:
           locale === "ja"
-            ? "発表者はmacOS 13以降、観客は最新の主要ブラウザとインターネット接続が必要です。"
-            : "Presenters need macOS 13 or later; audience members need a current web browser and internet connection.",
+            ? "発表者はmacOS 13以降またはWindows 10 バージョン2004以降、観客は最新の主要ブラウザとインターネット接続が必要です。"
+            : "Presenters need macOS 13 or later, or Windows 10 version 2004 or later; audience members need a current web browser and internet connection.",
         inLanguage: ["ja-JP", "en-US"],
         featureList: featureNames,
         offers: [

@@ -1,15 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  createEventPassStructuredData,
-  createHomeStructuredData,
-  createPageMetadata,
-  DEFAULT_SITE_URL,
-  getSiteUrl,
-  privatePageRobots,
-  publicPageRobots,
-  serializeJsonLd,
-} from "./seo";
+import { APP_STORE_URL, DEFAULT_SITE_URL, MICROSOFT_STORE_URL, createEventPassStructuredData, createHomeStructuredData, createPageMetadata, getSiteUrl, privatePageRobots, publicPageRobots, serializeJsonLd } from "./seo";
 
 const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL;
 
@@ -74,7 +65,10 @@ describe("structured data", () => {
       "SoftwareApplication",
     ]);
     expect(data["@graph"][1]).toMatchObject({
-      operatingSystem: "macOS 13 or later",
+      operatingSystem: "macOS 13 or later, Windows 10 version 2004 or later",
+      // `operatingSystem` が Windows を名乗るなら、入手先も両方挙がっていないと
+      // 構造化データ自体が食い違う。
+      downloadUrl: [APP_STORE_URL, MICROSOFT_STORE_URL],
       offers: [
         { name: "LayerTalk Free", price: "0", priceCurrency: "JPY" },
         { name: "LayerTalk Event Pass", price: "2980", priceCurrency: "JPY" },

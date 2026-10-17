@@ -1,3 +1,4 @@
+import { credentialStoreName } from "./platform";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import type { Locale } from "@layertalk/shared";
@@ -22,10 +23,11 @@ export function notificationMessage(code: unknown, locale: Locale): string {
     invalid_webhook: ["このサービスの有効なHTTPS Webhook URLを入力してください。", "Enter a valid HTTPS webhook URL for this service."],
     invalid_audience: ["公開されたHTTPSの参加URLが必要です。配信先の設定を確認してください。", "A public HTTPS join URL is required. Check the audience site configuration."],
     invalid_name: ["送信先の表示名を80文字以内で入力してください。", "Enter a destination name of up to 80 characters."],
-    storage_error: ["Keychainにアクセスできませんでした。アクセス許可を確認して再試行してください。", "Could not access Keychain. Check access permissions and try again."],
+    storage_error: [`${credentialStoreName(true)}にアクセスできませんでした。アクセス許可を確認して再試行してください。`, `Could not access ${credentialStoreName(false)}. Check access permissions and try again.`],
     missing_webhook: ["Webhook URLを入力して保存してください。", "Enter and save a webhook URL."],
     expired_request: ["送信準備の有効時間を過ぎました。手動で再送してください。", "The prepared request expired. Resend manually."],
-    unsupported: ["この機能はmacOSで利用できます。", "This feature is available on macOS."],
+    // Windows は資格情報マネージャーに保存できるので、ここへは来ない。Linux だけが残る。
+    unsupported: ["この機能はmacOSとWindowsで利用できます。", "This feature is available on macOS and Windows."],
     failed: ["送信に失敗しました。送信先の設定を確認してください。", "Sending failed. Check the destination settings."],
   };
   return (messages[typeof code === "string" ? code : "failed"] ?? messages.failed)[locale === "ja" ? 0 : 1];

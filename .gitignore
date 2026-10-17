@@ -32,3 +32,6 @@ npm-debug.log*
 *.swo
 *~
 .vercel/
+
+# Windows の VM 経由で共有フォルダに入るサムネイルキャッシュ
+Thumbs.db

@@ -1,6 +1,6 @@
 [package]
 name = "presenter-app"
-version = "1.0.0"
+version = "1.0.1"
 description = "LayerTalk presenter overlay"
 authors = ["LayerTalk"]
 edition = "2021"
@@ -85,3 +85,37 @@ core-graphics = "0.25"
 # **モジュールと Swift の `#if` を開けるフラグ**。デプロイメントターゲットは上がらず、
 # Swift 側に `#available(macOS 14.0, *)` があるので macOS 13 では Err が返るだけ。
 screencapturekit = { version = "8", features = ["macos_14_0"] }
+
+# Windows のオーバーレイ窓（最前面・フォーカスを奪わない拡張スタイル・WebView2 の透過）。
+# **バージョンは Cargo.lock が固定している tauri / wry のものに合わせること。**
+# ずれると `PlatformWebview::controller()` が返す型と webview2-com の型が別物になり、
+# `cast::<ICoreWebView2Controller2>()` がコンパイルを通らない。
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_UI_WindowsAndMessaging",
+  # 法務ページ・サポート・領収書を既定のブラウザで開く（ShellExecuteW）。
+  # Slack / Teams の webhook を資格情報マネージャーに預ける（macOS の Keychain に対応）。
+  # WebView2 ランタイムの有無をレジストリで確かめる（Windows 10 には同梱されていない）。
+  "Win32_System_Registry",
+  "Win32_Security_Credentials",
+  "Win32_UI_Shell",
+  # 質問スライドの撮影（Windows.Graphics.Capture + D3D11 の相互運用）。
+  # macOS の ScreenCaptureKit にあたる部分で、常時ストリームではなく単発撮影に使う。
+  "Foundation",
+  "Graphics_Capture",
+  "Graphics_DirectX_Direct3D11",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_Graphics_Gdi",
+  "Win32_System_WinRT",
+  "Win32_System_WinRT_Direct3D11",
+  "Win32_System_WinRT_Graphics_Capture",
+] }
+webview2-com = "0.38"
+# スパイクの裏口が発表セッションと質問の ID を自分で作るため。
+# **macOS 側には足さない** — あちらは UUID を受け取って parse するだけで生成しないので、
+# getrandom を引き込む理由が無い（target 指定の依存はそのターゲットでしか効かない）。
+uuid = { version = "1", features = ["v4"] }

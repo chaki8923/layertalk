@@ -22,7 +22,7 @@ export const ja = {
     stop: "プレゼンを終了",
     needsRoom: "先にルームを作成してください",
     showingOn: (monitor: string) =>
-      `${monitor} に表示中。開始後に届いたコメントだけが流れます。`,
+      `${monitor}に表示中。開始後に届いたコメントだけが流れます。`,
     hidden: "開始するまでオーバーレイはどこにも表示されません。",
     /** ⇧⌘L の案内。キー表記はチップで挟むので、前後の文を分けて持つ。 */
     shortcut: "発表中にこの画面を呼び出すときは",
@@ -69,15 +69,23 @@ export const ja = {
   },
 
   monitor: {
-    section: "表示モニター",
-    /** モニター未選択のときの表示名。Rust が作る `ディスプレイ N` とは別物。 */
-    primary: "主ディスプレイ",
-    followPrimary: "主ディスプレイに追従",
-    followPrimarySub: "接続構成が変わっても自動でメイン画面へ",
-    primarySuffix: " ・ 主ディスプレイ",
-    hint: "選ぶとその画面に確認用の枠が数秒表示されます。",
-    hintSingle: " 現在つながっているディスプレイは1台です。",
-    peek: "この画面に表示します",
+    section: "コメントを出す画面",
+    /**
+     * 行に出す名前は**役割だけ**。`MonitorInfo.name`（Windows は `\\.\DISPLAY1`、
+     * macOS は「JAPANNEXT.MNT」のような機種名）は照合用の ID で、*どの画面か*を
+     * 人に教えないので画面に出さない。組み立ては `lib/monitors.ts`。
+     */
+    external: "外部ディスプレイ",
+    externalNumbered: (n: number) => `外部ディスプレイ ${n}`,
+    /** 先頭の外部行にだけ出す。この行を選ぶこと自体が「自動で追従」の意味。 */
+    externalAutoSub: "つなぎ替えても自動で付いていきます",
+    thisScreen: (device: string) => `この${device}の画面`,
+    /** 外部が0台のとき。選ぶものが無いのでラジオの代わりに出す。 */
+    soloNotice: (device: string) =>
+      `この${device}の画面に出します。外部ディスプレイをつなぐと、自動でそちらへ切り替わります。`,
+    hint: "選ぶとその画面に確認の枠が数秒出ます。",
+    missing: (name: string) => `選んでいた画面が見つかりません。いまは${name}に出ます。`,
+    peek: "この画面にコメントを出します",
   },
 
   display: {

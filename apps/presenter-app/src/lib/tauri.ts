@@ -11,6 +11,11 @@ export const currentWindowLabel = (): WindowLabel => getCurrentWindow().label as
 export const startCurrentWindowDragging = () => getCurrentWindow().startDragging();
 
 export type MonitorInfo = {
+  /**
+   * 照合用の ID。**文言ではないので画面に出さない**
+   * （Windows は `\\.\DISPLAY1`、macOS は機種名。どちらも*どの画面か*を教えない）。
+   * 行に出す名前は `lib/monitors.ts` の `describeMonitor` が役割から作る。
+   */
   name: string;
   width: number;
   height: number;
@@ -22,7 +27,7 @@ export type MonitorInfo = {
 
 export const listMonitors = () => invoke<MonitorInfo[]>("list_monitors");
 
-/** 表示先モニターを変更する。null でプライマリ。 */
+/** 表示先モニターを変更する。null で自動（外部ディスプレイ優先）。 */
 export const setOverlayMonitor = (monitor: string | null) =>
   invoke<void>("set_overlay_monitor", { monitor });
 
@@ -205,6 +210,17 @@ export const refitOverlay = () => invoke<void>("refit_overlay");
 /** 質問窓を右端のパネル幅／タブ幅へ切り替える。表示先は Rust が持っている。 */
 export const setQuestionPanelExpanded = (expanded: boolean) =>
   invoke<void>("set_question_panel_expanded", { expanded });
+
+/**
+ * 質問パネルの中身の実寸（論理 px）を Rust に伝え、窓そのものをその大きさに縮めさせる。
+ *
+ * **Windows では窓の矩形がそのまま当たり判定になる。** 画面の高さいっぱいの窓を出すと
+ * 右端の帯が全部クリックを吸い、発表者がスライドを触れなくなる。CSS の
+ * `pointer-events: none` は OS の当たり判定には効かないので、窓を縮めるしかない。
+ * macOS では `question_render` がネイティブ側で同じことをしているため、この呼び出しは何もしない。
+ */
+export const setQuestionPanelSize = (width: number, height: number) =>
+  invoke<void>("set_question_panel_size", { width, height });
 
 export const showControlWindow = () => invoke<void>("show_control");
 

@@ -5,6 +5,33 @@ import { messages } from "./index";
 const locales = ["ja", "en"] as const;
 
 describe("landing copy", () => {
+  /**
+   * 2026-10 の Windows 対応では、JSON-LD と法務ページだけ両 OS に直して
+   * **画面に出る文言を macOS のまま残した**。同じページの中で機械可読な部分と
+   * 見出しが食い違い、ボタンは全部 Mac App Store へ飛ぶ状態になっていた。
+   * 型検査もスナップショットも拾えないので、ここで見る。
+   */
+  it("never claims a single platform in the copy the visitor actually reads", () => {
+    for (const locale of locales) {
+      const m = messages[locale];
+      const visible = [m.meta.title, m.meta.description, m.landing.description, m.public.appStore.note];
+      for (const text of visible) {
+        // 「Mac」を名乗るなら「Windows」も名乗っていること（逆も同じ）。
+        const mac = /mac/i.test(text);
+        const windows = /windows/i.test(text);
+        expect(mac, `${locale}: ${text}`).toBe(windows);
+      }
+    }
+  });
+
+  it("offers both stores, not just one", () => {
+    for (const locale of locales) {
+      const { apple, microsoft } = messages[locale].public.appStore;
+      expect(apple).toMatch(/app store/i);
+      expect(microsoft).toMatch(/microsoft store/i);
+    }
+  });
+
   // 操作図は「開始」「URL共有」の2種類。観客の図には質問の文言を使う。
   it("keeps two illustrated steps and three reaction types in both locales", () => {
     for (const locale of locales) {

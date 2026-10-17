@@ -1,6 +1,7 @@
 .main { overflow: clip; }
 .container { width: calc(100% - 64px); max-width: 1200px; margin-inline: auto; }
-.hero { display: grid; grid-template-columns: 1.1fr .9fr; align-items: center; gap: 40px; padding-top: 65px; padding-bottom: 75px; }
+/* scroll-margin-top は固定ヘッダ（80px）の分。`.section` と揃えてある。 */
+.hero { scroll-margin-top: 100px; display: grid; grid-template-columns: 1.1fr .9fr; align-items: center; gap: 40px; padding-top: 65px; padding-bottom: 75px; }
 .heroCopy { position: relative; z-index: 2; padding-bottom: 22px; }
 .title { font-family: var(--lt-home-heading); font-size: clamp(44px, 5.7vw, 82px); font-weight: 800; line-height: 1.18; letter-spacing: -.055em; }
 .titleLine { display: block; }

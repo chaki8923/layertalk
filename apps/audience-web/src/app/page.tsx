@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { BadgeHelp, Check, MessageCircleMore, PartyPopper } from "lucide-react";
 
-import { AppStoreButton } from "@/components/public/app-store-button";
+import { StoreButtons } from "@/components/public/store-buttons";
 import { GuideCards } from "@/components/public/guide-cards";
 import { LiveSlideDemo } from "@/components/public/live-slide-demo";
 import { Mascot } from "@/components/public/mascot";
@@ -38,16 +38,20 @@ export default async function HomePage() {
       <MascotBackdrop />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }} />
       <main className={styles.main}>
-        <section className={styles.container + " " + styles.hero}>
+        {/* ヘッダの「アプリを入手」の行き先。**バッジの行ではなくヒーロー全体に付ける。**
+            行に付けると、見出しが画面外に切れた中途半端な位置へ飛ぶ。
+            id は `page.test.tsx` が並び順の先頭に期待している名前と揃えてある。 */}
+        <section id="hero" className={styles.container + " " + styles.hero}>
           <div className={styles.heroCopy}>
             <h1 className={styles.title}>
               <span className={styles.titleLine}>{locale === "ja" ? <PhraseText phrases={["会場の声を、"]} /> : t.titleLead}</span>
               <span className={styles.titleLine}>{locale === "ja" ? <PhraseText phrases={["スライド", "の上へ。"]} /> : t.titleHighlight}</span>
             </h1>
             <p className={styles.description}><ProtectedText text={t.description} /></p>
+            {/* **観客向けの導線はここに置かない。** 発表者に入れてもらう行に、別の人の
+                行動（参加する）が混ざると、どちらも弱くなる。参加はヘッダの「参加」から `/join`。 */}
             <div className={styles.actions}>
-              <AppStoreButton locale={locale} appearance="mascot" />
-              <Link href="/join" className={"lt-tap lt-nowrap inline-flex items-center justify-center " + publicStyles.secondaryButton}>{t.secondaryCta}</Link>
+              <StoreButtons locale={locale} />
             </div>
             <p className={styles.note}>{messages[locale].public.appStore.note}</p>
             <ul className={styles.signals} aria-label="LayerTalk highlights">
@@ -144,9 +148,9 @@ export default async function HomePage() {
         <section className={styles.container + " " + styles.final}>
           <div>
             <h2 className={styles.heading}>{locale === "ja" ? <PhraseText phrases={["次のプレゼンで、", "試してみよう。"]} /> : t.finalCta.title}</h2>
+            {/* ヒーローと同じ理由で、ここにも観客の導線は置かない。 */}
             <div className={styles.actions}>
-              <AppStoreButton locale={locale} appearance="mascot" />
-              <Link href="/join" className={"lt-tap lt-nowrap inline-flex items-center justify-center " + publicStyles.secondaryButton}>{messages[locale].public.nav.join}</Link>
+              <StoreButtons locale={locale} />
             </div>
           </div>
           <div className={styles.finalScene}>

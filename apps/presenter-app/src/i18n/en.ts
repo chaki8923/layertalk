@@ -58,18 +58,20 @@ export const en: Messages = {
   },
 
   monitor: {
-    section: "Display",
-    primary: "the primary display",
-    followPrimary: "Follow the primary display",
-    followPrimarySub: "Moves to the main screen automatically when displays change",
-    primarySuffix: " · primary",
+    section: "Comment screen",
+    external: "External display",
+    externalNumbered: (n: number) => `External display ${n}`,
+    externalAutoSub: "Comments follow it when you swap cables",
+    thisScreen: (device: string) => `This ${device}’s screen`,
+    soloNotice: (device: string) =>
+      `Comments appear on this ${device}’s screen. Plug in an external display and they move there automatically.`,
     hint: "Picking one flashes a confirmation frame on that screen for a few seconds.",
-    hintSingle: " Only one display is connected right now.",
+    missing: (name: string) => `The display you picked is gone. Comments will appear on ${name}.`,
     peek: "Comments will appear on this screen",
   },
 
   display: {
-    section: "Style",
+    section: "Comment style",
     flow: "Scrolling",
     bubble: "Bubbles",
     test: "Preview a comment",

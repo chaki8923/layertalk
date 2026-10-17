@@ -21,7 +21,11 @@ export type PresenterSettings = {
    */
   allowCustomStamps: boolean;
   displayMode: DisplayMode;
-  /** 表示先モニターの名前。null ならプライマリ。 */
+  /**
+   * 表示先モニターの ID（`MonitorInfo.name`）。**null は「自動」** で、
+   * 外部ディスプレイがあればそちら、無ければ主ディスプレイ（`lib/monitors.ts`）。
+   * 会議室では挿した外部モニターが主ディスプレイにならないので、主へ固定しない。
+   */
   monitorName: string | null;
   /**
    * 発表者用アプリの表示言語。ルームにも保存され、観客用 Web もこれに従う。
@@ -34,18 +38,32 @@ export type PresenterSettings = {
    * コントロール窓のセクションの並び。ドラッグで入れ替えられる。
    *
    * 発表者ごとに触る頻度が違うので、手元で並べ替えられるようにしてある。
-   * 既定は `SECTION_IDS` の順（表示モニターが開始ボタンの直下、Event Pass が末尾）。
+   * 既定は `SECTION_IDS` の順。
    */
   sectionOrder: SectionId[];
+  /**
+   * `sectionOrder` の既定を変えた回数。**保存値より既定を優先させるための印**。
+   *
+   * `normalizeSectionOrder` は保存値を正とするので、これが無いと既定の並びを変えても
+   * 一度でも並び替えた人には永久に届かない（新しいセクションも末尾に付くだけになる）。
+   * 版が違えば1回だけ既定へ戻す。**上げるのは既定の並びを変えたときだけ** —
+   * セクションを増やしただけなら `normalizeSectionOrder` が末尾に足すので要らない。
+   */
+  sectionOrderVersion: number;
 };
 
 /**
  * 並び替えできるセクション。**この配列の順が既定の並びそのもの。**
  *
- * 壇上でよく触る表示モニターを先頭に、ほとんど触らない Event Pass を末尾に置いている。
+ * 壇上で最初に要るのは参加コード、次が表示先の確認。安全管理は常時見るものではないので
+ * その下、ほとんど触らない Event Pass を末尾に置いている。
+ * **並びを変えたら `SECTION_ORDER_VERSION` を上げること**（既存の保存値が勝つため）。
  */
-export const SECTION_IDS = ["monitor", "room", "display", "stamp", "customStamp", "eventPass"] as const;
+export const SECTION_IDS = ["room", "monitor", "safety", "display", "stamp", "customStamp", "eventPass"] as const;
 export type SectionId = (typeof SECTION_IDS)[number];
+
+/** `SECTION_IDS` の並びを変えた回数。`PresenterSettings.sectionOrderVersion` を見ること。 */
+export const SECTION_ORDER_VERSION = 2;
 
 /**
  * 保存された並び順を実行時の形に直す。
@@ -84,6 +102,7 @@ export const DEFAULT_SETTINGS: PresenterSettings = {
   monitorName: null,
   language: "ja",
   sectionOrder: [...SECTION_IDS],
+  sectionOrderVersion: SECTION_ORDER_VERSION,
 };
 
 /** シンプルな固定表示。コントロール窓からは変更しない。 */
@@ -121,7 +140,11 @@ export function loadSettings(): PresenterSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_SETTINGS, language: initialLanguage() };
-    const parsed = { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<PresenterSettings>) };
+    const stored = JSON.parse(raw) as Partial<PresenterSettings>;
+    const parsed = { ...DEFAULT_SETTINGS, ...stored };
+    // **`parsed` ではなく `stored` を見ること。** `parsed` は既定とマージ済みなので、
+    // 版印を持っていない古い保存値まで「今の版」に見えてリセットが起きない。
+    const orderIsCurrent = stored.sectionOrderVersion === SECTION_ORDER_VERSION;
     // 廃止した表示設定をlocalStorageから実行時へ持ち込まない。
     // ここに書き忘れたフィールドは読み込みで捨てられる。
     return {
@@ -137,7 +160,9 @@ export function loadSettings(): PresenterSettings {
       monitorName: parsed.monitorName,
       // 保存値が正。壊れた値・未知の値だけ初回と同じ判定へ落とす。
       language: parsed.language === "en" || parsed.language === "ja" ? parsed.language : initialLanguage(),
-      sectionOrder: normalizeSectionOrder(parsed.sectionOrder),
+      // 既定の並びを変えた直後だけ、保存値を捨てて既定へ戻す（`sectionOrderVersion`）。
+      sectionOrder: orderIsCurrent ? normalizeSectionOrder(parsed.sectionOrder) : [...SECTION_IDS],
+      sectionOrderVersion: SECTION_ORDER_VERSION,
     };
   } catch {
     return { ...DEFAULT_SETTINGS, language: initialLanguage() };
